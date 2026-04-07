@@ -1,0 +1,9 @@
+[submodule "EvoNN"]
+	path = EvoNN
+	url = ./EvoNN
+[submodule "EvoNN-2"]
+	path = EvoNN-2
+	url = ./EvoNN-2
+[submodule "EvoNN-Symbiosis"]
+	path = EvoNN-Symbiosis
+	url = ./EvoNN-Symbiosis
