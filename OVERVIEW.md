@@ -96,8 +96,10 @@ diabetes, friedman, credit-g):
   an edge on classification and a large advantage on regression
 - **EvoNN-2 wins digits (80-100%)** and credit-g (~60%) — topology
   freedom finds better classifiers for these tasks
-- **Hybrid Transformer** achieves near-perfect scores on synthetic
-  language modeling (perplexity ≈ 1.003)
+- **Hybrid with cross-position attention** achieves perplexity **27.9**
+  on TinyStories — approaching the published TinyStories-1M baseline (~28)
+- EvoNN's evolved transformer achieves perplexity 4.5 on synthetic LM
+  and 4,710 on TinyStories (needs more training to converge)
 - At higher budgets (512+) the systems converge — the first tied pair
   appeared at budget 512
 
