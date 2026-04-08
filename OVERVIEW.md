@@ -87,21 +87,25 @@ infrastructure that compares all systems fairly:
 - Produces campaign reports and a web dashboard (Observatory)
 - Supports 5 campaign types: solo, comparison, hybrid, symbiosis, exploration
 
-## Current Results (April 2026)
+## Current Verified Status (April 2026)
 
-On 8 Tier 1 benchmarks (iris, wine, breast cancer, moons, digits,
-diabetes, friedman, credit-g):
+On the current verified codebase:
 
-- **EvoNN wins most benchmarks** overall — its family diversity gives it
-  an edge on classification and a large advantage on regression
-- **EvoNN-2 wins digits (80-100%)** and credit-g (~60%) — topology
-  freedom finds better classifiers for these tasks
-- **Hybrid with cross-position attention** achieves perplexity **27.9**
-  on TinyStories — approaching the published TinyStories-1M baseline (~28)
-- EvoNN's evolved transformer achieves perplexity 4.5 on synthetic LM
-  and 4,710 on TinyStories (needs more training to converge)
-- At higher budgets (512+) the systems converge — the first tied pair
-  appeared at budget 512
+- **EvoNN** is currently the strongest overall benchmark baseline in the
+  Symbiosis Tier 1 comparisons
+- **EvoNN-2** is now fully green on its full test suite and remains
+  particularly competitive on `digits_image`
+- **Hybrid** is a working third system with corrected durability and
+  three-way comparison support, but its campaign results still trail EvoNN
+  overall and need more search/selection work for longer runs
+- Cross-system storage and export contracts are operational, but summary /
+  savepoint normalization across all three systems is still only partially done
+
+Current verified test status:
+
+- `EvoNN`: 442 passed
+- `EvoNN-2`: 510 passed
+- `EvoNN-Symbiosis`: 111 passed
 
 ## Repository Structure
 
@@ -116,7 +120,7 @@ Evo Neural Nets/
 │   │   ├── orchestration/  # Campaign runner
 │   │   ├── hybrid/         # Hybrid topology + family engine
 │   │   └── web/            # Observatory dashboard
-│   └── campaigns/          # ~50 campaign results
+│   └── campaigns/          # many stored campaign results
 ├── OVERVIEW.md             # This file
 └── PROJECT_AUDIT_REPORT.md # Detailed technical audit
 ```

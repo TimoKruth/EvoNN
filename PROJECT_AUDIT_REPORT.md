@@ -1,6 +1,6 @@
 # Evo Neural Nets — Project Status Report
 
-Date: 2026-04-07
+Date: 2026-04-08
 
 ---
 
@@ -11,15 +11,17 @@ comparison and hybrid experiment layer.
 
 | Project | Role | Tests | Status |
 |---------|------|:-:|---|
-| **EvoNN** | Track A: family-based macro-NAS | 417+ | Phase 7 complete |
-| **EvoNN-2** | Track B: topology/speciation/QD search | 460+ | All training phases + competitive features complete |
-| **EvoNN-Symbiosis** | Comparison + hybrid layer | 98 | S1-S4 complete, Observatory dashboard live |
+| **EvoNN** | Track A: family-based macro-NAS | 442 | Phase 1-4 complete, Phase 5 partial, Phase 6.1-6.6 + 7 in place |
+| **EvoNN-2** | Track B: topology/speciation/QD search | 510 | Training Phases 1-3 + competitive features complete; B5 still open |
+| **EvoNN-Symbiosis** | Comparison + hybrid layer | 111 | S1-S4 implemented, Observatory live, durability follow-up still partial |
 
 ---
 
 ## EvoNN (Track A)
 
-17 model families, 102 benchmarks, 7 contender comparisons. Phases 1-7 complete.
+17 model families, 102 benchmarks, 7 contender comparisons. The main
+remaining Track A gap is still source-faithful NAS-Bench-360 data and a few
+large-compute validation tasks.
 
 Key deliverables:
 - ✅ Symbiosis result export with canonical IDs and full artifact envelope
@@ -39,6 +41,7 @@ Key deliverables:
 - ✅ S4-A: Per-benchmark elite archive
 - ✅ Enhanced reporting: speciation diagnostics, topology diversity, DAG analysis
 - ✅ SearchTelemetry export with multi-fidelity, residual count, bias config
+- ✅ Full test suite green after MoE gradient-flow stabilization
 
 ## EvoNN-Symbiosis
 
@@ -52,10 +55,11 @@ Key deliverables:
 - ✅ Observatory dashboard (FastAPI + Chart.js) at port 8417
 - ✅ 5 campaign modes: solo, comparison, hybrid, symbiosis, exploration
 - ✅ Hybrid durability: DuckDB store, state.json, resume, checkpoints
+- ⚠️ Cross-system summary / savepoint normalization is still not fully complete
 
 ## Campaign Data
 
-~100 campaign runs completed across all tiers and budgets:
+Many campaign runs completed across all tiers and budgets:
 - Tier 1: 35+ comparison cases (64/128/256/512/1008 budgets)
 - Tier 2: 6 cases (EvoNN-leaning image tasks)
 - Tier 3: 10 cases (EvoNN-2-leaning topology tasks)
