@@ -113,21 +113,57 @@ class DatasetRegistry:
             return self._load_csv_file(Path(meta.path), meta)
         if meta.source == DatasetSource.SKLEARN:
             return self._fetch_sklearn(meta)
+        if meta.source == DatasetSource.IMAGE:
+            return self._fetch_image(meta)
         raise ValueError(f"Unsupported source: {meta.source}")
 
     def _fetch_openml(self, meta: DatasetMeta) -> tuple[np.ndarray, np.ndarray]:
         import openml
+        import pandas as pd
 
         dataset = openml.datasets.get_dataset(meta.source_id, download_data=True)
         X_df, y_series, _, _ = dataset.get_data(target=dataset.default_target_attribute)
+
+        # Encode categorical features to numeric
+        for col in X_df.columns:
+            if hasattr(X_df[col], 'cat') or X_df[col].dtype.name == 'category' or X_df[col].dtype == object:
+                X_df[col] = pd.Categorical(X_df[col]).codes.astype(np.float32)
+
         X = X_df.to_numpy(dtype=np.float32, na_value=np.nan)
+        # Replace remaining NaN with 0
+        X = np.nan_to_num(X, nan=0.0)
+
         y = y_series.to_numpy()
         if meta.task == "classification":
-            # encode string labels to ints
             if y.dtype.kind in ("U", "S", "O"):
                 uniq = sorted(set(y))
                 label_map = {v: i for i, v in enumerate(uniq)}
                 y = np.array([label_map[v] for v in y], dtype=np.int64)
+        else:
+            y = y.astype(np.float32)
+        return X, y
+
+    def _fetch_image(self, meta: DatasetMeta) -> tuple[np.ndarray, np.ndarray]:
+        """Load image datasets from sklearn (digits) or fetch via openml (mnist, fashion_mnist)."""
+        name = meta.name.lower()
+        if name == "digits":
+            from sklearn.datasets import load_digits
+            data = load_digits()
+            return data.data.astype(np.float32), data.target.astype(np.int64)
+
+        # MNIST and Fashion-MNIST via openml
+        openml_ids = {"mnist": 554, "fashion_mnist": 40996}
+        oid = openml_ids.get(name)
+        if oid is None:
+            raise ValueError(f"Unknown image dataset: {name}")
+
+        import openml
+        dataset = openml.datasets.get_dataset(oid, download_data=True)
+        X_df, y_series, _, _ = dataset.get_data(target=dataset.default_target_attribute)
+        X = X_df.to_numpy(dtype=np.float32)
+        y = y_series.to_numpy()
+        if y.dtype.kind in ("U", "S", "O"):
+            y = np.array([int(v) for v in y], dtype=np.int64)
         return X, y
 
     def _fetch_url(self, meta: DatasetMeta) -> tuple[np.ndarray, np.ndarray]:
