@@ -1,0 +1,10 @@
+name: segment
+source: openml
+source_id: 36
+dataset: segment
+input_dim: 19
+num_classes: 7
+task: classification
+domain: image_features
+tags: [tabular, multiclass, suite-a]
+description: "Image segmentation from extracted features (7 classes)"

@@ -1,0 +1,4 @@
+name: microcontroller
+max_model_bytes: 10000
+max_latency_ms: 10.0
+max_params: 2000

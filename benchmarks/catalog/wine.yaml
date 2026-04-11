@@ -1,0 +1,6 @@
+name: wine
+task: classification
+source: sklearn
+dataset: load_wine
+input_dim: 13
+num_classes: 3

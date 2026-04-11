@@ -1,0 +1,6 @@
+name: digits
+task: classification
+source: sklearn
+dataset: load_digits
+input_dim: 64
+num_classes: 10

@@ -1,0 +1,8 @@
+name: blobs_f20_c2
+task: classification
+source: sklearn
+dataset: make_blobs
+input_dim: 20
+num_classes: 2
+n_samples: 1000
+centers: 2

@@ -1,0 +1,4 @@
+name: m1_edge
+max_model_bytes: 50000
+max_latency_ms: 2.0
+max_params: 10000

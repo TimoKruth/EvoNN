@@ -1,0 +1,171 @@
+"""Dataset catalog from YAML files with multi-source loading."""
+
+from __future__ import annotations
+
+import csv as csv_mod
+from enum import Enum
+from pathlib import Path
+
+import numpy as np
+import yaml
+from pydantic import BaseModel
+from sklearn.model_selection import train_test_split
+
+
+class DatasetSource(str, Enum):
+    SKLEARN = "sklearn"
+    OPENML = "openml"
+    URL = "url"
+    LOCAL = "local"
+    IMAGE = "image"
+
+
+class DatasetMeta(BaseModel):
+    name: str
+    source: DatasetSource
+    source_id: int | None = None
+    url: str | None = None
+    path: str | None = None
+    task: str
+    target_column: str | None = None
+    input_dim: int | None = None
+    num_classes: int | None = None
+    n_samples: int | None = None
+    description: str = ""
+    domain: str = ""
+    tags: list[str] = []
+
+
+# Default catalog dir: <project_root>/benchmarks/catalog/
+CATALOG_DIR = Path(__file__).resolve().parent.parent.parent.parent / "benchmarks" / "catalog"
+CACHE_DIR = Path.home() / ".topograph" / "data"
+
+
+class DatasetRegistry:
+    """Registry of datasets loaded from YAML catalog files."""
+
+    def __init__(self, catalog_dir: str | None = None) -> None:
+        self._catalog_dir = Path(catalog_dir) if catalog_dir else CATALOG_DIR
+        self._catalog: dict[str, DatasetMeta] = {}
+        self._load_catalog()
+
+    def _load_catalog(self) -> None:
+        if not self._catalog_dir.exists():
+            return
+        for path in sorted(self._catalog_dir.glob("*.yaml")):
+            with open(path) as f:
+                data = yaml.safe_load(f)
+            if not data or "name" not in data or "source" not in data:
+                continue
+            try:
+                meta = DatasetMeta.model_validate(data)
+                self._catalog[meta.name] = meta
+            except Exception:
+                pass  # skip invalid configs
+
+    def get(self, name: str) -> DatasetMeta:
+        if name not in self._catalog:
+            raise FileNotFoundError(f"Dataset not found in registry: {name}")
+        return self._catalog[name]
+
+    def list(
+        self,
+        domain: str | None = None,
+        task: str | None = None,
+        tag: str | None = None,
+    ) -> list[DatasetMeta]:
+        results = list(self._catalog.values())
+        if domain:
+            results = [m for m in results if m.domain == domain]
+        if task:
+            results = [m for m in results if m.task == task]
+        if tag:
+            results = [m for m in results if tag in m.tags]
+        return results
+
+    def load_data(
+        self, name: str, seed: int = 42, validation_split: float = 0.2,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        meta = self.get(name)
+        X, y = self._fetch(meta)
+
+        if meta.task == "classification":
+            y = y.astype(np.int64)
+            stratify = y
+        else:
+            y = y.astype(np.float32)
+            stratify = None
+
+        X_train, X_val, y_train, y_val = train_test_split(
+            X, y, test_size=validation_split, random_state=seed, stratify=stratify,
+        )
+        return (
+            X_train.astype(np.float32), y_train,
+            X_val.astype(np.float32), y_val,
+        )
+
+    def _fetch(self, meta: DatasetMeta) -> tuple[np.ndarray, np.ndarray]:
+        if meta.source == DatasetSource.OPENML:
+            return self._fetch_openml(meta)
+        if meta.source == DatasetSource.URL:
+            return self._fetch_url(meta)
+        if meta.source == DatasetSource.LOCAL:
+            return self._load_csv_file(Path(meta.path), meta)
+        if meta.source == DatasetSource.SKLEARN:
+            return self._fetch_sklearn(meta)
+        raise ValueError(f"Unsupported source: {meta.source}")
+
+    def _fetch_openml(self, meta: DatasetMeta) -> tuple[np.ndarray, np.ndarray]:
+        import openml
+
+        dataset = openml.datasets.get_dataset(meta.source_id, download_data=True)
+        X_df, y_series, _, _ = dataset.get_data(target=dataset.default_target_attribute)
+        X = X_df.to_numpy(dtype=np.float32, na_value=np.nan)
+        y = y_series.to_numpy()
+        if meta.task == "classification":
+            # encode string labels to ints
+            if y.dtype.kind in ("U", "S", "O"):
+                uniq = sorted(set(y))
+                label_map = {v: i for i, v in enumerate(uniq)}
+                y = np.array([label_map[v] for v in y], dtype=np.int64)
+        return X, y
+
+    def _fetch_url(self, meta: DatasetMeta) -> tuple[np.ndarray, np.ndarray]:
+        import urllib.request
+
+        cache_path = CACHE_DIR / meta.name / "data.csv"
+        if not cache_path.exists():
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            urllib.request.urlretrieve(meta.url, cache_path)
+        return self._load_csv_file(cache_path, meta)
+
+    def _fetch_sklearn(self, meta: DatasetMeta) -> tuple[np.ndarray, np.ndarray]:
+        from topograph.benchmarks.spec import BenchmarkSpec
+
+        spec_path = self._catalog_dir / f"{meta.name}.yaml"
+        if spec_path.exists():
+            spec = BenchmarkSpec.from_yaml(spec_path)
+            X_train, y_train, X_val, y_val = spec.load_data(seed=42)
+            return np.vstack([X_train, X_val]), np.concatenate([y_train, y_val])
+        raise FileNotFoundError(f"No catalog YAML for sklearn dataset: {meta.name}")
+
+    def _load_csv_file(
+        self, path: Path, meta: DatasetMeta,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        with open(path) as f:
+            rows = list(csv_mod.DictReader(f))
+
+        target_col = meta.target_column or list(rows[0].keys())[-1]
+        feature_cols = [c for c in rows[0].keys() if c != target_col]
+
+        X = np.array(
+            [[float(row[c]) for c in feature_cols] for row in rows], dtype=np.float32,
+        )
+        if meta.task == "classification":
+            unique = sorted({row[target_col] for row in rows})
+            label_map = {t: i for i, t in enumerate(unique)}
+            y = np.array([label_map[row[target_col]] for row in rows], dtype=np.int64)
+        else:
+            y = np.array([float(row[target_col]) for row in rows], dtype=np.float32)
+
+        return X, y

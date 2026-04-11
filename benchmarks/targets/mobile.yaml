@@ -1,0 +1,4 @@
+name: mobile
+max_model_bytes: 500000
+max_latency_ms: 5.0
+max_params: 100000

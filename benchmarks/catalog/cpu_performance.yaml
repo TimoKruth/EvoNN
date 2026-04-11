@@ -1,0 +1,10 @@
+name: cpu_performance
+source: openml
+source_id: 197
+dataset: cpu_performance
+input_dim: 21
+num_classes: 1
+task: regression
+domain: computing
+tags: [tabular, suite-a, small]
+description: "CPU performance prediction from hardware specs"
