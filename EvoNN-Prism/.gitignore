@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.ruff_cache/
+.pytest_cache/
+# Generated run artifacts
+runs/
+build/
+dist/
+*.duckdb
+*.duckdb.wal
+.coverage
+# Optional local LM cache files
+benchmarks/lm_cache/*.npz

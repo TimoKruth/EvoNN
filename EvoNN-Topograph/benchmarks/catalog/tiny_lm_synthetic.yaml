@@ -1,0 +1,13 @@
+name: tiny_lm_synthetic
+task: language_modeling
+source: lm_synthetic
+dataset: tiny_lm_synthetic
+input_dim: 128
+num_classes: 256
+n_samples: 7000
+description: Synthetic next-token prediction with repeat, counting, alternating, and noisy patterns.
+domain: text
+tags:
+  - language_modeling
+  - synthetic
+  - sequence

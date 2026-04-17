@@ -1,0 +1,67 @@
+name: tier3_evonn2_leaning
+tier: 3
+description: >
+  Asymmetric parity pack for benchmarks where EvoNN-2's NEAT-based topology
+  freedom is expected to shine. Low-dimensional synthetic and non-linearly
+  separable tasks reward the ability to discover minimal, targeted network
+  topologies from scratch rather than selecting from pre-defined families.
+benchmarks:
+  - benchmark_id: circles_classification
+    native_ids:
+      evonn: circles_classification
+      evonn2: circles
+      hybrid: circles
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    comparison_status: asymmetric
+    notes: >
+      Concentric circles in 2D. Non-linearly separable boundary is
+      naturally captured by NEAT growing the minimal topology needed;
+      EvoNN's family priors may over-parameterise.
+  - benchmark_id: blobs_classification
+    native_ids:
+      evonn: blobs_classification
+      evonn2: blobs_f2_c2
+      hybrid: blobs_f2_c2
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    comparison_status: asymmetric
+    notes: >
+      Gaussian blobs in 2D. Simple decision boundaries where NEAT's
+      minimal-start approach can converge on a lean topology faster than
+      EvoNN's family search over larger architectural space.
+  - benchmark_id: phoneme_classification
+    native_ids:
+      evonn: openml_phoneme
+      evonn2: phoneme
+      hybrid: phoneme
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    comparison_status: asymmetric
+    notes: >
+      5-feature phoneme classification. Very low input dimensionality means
+      topology flexibility matters more than family-level structural priors.
+      NEAT can discover compact, task-specific wiring.
+  - benchmark_id: xor_tabular
+    native_ids:
+      evonn: xor_tabular
+      evonn2: circles_n02_f3
+      hybrid: circles_n02_f3
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    comparison_status: asymmetric
+    notes: >
+      XOR-like non-linear decision boundary. The canonical NEAT benchmark
+      demonstrating how topology growth naturally finds the hidden unit
+      needed to solve XOR without starting from a large family template.
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

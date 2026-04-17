@@ -1,0 +1,22 @@
+name: all_shared__openml_jungle_chess
+tier: 1
+description: Symmetric derived pack covering every benchmark currently shared by EvoNN,
+  EvoNN-2, and Hybrid. Single-benchmark slice for openml_jungle_chess.
+benchmarks:
+- benchmark_id: openml_jungle_chess
+  native_ids:
+    evonn: openml_jungle_chess
+    evonn2: jungle_chess
+    hybrid: jungle_chess
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

@@ -1,0 +1,22 @@
+name: all_shared_classification__breast_cancer
+tier: 1
+description: Derived shared pack restricted to classification tasks currently supported
+  by all three systems. Single-benchmark slice for breast_cancer.
+benchmarks:
+- benchmark_id: breast_cancer
+  native_ids:
+    evonn: breast_cancer
+    evonn2: breast_cancer
+    hybrid: breast_cancer
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

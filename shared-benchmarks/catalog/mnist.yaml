@@ -1,0 +1,6 @@
+name: mnist
+task: classification
+source: image
+dataset: mnist
+input_dim: 784
+num_classes: 10

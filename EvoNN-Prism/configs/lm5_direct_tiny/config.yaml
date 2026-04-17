@@ -1,0 +1,11 @@
+seed: 42
+benchmark_pack:
+  pack_name: configs/lm5_direct_tiny/pack.yaml
+training:
+  epochs: 1
+  batch_size: 8
+  early_stopping_patience: 0
+evolution:
+  population_size: 1
+  offspring_per_generation: 1
+  num_generations: 1

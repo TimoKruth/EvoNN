@@ -1,0 +1,10 @@
+name: wine_quality
+source: openml
+source_id: 287
+dataset: wine_quality
+input_dim: 11
+num_classes: 1
+task: regression
+domain: food_science
+tags: [tabular, suite-a]
+description: "Wine quality score prediction from physicochemical properties"

@@ -1,0 +1,22 @@
+name: all_shared_regression__diabetes_regression
+tier: 1
+description: Derived shared pack restricted to regression tasks currently supported
+  by all three systems. Single-benchmark slice for diabetes_regression.
+benchmarks:
+- benchmark_id: diabetes_regression
+  native_ids:
+    evonn: diabetes_regression
+    evonn2: diabetes
+    hybrid: diabetes
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

@@ -1,0 +1,22 @@
+name: all_shared_tabular__phoneme_classification
+tier: 1
+description: Derived shared pack restricted to tabular tasks currently supported by
+  all three systems. Single-benchmark slice for phoneme_classification.
+benchmarks:
+- benchmark_id: phoneme_classification
+  native_ids:
+    evonn: openml_phoneme
+    evonn2: phoneme
+    hybrid: phoneme
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

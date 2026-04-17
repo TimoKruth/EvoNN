@@ -1,0 +1,62 @@
+"""Bridge Prism/Topograph to legacy symbiosis slot semantics."""
+
+from __future__ import annotations
+
+from evonn_compare.contracts.parity import ParityBenchmark
+
+
+def canonical_slot(system: str) -> str:
+    """Map runtime system names to legacy parity-pack slots."""
+
+    return {
+        "prism": "evonn",
+        "topograph": "evonn2",
+        "stratograph": "stratograph",
+        "hybrid": "hybrid",
+        "contenders": "contenders",
+        "evonn": "evonn",
+        "evonn2": "evonn2",
+    }.get(system, system)
+
+
+def system_display_name(system: str) -> str:
+    """Human label for reports."""
+
+    return {
+        "prism": "Prism",
+        "topograph": "Topograph",
+        "stratograph": "Stratograph",
+        "hybrid": "Hybrid",
+        "contenders": "Contenders",
+        "evonn": "EvoNN",
+        "evonn2": "EvoNN-2",
+    }.get(system, system)
+
+
+def fallback_native_id(benchmark: ParityBenchmark, system: str) -> str:
+    """Resolve best native ID for a system from mixed old/new parity packs."""
+
+    native_ids = benchmark.native_ids or {}
+    if system == "prism":
+        return (
+            native_ids.get("prism")
+            or native_ids.get("evonn")
+            or native_ids.get("hybrid")
+            or benchmark.benchmark_id
+        )
+    if system == "topograph":
+        return (
+            native_ids.get("topograph")
+            or native_ids.get("evonn2")
+            or native_ids.get("hybrid")
+            or benchmark.benchmark_id
+        )
+    if system == "stratograph":
+        return (
+            native_ids.get("stratograph")
+            or native_ids.get("prism")
+            or native_ids.get("topograph")
+            or native_ids.get("hybrid")
+            or benchmark.benchmark_id
+        )
+    return native_ids.get(system) or benchmark.benchmark_id

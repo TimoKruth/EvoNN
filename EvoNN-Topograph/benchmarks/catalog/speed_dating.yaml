@@ -1,0 +1,10 @@
+name: speed_dating
+source: openml
+source_id: 40536
+dataset: speed_dating
+input_dim: 120
+num_classes: 2
+task: classification
+domain: social
+tags: [tabular, binary, suite-b, openml]
+description: "SpeedDating match prediction"

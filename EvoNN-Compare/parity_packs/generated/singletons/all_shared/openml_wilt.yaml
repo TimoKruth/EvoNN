@@ -1,0 +1,22 @@
+name: all_shared__openml_wilt
+tier: 1
+description: Symmetric derived pack covering every benchmark currently shared by EvoNN,
+  EvoNN-2, and Hybrid. Single-benchmark slice for openml_wilt.
+benchmarks:
+- benchmark_id: openml_wilt
+  native_ids:
+    evonn: openml_wilt
+    evonn2: wilt
+    hybrid: wilt
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

@@ -1,0 +1,10 @@
+name: energy_efficiency
+source: openml
+source_id: 44960
+dataset: energy_efficiency
+input_dim: 8
+num_classes: 1
+task: regression
+domain: engineering
+tags: [tabular, suite-a]
+description: "Building energy efficiency — heating/cooling load prediction"

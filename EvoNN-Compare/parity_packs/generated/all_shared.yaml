@@ -1,0 +1,340 @@
+name: all_shared
+tier: 1
+description: Symmetric derived pack covering every benchmark currently shared by EvoNN,
+  EvoNN-2, and Hybrid.
+benchmarks:
+- benchmark_id: blobs_classification
+  native_ids:
+    evonn: blobs_classification
+    evonn2: blobs_f2_c2
+    hybrid: blobs_f2_c2
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: breast_cancer
+  native_ids:
+    evonn: breast_cancer
+    evonn2: breast_cancer
+    hybrid: breast_cancer
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: circles_classification
+  native_ids:
+    evonn: circles_classification
+    evonn2: circles
+    hybrid: circles
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: credit_g_classification
+  native_ids:
+    evonn: openml_credit_g
+    evonn2: credit_g
+    hybrid: credit_g
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: diabetes_regression
+  native_ids:
+    evonn: diabetes_regression
+    evonn2: diabetes
+    hybrid: diabetes
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: digits_image
+  native_ids:
+    evonn: digits_image
+    evonn2: digits
+    hybrid: digits
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: fashionmnist_image
+  native_ids:
+    evonn: fashionmnist_image
+    evonn2: fashion_mnist
+    hybrid: fashion_mnist
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: friedman1_regression
+  native_ids:
+    evonn: friedman_regression
+    evonn2: friedman1
+    hybrid: friedman1
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: iris_classification
+  native_ids:
+    evonn: iris_classification
+    evonn2: iris
+    hybrid: iris
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: mnist_image
+  native_ids:
+    evonn: mnist_image
+    evonn2: mnist
+    hybrid: mnist
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: moons_classification
+  native_ids:
+    evonn: moons_classification
+    evonn2: moons
+    hybrid: moons
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_abalone
+  native_ids:
+    evonn: openml_abalone
+    evonn2: abalone
+    hybrid: abalone
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: openml_adult
+  native_ids:
+    evonn: openml_adult
+    evonn2: adult
+    hybrid: adult
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_airfoil
+  native_ids:
+    evonn: openml_airfoil
+    evonn2: airfoil
+    hybrid: airfoil
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: openml_bank_marketing
+  native_ids:
+    evonn: openml_bank_marketing
+    evonn2: bank_marketing
+    hybrid: bank_marketing
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_blood_transfusion
+  native_ids:
+    evonn: openml_blood_transfusion
+    evonn2: blood_transfusion
+    hybrid: blood_transfusion
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_concrete
+  native_ids:
+    evonn: openml_concrete
+    evonn2: concrete
+    hybrid: concrete
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: openml_cpu_activity
+  native_ids:
+    evonn: openml_cpu_activity
+    evonn2: cpu_performance
+    hybrid: cpu_performance
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: openml_electricity
+  native_ids:
+    evonn: openml_electricity
+    evonn2: electricity
+    hybrid: electricity
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_energy_efficiency
+  native_ids:
+    evonn: openml_energy_efficiency
+    evonn2: energy_efficiency
+    hybrid: energy_efficiency
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: openml_gas_sensor
+  native_ids:
+    evonn: openml_gas_sensor
+    evonn2: gas_sensor
+    hybrid: gas_sensor
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_gesture_phase
+  native_ids:
+    evonn: openml_gesture_phase
+    evonn2: gesture_phase
+    hybrid: gesture_phase
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_heart_disease
+  native_ids:
+    evonn: openml_heart_disease
+    evonn2: heart_disease
+    hybrid: heart_disease
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_ilpd
+  native_ids:
+    evonn: openml_ilpd
+    evonn2: ilpd
+    hybrid: ilpd
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_jungle_chess
+  native_ids:
+    evonn: openml_jungle_chess
+    evonn2: jungle_chess
+    hybrid: jungle_chess
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_kc1
+  native_ids:
+    evonn: openml_kc1
+    evonn2: kc1
+    hybrid: kc1
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_letter
+  native_ids:
+    evonn: openml_letter
+    evonn2: letter
+    hybrid: letter
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_mfeat_factors
+  native_ids:
+    evonn: openml_mfeat_factors
+    evonn2: mfeat_factors
+    hybrid: mfeat_factors
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_nomao
+  native_ids:
+    evonn: openml_nomao
+    evonn2: nomao
+    hybrid: nomao
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_ozone_level
+  native_ids:
+    evonn: openml_ozone_level
+    evonn2: ozone_level
+    hybrid: ozone_level
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_speed_dating
+  native_ids:
+    evonn: openml_speed_dating
+    evonn2: speed_dating
+    hybrid: speed_dating
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_wall_robot
+  native_ids:
+    evonn: openml_wall_robot
+    evonn2: wall_robot
+    hybrid: wall_robot
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_wilt
+  native_ids:
+    evonn: openml_wilt
+    evonn2: wilt
+    hybrid: wilt
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: openml_wine_quality
+  native_ids:
+    evonn: openml_wine_quality
+    evonn2: wine_quality
+    hybrid: wine_quality
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: phoneme_classification
+  native_ids:
+    evonn: openml_phoneme
+    evonn2: phoneme
+    hybrid: phoneme
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: qsar_biodeg_classification
+  native_ids:
+    evonn: openml_qsar_biodeg
+    evonn2: qsar_biodeg
+    hybrid: qsar_biodeg
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: segment_classification
+  native_ids:
+    evonn: openml_segment
+    evonn2: segment
+    hybrid: segment
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: steel_plates_fault_classification
+  native_ids:
+    evonn: openml_steel_plates_fault
+    evonn2: steel_plates_fault
+    hybrid: steel_plates_fault
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: vehicle_classification
+  native_ids:
+    evonn: openml_vehicle
+    evonn2: vehicle
+    hybrid: vehicle
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: wine_classification
+  native_ids:
+    evonn: wine_classification
+    evonn2: wine
+    hybrid: wine
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: xor_tabular
+  native_ids:
+    evonn: xor_tabular
+    evonn2: circles_n02_f3
+    hybrid: circles_n02_f3
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

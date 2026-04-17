@@ -1,0 +1,7 @@
+name: sparse_reg_f50
+task: regression
+source: sklearn
+dataset: make_sparse_uncorrelated
+input_dim: 50
+num_classes: 1
+n_samples: 1000

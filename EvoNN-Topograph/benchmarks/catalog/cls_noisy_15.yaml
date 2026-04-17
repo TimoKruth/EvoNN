@@ -1,0 +1,9 @@
+name: cls_noisy_15
+task: classification
+source: sklearn
+dataset: make_classification
+input_dim: 20
+num_classes: 2
+n_samples: 1000
+flip_y: 0.15
+n_informative: 10

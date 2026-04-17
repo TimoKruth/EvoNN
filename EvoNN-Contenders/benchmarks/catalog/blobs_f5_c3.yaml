@@ -1,0 +1,8 @@
+name: blobs_f5_c3
+task: classification
+source: sklearn
+dataset: make_blobs
+input_dim: 5
+num_classes: 3
+n_samples: 1000
+centers: 3

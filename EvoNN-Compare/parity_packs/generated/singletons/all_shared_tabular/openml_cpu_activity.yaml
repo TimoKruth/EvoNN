@@ -1,0 +1,22 @@
+name: all_shared_tabular__openml_cpu_activity
+tier: 1
+description: Derived shared pack restricted to tabular tasks currently supported by
+  all three systems. Single-benchmark slice for openml_cpu_activity.
+benchmarks:
+- benchmark_id: openml_cpu_activity
+  native_ids:
+    evonn: openml_cpu_activity
+    evonn2: cpu_performance
+    hybrid: cpu_performance
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

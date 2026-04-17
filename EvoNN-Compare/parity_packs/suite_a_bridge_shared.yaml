@@ -1,0 +1,59 @@
+name: suite_a_bridge_shared
+tier: 2
+description: >
+  Bridge parity pack for additional tabular benchmarks already present in
+  EvoNN-2's OpenML-backed catalog and mirrored into EvoNN. These extend the
+  shared contender-compatible universe beyond the original CC18-style set.
+benchmarks:
+  - benchmark_id: openml_abalone
+    native_ids: {evonn: openml_abalone, evonn2: abalone, hybrid: abalone}
+    task_kind: regression
+    metric_name: mse
+    metric_direction: min
+  - benchmark_id: openml_airfoil
+    native_ids: {evonn: openml_airfoil, evonn2: airfoil, hybrid: airfoil}
+    task_kind: regression
+    metric_name: mse
+    metric_direction: min
+  - benchmark_id: openml_concrete
+    native_ids: {evonn: openml_concrete, evonn2: concrete, hybrid: concrete}
+    task_kind: regression
+    metric_name: mse
+    metric_direction: min
+  - benchmark_id: openml_cpu_activity
+    native_ids: {evonn: openml_cpu_activity, evonn2: cpu_performance, hybrid: cpu_performance}
+    task_kind: regression
+    metric_name: mse
+    metric_direction: min
+  - benchmark_id: openml_energy_efficiency
+    native_ids: {evonn: openml_energy_efficiency, evonn2: energy_efficiency, hybrid: energy_efficiency}
+    task_kind: regression
+    metric_name: mse
+    metric_direction: min
+  - benchmark_id: openml_gas_sensor
+    native_ids: {evonn: openml_gas_sensor, evonn2: gas_sensor, hybrid: gas_sensor}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_gesture_phase
+    native_ids: {evonn: openml_gesture_phase, evonn2: gesture_phase, hybrid: gesture_phase}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_heart_disease
+    native_ids: {evonn: openml_heart_disease, evonn2: heart_disease, hybrid: heart_disease}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_wine_quality
+    native_ids: {evonn: openml_wine_quality, evonn2: wine_quality, hybrid: wine_quality}
+    task_kind: regression
+    metric_name: mse
+    metric_direction: min
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

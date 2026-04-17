@@ -1,0 +1,6 @@
+name: linnerud
+task: regression
+source: sklearn
+dataset: load_linnerud
+input_dim: 3
+num_classes: 1

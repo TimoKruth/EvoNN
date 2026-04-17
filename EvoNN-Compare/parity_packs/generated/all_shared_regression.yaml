@@ -1,0 +1,76 @@
+name: all_shared_regression
+tier: 1
+description: Derived shared pack restricted to regression tasks currently supported
+  by all three systems.
+benchmarks:
+- benchmark_id: diabetes_regression
+  native_ids:
+    evonn: diabetes_regression
+    evonn2: diabetes
+    hybrid: diabetes
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: friedman1_regression
+  native_ids:
+    evonn: friedman_regression
+    evonn2: friedman1
+    hybrid: friedman1
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: openml_abalone
+  native_ids:
+    evonn: openml_abalone
+    evonn2: abalone
+    hybrid: abalone
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: openml_airfoil
+  native_ids:
+    evonn: openml_airfoil
+    evonn2: airfoil
+    hybrid: airfoil
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: openml_concrete
+  native_ids:
+    evonn: openml_concrete
+    evonn2: concrete
+    hybrid: concrete
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: openml_cpu_activity
+  native_ids:
+    evonn: openml_cpu_activity
+    evonn2: cpu_performance
+    hybrid: cpu_performance
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: openml_energy_efficiency
+  native_ids:
+    evonn: openml_energy_efficiency
+    evonn2: energy_efficiency
+    hybrid: energy_efficiency
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+- benchmark_id: openml_wine_quality
+  native_ids:
+    evonn: openml_wine_quality
+    evonn2: wine_quality
+    hybrid: wine_quality
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

@@ -1,0 +1,22 @@
+name: all_shared__qsar_biodeg_classification
+tier: 1
+description: Symmetric derived pack covering every benchmark currently shared by EvoNN,
+  EvoNN-2, and Hybrid. Single-benchmark slice for qsar_biodeg_classification.
+benchmarks:
+- benchmark_id: qsar_biodeg_classification
+  native_ids:
+    evonn: openml_qsar_biodeg
+    evonn2: qsar_biodeg
+    hybrid: qsar_biodeg
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

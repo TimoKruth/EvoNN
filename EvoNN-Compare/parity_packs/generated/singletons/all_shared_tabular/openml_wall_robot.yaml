@@ -1,0 +1,22 @@
+name: all_shared_tabular__openml_wall_robot
+tier: 1
+description: Derived shared pack restricted to tabular tasks currently supported by
+  all three systems. Single-benchmark slice for openml_wall_robot.
+benchmarks:
+- benchmark_id: openml_wall_robot
+  native_ids:
+    evonn: openml_wall_robot
+    evonn2: wall_robot
+    hybrid: wall_robot
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

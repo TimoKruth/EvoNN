@@ -1,0 +1,9 @@
+name: reg_n5000
+task: regression
+source: sklearn
+dataset: make_regression
+input_dim: 20
+num_classes: 1
+n_samples: 5000
+noise: 10.0
+n_informative: 10

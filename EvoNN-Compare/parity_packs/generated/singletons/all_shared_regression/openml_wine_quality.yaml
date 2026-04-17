@@ -1,0 +1,22 @@
+name: all_shared_regression__openml_wine_quality
+tier: 1
+description: Derived shared pack restricted to regression tasks currently supported
+  by all three systems. Single-benchmark slice for openml_wine_quality.
+benchmarks:
+- benchmark_id: openml_wine_quality
+  native_ids:
+    evonn: openml_wine_quality
+    evonn2: wine_quality
+    hybrid: wine_quality
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

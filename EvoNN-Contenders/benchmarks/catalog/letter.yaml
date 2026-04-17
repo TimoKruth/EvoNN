@@ -1,0 +1,10 @@
+name: letter
+source: openml
+source_id: 6
+dataset: letter
+input_dim: 16
+num_classes: 26
+task: classification
+domain: vision
+tags: [tabular, multiclass, suite-b, openml]
+description: "Letter recognition from extracted shape features"

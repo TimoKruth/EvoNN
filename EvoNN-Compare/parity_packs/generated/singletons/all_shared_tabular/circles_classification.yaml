@@ -1,0 +1,22 @@
+name: all_shared_tabular__circles_classification
+tier: 1
+description: Derived shared pack restricted to tabular tasks currently supported by
+  all three systems. Single-benchmark slice for circles_classification.
+benchmarks:
+- benchmark_id: circles_classification
+  native_ids:
+    evonn: circles_classification
+    evonn2: circles
+    hybrid: circles
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

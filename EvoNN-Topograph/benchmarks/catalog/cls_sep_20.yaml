@@ -1,0 +1,9 @@
+name: cls_sep_20
+task: classification
+source: sklearn
+dataset: make_classification
+input_dim: 20
+num_classes: 2
+n_samples: 1000
+class_sep: 2.0
+n_informative: 10

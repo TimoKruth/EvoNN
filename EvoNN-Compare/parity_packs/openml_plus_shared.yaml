@@ -1,0 +1,114 @@
+name: openml_plus_shared
+tier: 1
+description: >
+  Shared OpenML-style tabular parity pack spanning the original CC18-style EvoNN
+  coverage plus matching EvoNN-2 and Hybrid catalog entries. This is the main
+  contender-compatible batch path for larger three-system comparisons.
+benchmarks:
+  - benchmark_id: openml_adult
+    native_ids: {evonn: openml_adult, evonn2: adult, hybrid: adult}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: credit_g_classification
+    native_ids: {evonn: openml_credit_g, evonn2: credit_g, hybrid: credit_g}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: segment_classification
+    native_ids: {evonn: openml_segment, evonn2: segment, hybrid: segment}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: vehicle_classification
+    native_ids: {evonn: openml_vehicle, evonn2: vehicle, hybrid: vehicle}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_letter
+    native_ids: {evonn: openml_letter, evonn2: letter, hybrid: letter}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: phoneme_classification
+    native_ids: {evonn: openml_phoneme, evonn2: phoneme, hybrid: phoneme}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_kc1
+    native_ids: {evonn: openml_kc1, evonn2: kc1, hybrid: kc1}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_blood_transfusion
+    native_ids: {evonn: openml_blood_transfusion, evonn2: blood_transfusion, hybrid: blood_transfusion}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_bank_marketing
+    native_ids: {evonn: openml_bank_marketing, evonn2: bank_marketing, hybrid: bank_marketing}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_jungle_chess
+    native_ids: {evonn: openml_jungle_chess, evonn2: jungle_chess, hybrid: jungle_chess}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_mfeat_factors
+    native_ids: {evonn: openml_mfeat_factors, evonn2: mfeat_factors, hybrid: mfeat_factors}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_electricity
+    native_ids: {evonn: openml_electricity, evonn2: electricity, hybrid: electricity}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_nomao
+    native_ids: {evonn: openml_nomao, evonn2: nomao, hybrid: nomao}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_speed_dating
+    native_ids: {evonn: openml_speed_dating, evonn2: speed_dating, hybrid: speed_dating}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_wall_robot
+    native_ids: {evonn: openml_wall_robot, evonn2: wall_robot, hybrid: wall_robot}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_wilt
+    native_ids: {evonn: openml_wilt, evonn2: wilt, hybrid: wilt}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_ilpd
+    native_ids: {evonn: openml_ilpd, evonn2: ilpd, hybrid: ilpd}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: qsar_biodeg_classification
+    native_ids: {evonn: openml_qsar_biodeg, evonn2: qsar_biodeg, hybrid: qsar_biodeg}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: steel_plates_fault_classification
+    native_ids: {evonn: openml_steel_plates_fault, evonn2: steel_plates_fault, hybrid: steel_plates_fault}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: openml_ozone_level
+    native_ids: {evonn: openml_ozone_level, evonn2: ozone_level, hybrid: ozone_level}
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

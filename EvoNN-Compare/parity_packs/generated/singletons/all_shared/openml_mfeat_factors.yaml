@@ -1,0 +1,22 @@
+name: all_shared__openml_mfeat_factors
+tier: 1
+description: Symmetric derived pack covering every benchmark currently shared by EvoNN,
+  EvoNN-2, and Hybrid. Single-benchmark slice for openml_mfeat_factors.
+benchmarks:
+- benchmark_id: openml_mfeat_factors
+  native_ids:
+    evonn: openml_mfeat_factors
+    evonn2: mfeat_factors
+    hybrid: mfeat_factors
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

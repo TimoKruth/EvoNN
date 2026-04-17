@@ -1,0 +1,58 @@
+seed: 42
+run_name: working_33_plus_5_lm_contenders_eval76_seed42
+benchmark_pool:
+  name: working_33_plus_5_lm_contenders_eval76
+  benchmarks:
+  - blobs_f2_c2
+  - breast_cancer
+  - circles
+  - credit_g
+  - digits
+  - fashion_mnist
+  - iris
+  - mnist
+  - moons
+  - adult
+  - bank_marketing
+  - blood_transfusion
+  - electricity
+  - gas_sensor
+  - gesture_phase
+  - heart_disease
+  - ilpd
+  - jungle_chess
+  - kc1
+  - letter
+  - mfeat_factors
+  - nomao
+  - ozone_level
+  - speed_dating
+  - wall_robot
+  - wilt
+  - phoneme
+  - qsar_biodeg
+  - segment
+  - steel_plates_fault
+  - tiny_lm_synthetic
+  - tinystories_lm
+  - tinystories_lm_smoke
+  - vehicle
+  - wikitext2_lm
+  - wikitext2_lm_smoke
+  - wine
+  - circles_n02_f3
+contender_pool:
+  tabular:
+  - hist_gb
+  - extra_trees
+  synthetic:
+  - hist_gb
+  - extra_trees
+  image:
+  - mlp
+  - logistic
+  - random_forest
+  language_modeling:
+  - bigram_lm
+selection:
+  max_contenders_per_benchmark: null

@@ -1,0 +1,6 @@
+name: iris
+task: classification
+source: sklearn
+dataset: load_iris
+input_dim: 4
+num_classes: 3

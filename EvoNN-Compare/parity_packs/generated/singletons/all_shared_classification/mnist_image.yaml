@@ -1,0 +1,22 @@
+name: all_shared_classification__mnist_image
+tier: 1
+description: Derived shared pack restricted to classification tasks currently supported
+  by all three systems. Single-benchmark slice for mnist_image.
+benchmarks:
+- benchmark_id: mnist_image
+  native_ids:
+    evonn: mnist_image
+    evonn2: mnist
+    hybrid: mnist
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

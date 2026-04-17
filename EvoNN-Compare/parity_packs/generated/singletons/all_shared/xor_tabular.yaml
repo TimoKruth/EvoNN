@@ -1,0 +1,22 @@
+name: all_shared__xor_tabular
+tier: 1
+description: Symmetric derived pack covering every benchmark currently shared by EvoNN,
+  EvoNN-2, and Hybrid. Single-benchmark slice for xor_tabular.
+benchmarks:
+- benchmark_id: xor_tabular
+  native_ids:
+    evonn: xor_tabular
+    evonn2: circles_n02_f3
+    hybrid: circles_n02_f3
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

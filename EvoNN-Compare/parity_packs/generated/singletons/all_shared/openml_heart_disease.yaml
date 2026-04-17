@@ -1,0 +1,22 @@
+name: all_shared__openml_heart_disease
+tier: 1
+description: Symmetric derived pack covering every benchmark currently shared by EvoNN,
+  EvoNN-2, and Hybrid. Single-benchmark slice for openml_heart_disease.
+benchmarks:
+- benchmark_id: openml_heart_disease
+  native_ids:
+    evonn: openml_heart_disease
+    evonn2: heart_disease
+    hybrid: heart_disease
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

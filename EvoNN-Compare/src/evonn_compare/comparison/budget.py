@@ -1,0 +1,67 @@
+"""Budget comparison helpers for compare run pairs."""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict
+
+from evonn_compare.contracts.models import RunManifest
+from evonn_compare.contracts.parity import ParityPack
+
+
+class BudgetComparison(BaseModel):
+    """Budget comparison result for two manifests."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: str
+    reasons: list[str]
+
+
+class BudgetComparator:
+    """Classify a run pair as fair, asymmetric, or incomparable."""
+
+    def compare(
+        self,
+        left: RunManifest,
+        right: RunManifest,
+        pack: ParityPack,
+    ) -> BudgetComparison:
+        tolerance = pack.budget_policy.budget_tolerance_pct / 100.0
+        reasons: list[str] = []
+
+        coverage_left = {entry.benchmark_id for entry in left.benchmarks}
+        coverage_right = {entry.benchmark_id for entry in right.benchmarks}
+        expected = {entry.benchmark_id for entry in pack.benchmarks}
+        if coverage_left != expected or coverage_right != expected:
+            reasons.append("benchmark coverage does not match the parity pack")
+            return BudgetComparison(status="incomparable", reasons=reasons)
+
+        eval_diff = _relative_diff(
+            left.budget.evaluation_count,
+            right.budget.evaluation_count,
+        )
+        epoch_diff = _relative_diff(
+            left.budget.epochs_per_candidate,
+            right.budget.epochs_per_candidate,
+        )
+
+        if eval_diff > 0.25 or epoch_diff > 0.25:
+            reasons.append("budget mismatch exceeds 25%")
+            return BudgetComparison(status="incomparable", reasons=reasons)
+
+        if pack.seed_policy.required and left.seed != right.seed:
+            reasons.append("seed mismatch")
+
+        if eval_diff > tolerance:
+            reasons.append("evaluation_count mismatch exceeds pack tolerance")
+        if epoch_diff > tolerance:
+            reasons.append("epochs_per_candidate mismatch exceeds pack tolerance")
+
+        status = "fair" if not reasons else "asymmetric"
+        return BudgetComparison(status=status, reasons=reasons)
+
+
+def _relative_diff(left: int, right: int) -> float:
+    if right == 0:
+        return 0.0 if left == 0 else float("inf")
+    return abs(left - right) / right

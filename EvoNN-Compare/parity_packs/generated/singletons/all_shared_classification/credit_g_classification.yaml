@@ -1,0 +1,22 @@
+name: all_shared_classification__credit_g_classification
+tier: 1
+description: Derived shared pack restricted to classification tasks currently supported
+  by all three systems. Single-benchmark slice for credit_g_classification.
+benchmarks:
+- benchmark_id: credit_g_classification
+  native_ids:
+    evonn: openml_credit_g
+    evonn2: credit_g
+    hybrid: credit_g
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

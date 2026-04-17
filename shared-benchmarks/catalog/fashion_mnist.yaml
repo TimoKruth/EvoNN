@@ -1,0 +1,6 @@
+name: fashion_mnist
+task: classification
+source: image
+dataset: fashion_mnist
+input_dim: 784
+num_classes: 10

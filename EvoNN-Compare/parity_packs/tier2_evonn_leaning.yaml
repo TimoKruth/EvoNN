@@ -1,0 +1,93 @@
+name: tier2_evonn_leaning
+tier: 2
+description: >
+  Asymmetric parity pack for benchmarks where EvoNN is expected to hold a
+  structural advantage. Image classification tasks benefit from EvoNN's
+  conv2d and attention family priors, while higher-dimensional tabular tasks
+  benefit from its family diversity. EvoNN-2 handles these via flattened MLP
+  or pure topology search, which is less efficient for spatially structured
+  inputs.
+benchmarks:
+  - benchmark_id: mnist_image
+    native_ids:
+      evonn: mnist_image
+      evonn2: mnist
+      hybrid: mnist
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    comparison_status: asymmetric
+    notes: >
+      28x28 grayscale digits. EvoNN's conv2d families exploit spatial
+      structure; EvoNN-2 flattens to 784-dim MLP input.
+  - benchmark_id: fashionmnist_image
+    native_ids:
+      evonn: fashionmnist_image
+      evonn2: fashion_mnist
+      hybrid: fashion_mnist
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    comparison_status: asymmetric
+    notes: >
+      28x28 grayscale fashion items. Same spatial advantage as MNIST but
+      harder textures reward EvoNN's convolutional priors.
+  - benchmark_id: segment_classification
+    native_ids:
+      evonn: openml_segment
+      evonn2: segment
+      hybrid: segment
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    comparison_status: asymmetric
+    notes: >
+      19-feature image segmentation with 7 classes. EvoNN's attention
+      families can discover feature interactions that help multi-class
+      separation.
+  - benchmark_id: vehicle_classification
+    native_ids:
+      evonn: openml_vehicle
+      evonn2: vehicle
+      hybrid: vehicle
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    comparison_status: asymmetric
+    notes: >
+      18-feature vehicle silhouette classification (4 classes). EvoNN's
+      diverse family pool (MLP, attention, residual) provides richer
+      architectural templates than pure topology growth.
+  - benchmark_id: qsar_biodeg_classification
+    native_ids:
+      evonn: openml_qsar_biodeg
+      evonn2: qsar_biodeg
+      hybrid: qsar_biodeg
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    comparison_status: asymmetric
+    notes: >
+      41 molecular descriptors for biodegradation prediction. High input
+      dimensionality favours EvoNN's pre-built family structures over
+      EvoNN-2's incremental topology growth.
+  - benchmark_id: steel_plates_fault_classification
+    native_ids:
+      evonn: openml_steel_plates_fault
+      evonn2: steel_plates_fault
+      hybrid: steel_plates_fault
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    comparison_status: asymmetric
+    notes: >
+      27-feature manufacturing fault classification (7 classes). Multi-class
+      tasks with moderate feature counts benefit from EvoNN's family-level
+      diversity providing varied representational strategies.
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

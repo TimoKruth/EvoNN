@@ -1,0 +1,36 @@
+name: all_shared_image
+tier: 1
+description: Derived shared pack restricted to image tasks currently supported by
+  all three systems.
+benchmarks:
+- benchmark_id: digits_image
+  native_ids:
+    evonn: digits_image
+    evonn2: digits
+    hybrid: digits
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: fashionmnist_image
+  native_ids:
+    evonn: fashionmnist_image
+    evonn2: fashion_mnist
+    hybrid: fashion_mnist
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+- benchmark_id: mnist_image
+  native_ids:
+    evonn: mnist_image
+    evonn2: mnist
+    hybrid: mnist
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

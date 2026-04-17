@@ -1,0 +1,8 @@
+name: cls_multiclass_15
+task: classification
+source: sklearn
+dataset: make_classification
+input_dim: 60
+num_classes: 15
+n_samples: 2000
+n_informative: 30

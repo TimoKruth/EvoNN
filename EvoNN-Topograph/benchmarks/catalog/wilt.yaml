@@ -1,0 +1,10 @@
+name: wilt
+source: openml
+source_id: 40983
+dataset: wilt
+input_dim: 5
+num_classes: 2
+task: classification
+domain: remote_sensing
+tags: [tabular, binary, suite-b, openml]
+description: "Wilt disease detection from remote sensing features"

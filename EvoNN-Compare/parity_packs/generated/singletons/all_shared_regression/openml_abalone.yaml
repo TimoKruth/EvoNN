@@ -1,0 +1,22 @@
+name: all_shared_regression__openml_abalone
+tier: 1
+description: Derived shared pack restricted to regression tasks currently supported
+  by all three systems. Single-benchmark slice for openml_abalone.
+benchmarks:
+- benchmark_id: openml_abalone
+  native_ids:
+    evonn: openml_abalone
+    evonn2: abalone
+    hybrid: abalone
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

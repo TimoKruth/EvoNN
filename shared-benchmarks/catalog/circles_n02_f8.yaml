@@ -1,0 +1,9 @@
+name: circles_n02_f8
+task: classification
+source: sklearn
+dataset: make_circles
+input_dim: 2
+num_classes: 2
+n_samples: 1000
+noise: 0.02
+factor: 0.8

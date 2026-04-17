@@ -1,0 +1,73 @@
+seed: 42
+run_name: working_33_plus_5_lm_contenders_eval304_seed42
+benchmark_pool:
+  name: working_33_plus_5_lm_contenders_eval304
+  benchmarks:
+  - blobs_f2_c2
+  - breast_cancer
+  - circles
+  - credit_g
+  - digits
+  - fashion_mnist
+  - iris
+  - mnist
+  - moons
+  - adult
+  - bank_marketing
+  - blood_transfusion
+  - electricity
+  - gas_sensor
+  - gesture_phase
+  - heart_disease
+  - ilpd
+  - jungle_chess
+  - kc1
+  - letter
+  - mfeat_factors
+  - nomao
+  - ozone_level
+  - speed_dating
+  - wall_robot
+  - wilt
+  - phoneme
+  - qsar_biodeg
+  - segment
+  - steel_plates_fault
+  - tiny_lm_synthetic
+  - tinystories_lm
+  - tinystories_lm_smoke
+  - vehicle
+  - wikitext2_lm
+  - wikitext2_lm_smoke
+  - wine
+  - circles_n02_f3
+contender_pool:
+  tabular:
+  - hist_gb
+  - hist_gb_small
+  - extra_trees
+  - extra_trees_small
+  - random_forest
+  - random_forest_small
+  - mlp
+  - mlp_small
+  - logistic
+  synthetic:
+  - hist_gb
+  - hist_gb_deep
+  - extra_trees
+  - mlp
+  - random_forest
+  image:
+  - mlp
+  - mlp_small
+  - logistic
+  - random_forest
+  - extra_trees
+  language_modeling:
+  - bigram_lm
+  - bigram_lm_a10
+  - unigram_lm
+  - unigram_lm_a05
+selection:
+  max_contenders_per_benchmark: null

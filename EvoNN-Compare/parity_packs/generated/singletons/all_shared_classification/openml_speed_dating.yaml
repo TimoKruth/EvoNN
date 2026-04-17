@@ -1,0 +1,22 @@
+name: all_shared_classification__openml_speed_dating
+tier: 1
+description: Derived shared pack restricted to classification tasks currently supported
+  by all three systems. Single-benchmark slice for openml_speed_dating.
+benchmarks:
+- benchmark_id: openml_speed_dating
+  native_ids:
+    evonn: openml_speed_dating
+    evonn2: speed_dating
+    hybrid: speed_dating
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

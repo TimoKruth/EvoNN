@@ -1,0 +1,22 @@
+name: all_shared_tabular__friedman1_regression
+tier: 1
+description: Derived shared pack restricted to tabular tasks currently supported by
+  all three systems. Single-benchmark slice for friedman1_regression.
+benchmarks:
+- benchmark_id: friedman1_regression
+  native_ids:
+    evonn: friedman_regression
+    evonn2: friedman1
+    hybrid: friedman1
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

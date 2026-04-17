@@ -1,0 +1,22 @@
+name: all_shared_tabular__blobs_classification
+tier: 1
+description: Derived shared pack restricted to tabular tasks currently supported by
+  all three systems. Single-benchmark slice for blobs_classification.
+benchmarks:
+- benchmark_id: blobs_classification
+  native_ids:
+    evonn: blobs_classification
+    evonn2: blobs_f2_c2
+    hybrid: blobs_f2_c2
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

@@ -1,0 +1,22 @@
+name: all_shared__openml_energy_efficiency
+tier: 1
+description: Symmetric derived pack covering every benchmark currently shared by EvoNN,
+  EvoNN-2, and Hybrid. Single-benchmark slice for openml_energy_efficiency.
+benchmarks:
+- benchmark_id: openml_energy_efficiency
+  native_ids:
+    evonn: openml_energy_efficiency
+    evonn2: energy_efficiency
+    hybrid: energy_efficiency
+  task_kind: regression
+  metric_name: mse
+  metric_direction: min
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

@@ -1,0 +1,10 @@
+name: ilpd
+source: openml
+source_id: 1480
+dataset: ilpd
+input_dim: 10
+num_classes: 2
+task: classification
+domain: healthcare
+tags: [tabular, binary, suite-b, openml]
+description: "Indian Liver Patient Dataset classification"

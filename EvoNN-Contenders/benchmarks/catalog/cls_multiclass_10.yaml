@@ -1,0 +1,8 @@
+name: cls_multiclass_10
+task: classification
+source: sklearn
+dataset: make_classification
+input_dim: 40
+num_classes: 10
+n_samples: 2000
+n_informative: 20

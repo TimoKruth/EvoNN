@@ -1,0 +1,10 @@
+name: ozone_level
+source: openml
+source_id: 1487
+dataset: ozone_level
+input_dim: 72
+num_classes: 2
+task: classification
+domain: environmental
+tags: [tabular, binary, suite-b, openml]
+description: "Ozone level prediction from meteorological features"

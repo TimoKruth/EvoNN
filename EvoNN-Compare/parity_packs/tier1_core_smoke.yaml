@@ -1,0 +1,70 @@
+name: tier1_core_smoke
+tier: 1
+description: >
+  Smoke-budget version of tier1_core used only for end-to-end contract and
+  first-comparison validation. Benchmark coverage matches Tier 1, but the
+  budget is intentionally reduced for fast local verification.
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      evonn: iris_classification
+      evonn2: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: wine_classification
+    native_ids:
+      evonn: wine_classification
+      evonn2: wine
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: breast_cancer
+    native_ids:
+      evonn: breast_cancer
+      evonn2: breast_cancer
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: moons_classification
+    native_ids:
+      evonn: moons_classification
+      evonn2: moons
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: digits_image
+    native_ids:
+      evonn: digits_image
+      evonn2: digits
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: diabetes_regression
+    native_ids:
+      evonn: diabetes_regression
+      evonn2: diabetes
+    task_kind: regression
+    metric_name: mse
+    metric_direction: min
+  - benchmark_id: friedman1_regression
+    native_ids:
+      evonn: friedman_regression
+      evonn2: friedman1
+    task_kind: regression
+    metric_name: mse
+    metric_direction: min
+  - benchmark_id: credit_g_classification
+    native_ids:
+      evonn: openml_credit_g
+      evonn2: credit_g
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+budget_policy:
+  evaluation_count: 16
+  epochs_per_candidate: 1
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

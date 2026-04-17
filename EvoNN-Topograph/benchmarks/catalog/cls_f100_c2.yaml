@@ -1,0 +1,8 @@
+name: cls_f100_c2
+task: classification
+source: sklearn
+dataset: make_classification
+input_dim: 100
+num_classes: 2
+n_samples: 1000
+n_informative: 50

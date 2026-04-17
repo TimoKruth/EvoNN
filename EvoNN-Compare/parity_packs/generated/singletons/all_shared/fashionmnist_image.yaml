@@ -1,0 +1,22 @@
+name: all_shared__fashionmnist_image
+tier: 1
+description: Symmetric derived pack covering every benchmark currently shared by EvoNN,
+  EvoNN-2, and Hybrid. Single-benchmark slice for fashionmnist_image.
+benchmarks:
+- benchmark_id: fashionmnist_image
+  native_ids:
+    evonn: fashionmnist_image
+    evonn2: fashion_mnist
+    hybrid: fashion_mnist
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

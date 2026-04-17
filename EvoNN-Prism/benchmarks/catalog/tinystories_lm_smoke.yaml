@@ -1,0 +1,7 @@
+name: tinystories_lm_smoke
+task: language_modeling
+modality: text
+source: lm_synthetic
+input_dim: 256
+num_classes: 256
+n_samples: 640

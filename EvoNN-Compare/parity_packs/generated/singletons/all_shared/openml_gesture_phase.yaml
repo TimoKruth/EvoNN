@@ -1,0 +1,22 @@
+name: all_shared__openml_gesture_phase
+tier: 1
+description: Symmetric derived pack covering every benchmark currently shared by EvoNN,
+  EvoNN-2, and Hybrid. Single-benchmark slice for openml_gesture_phase.
+benchmarks:
+- benchmark_id: openml_gesture_phase
+  native_ids:
+    evonn: openml_gesture_phase
+    evonn2: gesture_phase
+    hybrid: gesture_phase
+  task_kind: classification
+  metric_name: accuracy
+  metric_direction: max
+  comparison_status: supported
+  notes: ''
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

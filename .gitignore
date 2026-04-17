@@ -1,6 +1,56 @@
+# OS / Finder
 .DS_Store
+**/.DS_Store
+
+# Agent / local state
 .cmux/
+**/.cmux/
+.repo-backups/
+.playwright-mcp/
+
+# Python caches
 __pycache__/
+**/__pycache__/
 *.pyc
+**/*.pyc
+*.pyo
+**/*.pyo
+*.pyd
+**/*.pyd
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+**/.mypy_cache/
+.ruff_cache/
+**/.ruff_cache/
+.coverage
+htmlcov/
+
+# Python environments / packaging
 .venv/
+**/.venv/
+venv/
+**/venv/
+env/
+**/env/
 *.egg-info/
+**/*.egg-info/
+build/
+**/build/
+dist/
+**/dist/
+
+# Notebook / editor debris
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Local backup / external repos not part of main root repo
+autoresearch-mlx/
+deprecated/
+
+# Generated experiment artifacts
+**/runs/
+**/manual_compare_runs/
+**/logs/
+*.duckdb
+**/*.duckdb
