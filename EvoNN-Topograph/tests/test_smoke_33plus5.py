@@ -16,6 +16,10 @@ def _load_smoke_module():
     return module
 
 
+def _shared_benchmarks_root() -> Path:
+    return Path(__file__).resolve().parents[2] / "shared-benchmarks"
+
+
 def test_smoke_33plus5_has_exact_benchmark_set(monkeypatch):
     smoke = _load_smoke_module()
     assert len(smoke.SHARED_33_BENCHMARKS) == 33
@@ -28,8 +32,7 @@ def test_smoke_33plus5_has_exact_benchmark_set(monkeypatch):
 
 
 def test_shared_33plus5_parity_pack_matches_smoke_set():
-    root = Path(__file__).resolve().parents[1]
-    pack_path = root / "benchmarks" / "suites" / "parity" / "shared_33plus5.yaml"
+    pack_path = _shared_benchmarks_root() / "suites" / "parity" / "shared_33plus5.yaml"
     payload = yaml.safe_load(pack_path.read_text(encoding="utf-8"))
 
     smoke = _load_smoke_module()

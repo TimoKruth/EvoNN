@@ -165,8 +165,9 @@ def load_benchmark_suite_names(suite: str | Path) -> list[str]:
 
     Suite lookup order:
     1. explicit path
-    2. `benchmarks/suites/topograph/<suite>.yaml`
-    3. `benchmarks/suites/parity/<suite>.yaml`
+    2. `../shared-benchmarks/suites/topograph/<suite>.yaml`
+    3. `../shared-benchmarks/suites/parity/<suite>.yaml`
+    4. local `benchmarks/suites/...` fallback if shared root absent
     """
     path = _resolve_suite_path(suite)
     with open(path) as f:

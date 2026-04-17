@@ -1,8 +1,0 @@
-name: smoke
-description: Fast sanity suite for local checks and regression smoke runs.
-benchmarks:
-  - iris
-  - moons
-  - wine
-  - tiny_lm_synthetic
-  - wikitext2_lm_smoke
