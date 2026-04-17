@@ -56,6 +56,13 @@ class BudgetComparator:
             reasons.append("evaluation_count mismatch exceeds pack tolerance")
         if epoch_diff > tolerance:
             reasons.append("epochs_per_candidate mismatch exceeds pack tolerance")
+        left_policy = left.budget.budget_policy_name
+        right_policy = right.budget.budget_policy_name
+        if left_policy != right_policy:
+            if left_policy and right_policy:
+                reasons.append(f"budget policy mismatch: {left_policy} vs {right_policy}")
+            else:
+                reasons.append("budget policy missing on one side")
 
         status = "fair" if not reasons else "asymmetric"
         return BudgetComparison(status=status, reasons=reasons)

@@ -111,8 +111,8 @@ def _load_sklearn(spec: SharedBenchmarkSpec, *, seed: int) -> tuple[np.ndarray, 
     import sklearn.datasets as skd
 
     dataset = spec.dataset
-    input_dim = spec.input_dim or 4
-    num_classes = spec.num_classes or 2
+    input_dim = 4 if spec.input_dim is None else spec.input_dim
+    num_classes = 2 if spec.num_classes is None else spec.num_classes
 
     if dataset == "load_iris":
         data = skd.load_iris()
@@ -138,15 +138,15 @@ def _load_sklearn(spec: SharedBenchmarkSpec, *, seed: int) -> tuple[np.ndarray, 
         return skd.make_circles(
             n_samples=spec.n_samples,
             noise=spec.noise,
-            factor=spec.factor or 0.5,
+            factor=0.5 if spec.factor is None else spec.factor,
             random_state=seed,
         )
     if dataset == "make_classification":
         return skd.make_classification(
             n_samples=spec.n_samples,
             n_features=input_dim,
-            n_informative=spec.n_informative or max(2, input_dim // 2),
-            n_redundant=spec.n_redundant or 0,
+            n_informative=max(2, input_dim // 2) if spec.n_informative is None else spec.n_informative,
+            n_redundant=0 if spec.n_redundant is None else spec.n_redundant,
             n_classes=num_classes,
             random_state=seed,
         )
@@ -154,8 +154,8 @@ def _load_sklearn(spec: SharedBenchmarkSpec, *, seed: int) -> tuple[np.ndarray, 
         return skd.make_blobs(
             n_samples=spec.n_samples,
             n_features=input_dim,
-            centers=spec.centers or num_classes,
-            cluster_std=spec.cluster_std or 1.0,
+            centers=num_classes if spec.centers is None else spec.centers,
+            cluster_std=1.0 if spec.cluster_std is None else spec.cluster_std,
             random_state=seed,
         )
     if dataset == "make_friedman1":
@@ -168,7 +168,7 @@ def _load_sklearn(spec: SharedBenchmarkSpec, *, seed: int) -> tuple[np.ndarray, 
         return skd.make_regression(
             n_samples=spec.n_samples,
             n_features=input_dim,
-            n_informative=spec.n_informative or max(2, input_dim // 2),
+            n_informative=max(2, input_dim // 2) if spec.n_informative is None else spec.n_informative,
             noise=spec.noise,
             random_state=seed,
         )

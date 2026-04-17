@@ -85,6 +85,11 @@ class RunStore:
             [run_id, run_name, created_at, seed, json.dumps(config)],
         )
 
+    def clear_run_records(self, run_id: str) -> None:
+        self.conn.execute("DELETE FROM contenders WHERE run_id = ?", [run_id])
+        self.conn.execute("DELETE FROM benchmark_results WHERE run_id = ?", [run_id])
+        self.conn.execute("DELETE FROM budget_meta WHERE run_id = ?", [run_id])
+
     def record_contender(self, *, run_id: str, benchmark_name: str, record: dict[str, Any]) -> None:
         self.conn.execute(
             """
@@ -108,6 +113,14 @@ class RunStore:
             ],
         )
 
+    def replace_contenders(self, *, run_id: str, benchmark_name: str, records: list[dict[str, Any]]) -> None:
+        self.conn.execute(
+            "DELETE FROM contenders WHERE run_id = ? AND benchmark_name = ?",
+            [run_id, benchmark_name],
+        )
+        for record in records:
+            self.record_contender(run_id=run_id, benchmark_name=benchmark_name, record=record)
+
     def record_result(self, *, run_id: str, benchmark_name: str, record: dict[str, Any]) -> None:
         self.conn.execute(
             """
@@ -129,6 +142,13 @@ class RunStore:
                 record.get("failure_reason"),
             ],
         )
+
+    def replace_result(self, *, run_id: str, benchmark_name: str, record: dict[str, Any]) -> None:
+        self.conn.execute(
+            "DELETE FROM benchmark_results WHERE run_id = ? AND benchmark_name = ?",
+            [run_id, benchmark_name],
+        )
+        self.record_result(run_id=run_id, benchmark_name=benchmark_name, record=record)
 
     def save_budget_metadata(self, *, run_id: str, payload: dict[str, Any]) -> None:
         self.conn.execute("DELETE FROM budget_meta WHERE run_id = ?", [run_id])
@@ -195,6 +215,37 @@ class RunStore:
             ) in rows
         ]
 
+    def load_contenders_for_benchmark(self, run_id: str, benchmark_name: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT benchmark_name, contender_name, family, metric_name, metric_direction,
+                   metric_value, quality, parameter_count, train_seconds,
+                   architecture_summary, contender_id, status, failure_reason
+            FROM contenders
+            WHERE run_id = ? AND benchmark_name = ?
+            ORDER BY contender_name
+            """,
+            [run_id, benchmark_name],
+        ).fetchall()
+        return [
+            {
+                "benchmark_name": row[0],
+                "contender_name": row[1],
+                "family": row[2],
+                "metric_name": row[3],
+                "metric_direction": row[4],
+                "metric_value": row[5],
+                "quality": row[6],
+                "parameter_count": row[7],
+                "train_seconds": row[8],
+                "architecture_summary": row[9],
+                "contender_id": row[10],
+                "status": row[11],
+                "failure_reason": row[12],
+            }
+            for row in rows
+        ]
+
     def load_results(self, run_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
@@ -237,6 +288,35 @@ class RunStore:
                 failure_reason,
             ) in rows
         ]
+
+    def load_result_for_benchmark(self, run_id: str, benchmark_name: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT benchmark_name, contender_name, metric_name, metric_direction,
+                   metric_value, quality, parameter_count, train_seconds,
+                   architecture_summary, contender_id, status, failure_reason
+            FROM benchmark_results
+            WHERE run_id = ? AND benchmark_name = ?
+            LIMIT 1
+            """,
+            [run_id, benchmark_name],
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "benchmark_name": row[0],
+            "contender_name": row[1],
+            "metric_name": row[2],
+            "metric_direction": row[3],
+            "metric_value": row[4],
+            "quality": row[5],
+            "parameter_count": row[6],
+            "train_seconds": row[7],
+            "architecture_summary": row[8],
+            "contender_id": row[9],
+            "status": row[10],
+            "failure_reason": row[11],
+        }
 
     def load_budget_metadata(self, run_id: str) -> dict[str, Any]:
         rows = self.conn.execute(

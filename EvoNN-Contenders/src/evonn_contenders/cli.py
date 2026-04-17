@@ -9,7 +9,7 @@ import typer
 from evonn_contenders.benchmarks import list_benchmarks
 from evonn_contenders.config import load_config
 from evonn_contenders.export import export_symbiosis_contract, write_report
-from evonn_contenders.pipeline import run_contenders
+from evonn_contenders.pipeline import materialize_baseline_run, run_contenders
 from evonn_contenders.storage import RunStore
 
 
@@ -39,6 +39,19 @@ def run_command(
     run_config = load_config(config)
     resolved_run_dir = run_dir or Path("runs") / (run_config.run_name or f"{config.stem}_seed{run_config.seed}")
     path = run_contenders(run_config, run_dir=resolved_run_dir, config_path=config)
+    typer.echo(str(path))
+
+
+@app.command("materialize")
+def materialize_command(
+    config: Path = typer.Option(..., exists=True, dir_okay=False, file_okay=True),
+    run_dir: Path | None = typer.Option(default=None),
+) -> None:
+    """Materialize one run directory from baseline cache only."""
+
+    run_config = load_config(config)
+    resolved_run_dir = run_dir or Path("runs") / (run_config.run_name or f"{config.stem}_seed{run_config.seed}")
+    path = materialize_baseline_run(run_config, run_dir=resolved_run_dir, config_path=config)
     typer.echo(str(path))
 
 
