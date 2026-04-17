@@ -4,8 +4,10 @@ __pycache__/
 .venv/
 .ruff_cache/
 .pytest_cache/
+# Generated run artifacts
 runs/
 build/
 dist/
 *.duckdb
 *.duckdb.wal
+.coverage

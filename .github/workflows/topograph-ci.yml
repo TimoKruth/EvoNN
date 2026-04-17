@@ -1,0 +1,38 @@
+name: Topograph CI
+
+on:
+  push:
+    paths:
+      - "EvoNN-Topograph/**"
+      - "shared-benchmarks/**"
+      - "MONOREPO.md"
+      - "pyproject.toml"
+      - "uv.lock"
+  pull_request:
+    paths:
+      - "EvoNN-Topograph/**"
+      - "shared-benchmarks/**"
+      - "MONOREPO.md"
+      - "pyproject.toml"
+      - "uv.lock"
+
+jobs:
+  topograph:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install Topograph dev dependencies
+        run: uv sync --package topograph --extra dev
+
+      - name: Ruff
+        run: uv run --package topograph --extra dev ruff check EvoNN-Topograph
+
+      - name: Pytest
+        run: uv run --package topograph --extra dev pytest EvoNN-Topograph/tests --cov=topograph --cov-report=term-missing
