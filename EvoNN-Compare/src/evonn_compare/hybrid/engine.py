@@ -207,7 +207,10 @@ class HybridEngine:
             results = self.evaluate_population(benchmarks)
             self.update_best_records(results)
             self.generation_history.append(
-                {benchmark_id: record.metric_value or float("inf") for benchmark_id, record in self.best_records.items()}
+                {
+                    benchmark_id: _history_metric_value(record)
+                    for benchmark_id, record in self.best_records.items()
+                }
             )
             self._save_checkpoints(generation, results)
             self.select_and_mutate(results)
@@ -301,6 +304,12 @@ def _parameter_count(model: nn.Module) -> int:
 
 def _is_better(left: HybridEvaluation, right: HybridEvaluation) -> bool:
     return (left.status == "ok", -left.loss) > (right.status == "ok", -right.loss)
+
+
+def _history_metric_value(record: HybridEvaluation) -> float:
+    if record.metric_value is None:
+        return float("inf")
+    return record.metric_value
 
 
 class _LMTrainWrapper(nn.Module):

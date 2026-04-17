@@ -83,7 +83,8 @@ def _telemetry_row(manifest) -> str:
     fill_ratio = "---"
     archive_parents = "---"
     if telemetry is not None:
-        effective_epochs = telemetry.effective_training_epochs or effective_epochs
+        if telemetry.effective_training_epochs is not None:
+            effective_epochs = telemetry.effective_training_epochs
         qd_enabled = "yes" if telemetry.qd_enabled else "no"
         novelty_weight = _float_cell(telemetry.novelty_weight)
         novelty_mean = _float_cell(telemetry.novelty_score_mean)
