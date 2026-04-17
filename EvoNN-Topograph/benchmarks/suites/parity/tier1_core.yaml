@@ -1,0 +1,20 @@
+name: tier1_core
+description: >
+  Tier 1 Parity Pack -- core benchmarks for fair EvoNN vs EvoNN-2 comparison.
+  Both systems must report results on these benchmarks using the same evaluation
+  protocol for comparisons to be valid.
+tier: 1
+comparison: symmetric
+benchmarks:
+  - iris            # 4 features, 3 classes -- baseline
+  - wine            # 13 features, 3 classes -- moderate
+  - breast_cancer   # 30 features, 2 classes -- binary, high-dim
+  - digits          # 64 features, 10 classes -- many classes
+  - moons           # 2 features, 2 classes -- nonlinear boundary
+  - circles         # 2 features, 2 classes -- concentric
+evaluation_protocol:
+  validation_split: 0.2
+  metric: cross_entropy
+  seed: 42
+  epochs: 20
+  repetitions: 3       # run 3 seeds for statistical significance

@@ -1,0 +1,8 @@
+name: heavy_lm
+description: Language-model-heavy suite for stressing sequence search and runtime.
+benchmarks:
+  - tiny_lm_synthetic
+  - tinystories_lm
+  - tinystories_lm_smoke
+  - wikitext2_lm
+  - wikitext2_lm_smoke
