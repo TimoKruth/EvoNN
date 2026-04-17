@@ -4,12 +4,30 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
 
 import numpy as np
 
-_SUPERPROJECT_ROOT = Path(__file__).resolve().parents[4]
-_DEFAULT_SHARED_CACHE_DIR = _SUPERPROJECT_ROOT / "EvoNN" / ".cache" / "evonn" / "datasets"
+_PACKAGE_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _PACKAGE_DIR.parent.parent.parent
+_SUPERPROJECT_ROOT = _PROJECT_ROOT.parent
+_DEFAULT_SHARED_ROOT = _SUPERPROJECT_ROOT / "shared-benchmarks"
+_DEFAULT_REPO_CACHE_DIR = _PROJECT_ROOT / "benchmarks" / "lm_cache"
 _DEFAULT_LOCAL_CACHE_DIR = Path.home() / ".stratograph" / "datasets"
+_DEFAULT_DEPRECATED_CACHE_DIR = _SUPERPROJECT_ROOT / "deprecated" / "EvoNN" / ".cache" / "evonn" / "datasets"
+_LM_CACHE_ENV_VAR = "STRATOGRAPH_LM_CACHE_DIR"
+_SHARED_ROOT_ENV_VAR = "EVONN_SHARED_BENCHMARKS_DIR"
+
+_CANONICAL_DATASETS = ("tinystories_lm", "wikitext2_lm")
+
+
+def _shared_lm_cache_dir() -> Path:
+    shared_root = os.environ.get(_SHARED_ROOT_ENV_VAR)
+    if shared_root:
+        root = Path(shared_root).expanduser()
+    else:
+        root = _DEFAULT_SHARED_ROOT
+    return root / "lm_cache"
 
 
 def generate_synthetic_lm_dataset(
@@ -114,22 +132,90 @@ def resolve_lm_cache_path(dataset: str) -> Path:
             raise FileNotFoundError(f"LM cache not found: {candidate}")
         return candidate
 
-    env_root = os.environ.get("STRATOGRAPH_LM_CACHE_DIR")
+    search_roots = _search_roots()
+    canonical = _canonical_dataset_name(dataset)
+    for root in search_roots:
+        path = root / f"{dataset}.npz"
+        if path.exists():
+            return path
+        if canonical != dataset:
+            fallback = root / f"{canonical}.npz"
+            if fallback.exists():
+                return fallback
+
+    roots_text = ", ".join(str(root) for root in search_roots)
+    raise FileNotFoundError(
+        f"LM cache not found for {dataset}. Checked: {roots_text}. "
+        f"Set {_LM_CACHE_ENV_VAR} or place {canonical}.npz in {_shared_lm_cache_dir()}."
+    )
+
+
+def warm_lm_cache(
+    datasets: list[str] | None = None,
+    *,
+    target_dir: str | Path | None = None,
+    overwrite: bool = False,
+) -> list[Path]:
+    """Materialize shared/deprecated LM caches into Stratograph repo cache."""
+    target_root = Path(target_dir).expanduser() if target_dir else _DEFAULT_REPO_CACHE_DIR
+    target_root.mkdir(parents=True, exist_ok=True)
+    datasets = datasets or list(_CANONICAL_DATASETS)
+    copied: list[Path] = []
+
+    for dataset in datasets:
+        canonical = _canonical_dataset_name(dataset)
+        source = _resolve_cache_path_from_roots(canonical, _search_roots(include_repo=False))
+        target = target_root / f"{canonical}.npz"
+        if target.exists() and not overwrite:
+            copied.append(target)
+            continue
+        shutil.copy2(source, target)
+        copied.append(target)
+    return copied
+
+
+def available_lm_caches() -> list[str]:
+    """List canonical LM cache names resolvable right now."""
+    names: set[str] = set()
+    for root in _search_roots():
+        if not root.exists():
+            continue
+        for path in root.glob("*.npz"):
+            names.add(path.stem)
+    return sorted(names)
+
+
+def _search_roots(*, include_repo: bool = True) -> list[Path]:
+    env_root = os.environ.get(_LM_CACHE_ENV_VAR)
     roots: list[Path] = []
     if env_root:
         root = Path(env_root).expanduser()
         roots.extend([root, root / "datasets"])
-    roots.extend([_DEFAULT_SHARED_CACHE_DIR, _DEFAULT_LOCAL_CACHE_DIR])
+    roots.extend([_shared_lm_cache_dir(), _DEFAULT_DEPRECATED_CACHE_DIR])
+    if include_repo:
+        roots.append(_DEFAULT_REPO_CACHE_DIR)
+    roots.append(_DEFAULT_LOCAL_CACHE_DIR)
 
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        if root in seen:
+            continue
+        seen.add(root)
+        unique.append(root)
+    return unique
+
+
+def _canonical_dataset_name(dataset: str) -> str:
+    if dataset.endswith("_smoke"):
+        return dataset.removesuffix("_smoke")
+    return dataset
+
+
+def _resolve_cache_path_from_roots(dataset: str, roots: list[Path]) -> Path:
     for root in roots:
         path = root / f"{dataset}.npz"
         if path.exists():
             return path
-        # Smoke caches may be materialized from full caches by truncation.
-        if dataset.endswith("_smoke"):
-            fallback = root / f"{dataset.removesuffix('_smoke')}.npz"
-            if fallback.exists():
-                return fallback
-
-    searched = ", ".join(str(root) for root in roots)
-    raise FileNotFoundError(f"LM cache not found for {dataset}. Checked: {searched}")
+    roots_text = ", ".join(str(root) for root in roots)
+    raise FileNotFoundError(f"LM cache not found for {dataset}. Checked: {roots_text}")

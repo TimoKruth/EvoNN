@@ -8,6 +8,7 @@ import typer
 
 from stratograph.analysis import analyze_run_motifs, run_ablation_matrix, run_ablation_suite
 from stratograph.benchmarks import list_benchmarks
+from stratograph.benchmarks.lm import available_lm_caches, warm_lm_cache
 from stratograph.config import load_config
 from stratograph.export import export_symbiosis_contract, write_report
 from stratograph.pipeline import build_execution_ladder, run_evolution, run_execution_ladder
@@ -31,6 +32,29 @@ def benchmarks(config: Path | None = typer.Option(default=None, exists=True, dir
 
     run_config = load_config(config)
     for name in run_config.benchmark_pool.benchmarks:
+        typer.echo(name)
+
+
+@app.command("warm-cache")
+def warm_cache(
+    config: Path | None = typer.Option(default=None, exists=True, dir_okay=False, file_okay=True),
+    dataset: list[str] | None = typer.Option(default=None, help="Explicit LM dataset ids."),
+    overwrite: bool = typer.Option(default=False, help="Overwrite existing local repo cache files."),
+) -> None:
+    """Warm LM caches into Stratograph repo cache."""
+    datasets = list(dataset or [])
+    if config is not None:
+        run_config = load_config(config)
+        datasets.extend(name for name in run_config.benchmark_pool.benchmarks if "_lm" in name or name == "tiny_lm_synthetic")
+    datasets = [name for name in datasets if name != "tiny_lm_synthetic"]
+    copied = warm_lm_cache(sorted(set(datasets)) or None, overwrite=overwrite)
+    typer.echo("\n".join(str(path) for path in copied))
+
+
+@app.command("list-lm-caches")
+def list_lm_caches() -> None:
+    """List resolvable LM caches."""
+    for name in available_lm_caches():
         typer.echo(name)
 
 

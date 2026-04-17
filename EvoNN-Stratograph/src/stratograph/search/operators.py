@@ -37,6 +37,34 @@ MOTIF_LIBRARY: tuple[tuple[tuple[PrimitiveKind, ActivationKind], ...], ...] = (
         (PrimitiveKind.GATE, ActivationKind.IDENTITY),
     ),
 )
+TASK_MOTIFS: dict[str, tuple[tuple[tuple[PrimitiveKind, ActivationKind], ...], ...]] = {
+    "classification": MOTIF_LIBRARY
+    + (
+        (
+            (PrimitiveKind.NORM, ActivationKind.RELU),
+            (PrimitiveKind.MIX, ActivationKind.GELU),
+            (PrimitiveKind.LINEAR, ActivationKind.IDENTITY),
+        ),
+    ),
+    "language_modeling": (
+        (
+            (PrimitiveKind.GATE, ActivationKind.IDENTITY),
+            (PrimitiveKind.NORM, ActivationKind.IDENTITY),
+            (PrimitiveKind.MIX, ActivationKind.RELU),
+        ),
+        (
+            (PrimitiveKind.NORM, ActivationKind.GELU),
+            (PrimitiveKind.RESIDUAL, ActivationKind.GELU),
+            (PrimitiveKind.LINEAR, ActivationKind.TANH),
+            (PrimitiveKind.MIX, ActivationKind.TANH),
+        ),
+        (
+            (PrimitiveKind.LINEAR, ActivationKind.IDENTITY),
+            (PrimitiveKind.GATE, ActivationKind.RELU),
+            (PrimitiveKind.GATE, ActivationKind.TANH),
+        ),
+    ),
+}
 
 
 def mutate_genome(
@@ -71,7 +99,7 @@ def mutate_genome(
         cell = cell_library[cell_id]
         target_node = rng.choice(cell.nodes)
         new_activation = (
-            rng.choice([activation for _, activation in rng.choice(MOTIF_LIBRARY)])
+            rng.choice([activation for _, activation in _task_motif(genome.task, rng)])
             if motif_bias
             else rng.choice(list(ActivationKind))
         )
@@ -87,7 +115,18 @@ def mutate_genome(
         target = rng.choice(macro_nodes)
         old_cell = cell_library[target.cell_id]
         new_cell_id = f"{target.cell_id}_clone_{rng.randint(0, 9999)}"
-        new_cell = old_cell.model_copy(update={"cell_id": new_cell_id, "shared": False}, deep=True)
+        new_nodes = old_cell.nodes[:]
+        if motif_bias:
+            new_nodes = _apply_motif(old_cell.nodes, _task_motif(genome.task, rng))
+        elif new_nodes:
+            chosen = rng.randrange(len(new_nodes))
+            new_nodes[chosen] = new_nodes[chosen].model_copy(
+                update={"activation": rng.choice(list(ActivationKind))}
+            )
+        new_cell = old_cell.model_copy(
+            update={"cell_id": new_cell_id, "shared": False, "nodes": new_nodes},
+            deep=True,
+        )
         cell_library[new_cell_id] = new_cell
         macro_nodes = [
             node.model_copy(update={"cell_id": new_cell_id}) if node.node_id == target.node_id else node
@@ -121,7 +160,7 @@ def mutate_genome(
             new_cell_id = f"{target.cell_id}_spec_{rng.randint(0, 9999)}"
             nodes = old_cell.nodes[:]
             if motif_bias:
-                motif = rng.choice(MOTIF_LIBRARY)
+                motif = _task_motif(genome.task, rng)
                 nodes = _apply_motif(old_cell.nodes, motif)
             else:
                 new_kind = rng.choice(list(PrimitiveKind))
@@ -138,7 +177,7 @@ def mutate_genome(
     elif mode == "motif_rewrite":
         cell_id = rng.choice(list(cell_library))
         cell = cell_library[cell_id]
-        motif = rng.choice(MOTIF_LIBRARY)
+        motif = _task_motif(genome.task, rng)
         cell_library[cell_id] = cell.model_copy(update={"nodes": _apply_motif(cell.nodes, motif)})
 
     return HierarchicalGenome(
@@ -224,3 +263,11 @@ def _apply_motif(
         kind, activation = motif[index % len(motif)]
         updated.append(node.model_copy(update={"kind": kind, "activation": activation}))
     return updated
+
+
+def _task_motif(
+    task: str,
+    rng: random.Random,
+) -> tuple[tuple[PrimitiveKind, ActivationKind], ...]:
+    motifs = TASK_MOTIFS.get(task, MOTIF_LIBRARY)
+    return rng.choice(motifs)

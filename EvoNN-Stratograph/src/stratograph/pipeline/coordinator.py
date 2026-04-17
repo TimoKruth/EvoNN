@@ -22,7 +22,12 @@ from stratograph.genome.models import (
     MacroNodeGene,
     PrimitiveKind,
 )
-from stratograph.pipeline.evaluator import EvaluationRecord, evaluate_candidate
+from stratograph.pipeline.evaluator import (
+    EvaluationOutcome,
+    EvaluationRecord,
+    TrainingArtifact,
+    evaluate_candidate_with_state,
+)
 from stratograph.search import crossover_genomes, descriptor, mutate_genome, niche_key, novelty_score
 from stratograph.search.operators import MOTIF_LIBRARY
 from stratograph.storage import RunStore
@@ -137,11 +142,20 @@ def run_evolution(
             )
             for index in range(config.evolution.population_size)
         ]
+        inherited_states: dict[str, TrainingArtifact | None] = {genome.genome_id: None for genome in population}
         for generation in range(config.evolution.generations):
             evaluated: list[tuple[HierarchicalGenome, EvaluationRecord, float]] = []
+            trained_states: dict[str, TrainingArtifact | None] = {}
             for genome in population:
                 try:
-                    result = evaluate_candidate(genome, spec, data=data)
+                    outcome = evaluate_candidate_with_state(
+                        genome,
+                        spec,
+                        data=data,
+                        inherited_state=inherited_states.get(genome.genome_id),
+                    )
+                    result = outcome.record
+                    trained_states[genome.genome_id] = outcome.training_artifact
                 except Exception as exc:
                     result = EvaluationRecord(
                         metric_value=float("nan"),
@@ -153,6 +167,7 @@ def run_evolution(
                         status="failed",
                         failure_reason=str(exc),
                     )
+                    trained_states[genome.genome_id] = None
                 desc = descriptor(genome)
                 score = novelty_score(desc, benchmark_archive)
                 benchmark_archive.append(desc)
@@ -175,7 +190,7 @@ def run_evolution(
                 )
             if generation == config.evolution.generations - 1:
                 continue
-            population = _next_population(
+            population, inherited_states = _next_population(
                 evaluated=evaluated,
                 benchmark_name=benchmark_name,
                 task=spec.task,
@@ -187,6 +202,7 @@ def run_evolution(
                 architecture_mode=architecture_mode,
                 allow_clone_mutation=bool(variant_policy["allow_clone_mutation"]),
                 motif_bias=bool(variant_policy["motif_bias"]),
+                trained_states=trained_states,
             )
 
         if best_genome is None or best_result is None:
@@ -379,7 +395,8 @@ def _next_population(
     architecture_mode: str,
     allow_clone_mutation: bool,
     motif_bias: bool,
-) -> list[HierarchicalGenome]:
+    trained_states: dict[str, TrainingArtifact | None],
+) -> tuple[list[HierarchicalGenome], dict[str, TrainingArtifact | None]]:
     scored = sorted(
         evaluated,
         key=lambda item: _selection_key(item[1], item[2]),
@@ -388,6 +405,7 @@ def _next_population(
     elites = [item[0] for item in scored[: max(2, min(len(scored), population_size // 2 or 1))]]
     rng = random.Random(seed * 100_000 + generation * 97 + len(benchmark_name))
     next_population: list[HierarchicalGenome] = []
+    next_states: dict[str, TrainingArtifact | None] = {}
     for index in range(population_size):
         candidate_id = f"{benchmark_name}_seed_{seed}_gen_{generation+1}_cand_{index}"
         if len(elites) >= 2 and index % 3 == 0:
@@ -401,6 +419,7 @@ def _next_population(
                 allow_clone_mutation=allow_clone_mutation,
                 motif_bias=motif_bias,
             )
+            inherited_state = trained_states.get(left.genome_id) or trained_states.get(right.genome_id)
         else:
             parent = elites[index % len(elites)] if elites else _make_candidate(
                 benchmark_name=benchmark_name,
@@ -418,14 +437,27 @@ def _next_population(
                 allow_clone_mutation=allow_clone_mutation,
                 motif_bias=motif_bias,
             )
-        next_population.append(_enforce_architecture_mode(child, architecture_mode))
-    return next_population
+            inherited_state = trained_states.get(parent.genome_id)
+        child = _enforce_architecture_mode(child, architecture_mode)
+        next_population.append(child)
+        next_states[child.genome_id] = inherited_state if _artifact_compatible(child, inherited_state) else None
+    return next_population, next_states
 
 
 def _selection_key(result: EvaluationRecord, novelty: float) -> float:
     if result.status != "ok":
         return float("-inf")
     return result.quality + novelty * 0.05
+
+
+def _artifact_compatible(genome: HierarchicalGenome, artifact: TrainingArtifact | None) -> bool:
+    if artifact is None:
+        return False
+    if artifact.task != genome.task:
+        return False
+    if artifact.model_name == "sgd":
+        return int(artifact.payload.get("feature_dim", -1)) > 0
+    return True
 
 
 def _normalize_config(config: RunConfig) -> RunConfig:
