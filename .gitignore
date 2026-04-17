@@ -8,6 +8,18 @@
 .repo-backups/
 .playwright-mcp/
 
+# Git backup / migration debris
+*.bundle
+*.patch
+*.diff
+*.rej
+**/.git.bak/
+**/.git.backup/
+**/.git-old/
+**/.git-save/
+**/.git-tmp/
+**/.git.orig/
+
 # Python caches
 __pycache__/
 **/__pycache__/
