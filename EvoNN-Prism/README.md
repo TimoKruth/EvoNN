@@ -4,6 +4,8 @@ Prism is a family-based evolutionary neural architecture search system for Apple
 
 It searches across multiple model families, tracks lineage and archives, and exports comparable run artifacts for the wider EvoNN ecosystem.
 
+Inside the EvoNN monorepo, prefer running `uv` commands from the repository root with `--package prism`.
+
 ## Status
 
 This repo now vendors a minimal self-contained benchmark catalog and parity pack set for local smoke runs and CI:
