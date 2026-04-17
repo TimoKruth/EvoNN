@@ -60,6 +60,7 @@ def export_symbiosis_contract(
     evaluations = store.load_evaluations(run_id)
     best_per_benchmark = store.load_best_per_benchmark(run_id)
     latest_gen = store.latest_generation(run_id)
+    lineage_records = store.load_lineage(run_id)
 
     # 4. Load parity pack benchmarks
     pack_specs = load_parity_pack(pack_path)
@@ -185,7 +186,16 @@ def export_symbiosis_contract(
     (output_dir / report_name).write_text(_render_report_markdown(manifest, results), encoding="utf-8")
 
     # 9. Write summary.json
-    _write_summary_json(output_dir, manifest, results, genomes, latest_gen, config)
+    _write_summary_json(
+        output_dir,
+        manifest,
+        results,
+        genomes,
+        latest_gen,
+        config,
+        best_per_benchmark=best_per_benchmark,
+        lineage_records=lineage_records,
+    )
 
     return manifest_path, results_path
 
@@ -332,6 +342,8 @@ def _write_summary_json(
     genomes: list[ModelGenome],
     latest_gen: int | None,
     config: RunConfig,
+    best_per_benchmark: dict[str, dict[str, Any]] | None = None,
+    lineage_records: list[dict[str, Any]] | None = None,
 ) -> None:
     """Write summary.json with cross-system durability contract fields."""
     best_fitness: dict[str, float] = {}
@@ -364,7 +376,47 @@ def _write_summary_json(
         "median_benchmark_quality": median_quality,
         "failure_count": failure_count,
         "benchmarks_evaluated": len(best_fitness),
+        "operator_mix": _operator_mix(lineage_records or []),
+        "family_benchmark_wins": _family_benchmark_wins(best_per_benchmark or {}, genomes),
+        "failure_patterns": _failure_patterns(results),
     }
     (output_dir / "summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8",
     )
+
+
+def _operator_mix(lineage_records: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in lineage_records:
+        label = str(row.get("mutation_summary") or row.get("operator_kind") or "")
+        if not label:
+            continue
+        counts[label] = counts.get(label, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def _family_benchmark_wins(
+    best_per_benchmark: dict[str, dict[str, Any]],
+    genomes: list[ModelGenome],
+) -> dict[str, int]:
+    genome_families = {genome.genome_id: genome.family for genome in genomes}
+    counts: dict[str, int] = {}
+    for best in best_per_benchmark.values():
+        family = genome_families.get(best.get("genome_id", ""))
+        if family is None:
+            continue
+        counts[family] = counts.get(family, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def _failure_patterns(results: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in results:
+        reason = row.get("failure_reason") or (
+            row.get("status") if row.get("status") not in {None, "ok"} else None
+        )
+        if reason is None:
+            continue
+        key = str(reason)
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))

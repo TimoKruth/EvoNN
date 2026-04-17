@@ -222,6 +222,30 @@ class RunStore:
         ).fetchone()
         return result[0] if result and result[0] is not None else None
 
+    def load_lineage(self, run_id: str, generation: int | None = None) -> list[dict]:
+        if generation is not None:
+            rows = self.conn.execute(
+                """
+                SELECT genome_id, parent_id, generation, mutation_summary, operator_kind
+                FROM lineage
+                WHERE run_id = ? AND generation = ?
+                ORDER BY generation, genome_id, parent_id
+                """,
+                [run_id, generation],
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                """
+                SELECT genome_id, parent_id, generation, mutation_summary, operator_kind
+                FROM lineage
+                WHERE run_id = ?
+                ORDER BY generation, genome_id, parent_id
+                """,
+                [run_id],
+            ).fetchall()
+        cols = ["genome_id", "parent_id", "generation", "mutation_summary", "operator_kind"]
+        return [dict(zip(cols, row)) for row in rows]
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------

@@ -11,6 +11,7 @@ import pytest
 from prism.benchmarks.datasets import get_benchmark, load_openml
 from prism.benchmarks.lm import resolve_lm_cache_path
 from prism.benchmarks.parity import resolve_pack_path
+from prism.benchmarks.preprocess import Preprocessor
 from prism.benchmarks.spec import BenchmarkSpec
 from prism.config import RunConfig
 from prism.genome import ModelGenome
@@ -179,6 +180,66 @@ def test_reproduce_records_crossover_lineage(monkeypatch):
     ]
 
 
+def test_reproduce_retries_until_child_is_novel(monkeypatch):
+    parent = _sample_genome("mlp")
+    novel_child = parent.model_copy(update={"hidden_layers": [32, 16]})
+
+    state = SimpleNamespace(
+        population=[parent],
+        archives={},
+        results={
+            parent.genome_id: {
+                "moons": EvaluationResult("accuracy", 0.8, 0.8, 10, 0.1),
+            },
+        },
+    )
+    config = RunConfig.model_validate(
+        {
+            "evolution": {
+                "offspring_per_generation": 1,
+                "crossover_rate": 0.0,
+                "tournament_size": 1,
+                "allowed_families": ["mlp"],
+            }
+        }
+    )
+
+    attempts = iter([
+        (parent, "width"),
+        (novel_child, "width"),
+    ])
+
+    monkeypatch.setattr(reproduce_mod, "apply_random_mutation", lambda *args, **kwargs: next(attempts))
+
+    offspring, lineage = reproduce_mod.reproduce(state, config, Random(0))
+
+    assert offspring == [novel_child]
+    assert lineage[0]["genome_id"] == novel_child.genome_id
+
+
+def test_undercovered_parent_bias_rewards_rare_successes():
+    common = _sample_genome("mlp")
+    rare = _sample_genome("sparse_mlp")
+    third = _sample_genome("attention")
+    state = SimpleNamespace(
+        population=[common, rare, third],
+        results={
+            common.genome_id: {"shared": EvaluationResult("accuracy", 0.8, 0.8, 10, 0.1)},
+            rare.genome_id: {"rare": EvaluationResult("accuracy", 0.7, 0.7, 10, 0.1)},
+            third.genome_id: {"shared": EvaluationResult("accuracy", 0.6, 0.6, 10, 0.1)},
+        },
+    )
+
+    base = {
+        common.genome_id: 0.8,
+        rare.genome_id: 0.7,
+        third.genome_id: 0.6,
+    }
+    boosted = reproduce_mod._apply_undercovered_parent_bias(state, base, bias=1.0)
+
+    assert boosted[rare.genome_id] > boosted[common.genome_id]
+
+
 def test_get_benchmark_missing_catalog_gives_explicit_error(tmp_path):
     with pytest.raises(FileNotFoundError, match="PRISM_CATALOG_DIR") as exc:
         get_benchmark("ghost", catalog_dir=tmp_path / "missing")
@@ -225,6 +286,33 @@ def test_resolve_pack_path_uses_shared_root(tmp_path, monkeypatch):
     monkeypatch.setenv("EVONN_SHARED_BENCHMARKS_DIR", str(shared_root))
 
     assert resolve_pack_path("demo_pack") == fixture
+
+
+def test_preprocessor_handles_nans_constant_columns_and_reset():
+    X = np.array(
+        [
+            [1.0, np.nan, 5.0],
+            [1.0, 3.0, 5.0],
+            [1.0, 7.0, 5.0],
+        ],
+        dtype=np.float32,
+    )
+    prep = Preprocessor()
+
+    transformed = prep.fit_transform(X)
+
+    assert np.isfinite(transformed).all()
+    assert np.allclose(transformed[:, 0], 0.0)
+    assert np.allclose(transformed[:, 2], 0.0)
+
+    restored = prep.inverse_transform(transformed)
+    assert restored.shape == X.shape
+    assert np.allclose(restored[:, 1], np.array([5.0, 3.0, 7.0], dtype=np.float32))
+
+    prep.reset()
+    assert prep.fitted is False
+    with pytest.raises(RuntimeError, match="not fitted"):
+        prep.transform(X)
 
 
 class _FakeLoss:

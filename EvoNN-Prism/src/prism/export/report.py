@@ -35,6 +35,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     evaluations = store.load_evaluations(run_id)
     best_per_benchmark = store.load_best_per_benchmark(run_id)
     latest_gen = store.latest_generation(run_id)
+    lineage = store.load_lineage(run_id)
     store.close()
 
     # Build sections
@@ -109,6 +110,52 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
         sections.append("")
     else:
         sections.append("No genomes found.")
+        sections.append("")
+
+    # Family benchmark wins
+    sections.append("## Family Benchmark Wins")
+    sections.append("")
+    family_wins = _compute_family_benchmark_wins(best_per_benchmark, genomes)
+    if family_wins:
+        sections.append("| Family | Benchmark Wins | Share |")
+        sections.append("|--------|----------------|-------|")
+        total_wins = sum(family_wins.values())
+        for family, wins in family_wins.items():
+            share = (wins / total_wins * 100.0) if total_wins else 0.0
+            sections.append(f"| {family} | {wins} | {share:.1f}% |")
+        sections.append("")
+    else:
+        sections.append("No benchmark leaders available.")
+        sections.append("")
+
+    # Operator mix
+    sections.append("## Operator Mix")
+    sections.append("")
+    operator_mix = _compute_operator_mix(lineage)
+    if operator_mix:
+        sections.append("| Operator | Count | Share |")
+        sections.append("|----------|-------|-------|")
+        total_ops = sum(operator_mix.values())
+        for operator, count in operator_mix.items():
+            share = (count / total_ops * 100.0) if total_ops else 0.0
+            sections.append(f"| {operator} | {count} | {share:.1f}% |")
+        sections.append("")
+    else:
+        sections.append("No lineage data available.")
+        sections.append("")
+
+    # Failure patterns
+    sections.append("## Failure Patterns")
+    sections.append("")
+    failure_patterns = _compute_failure_patterns(evaluations)
+    if failure_patterns:
+        sections.append("| Failure | Count |")
+        sections.append("|---------|-------|")
+        for failure, count in failure_patterns.items():
+            sections.append(f"| {failure} | {count} |")
+        sections.append("")
+    else:
+        sections.append("No failed evaluations recorded.")
         sections.append("")
 
     # Per-benchmark results
@@ -213,3 +260,34 @@ def _compute_generation_stats(
             "count": gen_counts.get(gen, 0),
         }
     return stats
+
+
+def _compute_family_benchmark_wins(
+    best_per_benchmark: dict[str, dict[str, Any]],
+    genomes: list[ModelGenome],
+) -> dict[str, int]:
+    genome_families = {genome.genome_id: genome.family for genome in genomes}
+    counts = Counter()
+    for best in best_per_benchmark.values():
+        family = genome_families.get(best.get("genome_id", ""))
+        if family:
+            counts[family] += 1
+    return dict(counts.most_common())
+
+
+def _compute_operator_mix(lineage: list[dict[str, Any]]) -> dict[str, int]:
+    counts = Counter()
+    for row in lineage:
+        label = row.get("mutation_summary") or row.get("operator_kind")
+        if label:
+            counts[str(label)] += 1
+    return dict(counts.most_common())
+
+
+def _compute_failure_patterns(evaluations: list[dict[str, Any]]) -> dict[str, int]:
+    counts = Counter()
+    for row in evaluations:
+        reason = row.get("failure_reason")
+        if reason:
+            counts[str(reason)] += 1
+    return dict(counts.most_common())

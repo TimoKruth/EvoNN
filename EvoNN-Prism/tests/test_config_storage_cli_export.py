@@ -76,11 +76,13 @@ def test_run_store_roundtrip_and_best_per_benchmark(tmp_path: Path):
 
         loaded = store.load_genomes("run-1")
         evals = store.load_evaluations("run-1")
+        lineage = store.load_lineage("run-1")
         best = store.load_best_per_benchmark("run-1")
         latest = store.latest_generation("run-1")
 
     assert [row["_family"] for row in loaded] == ["mlp", "conv2d"]
     assert len(evals) == 2
+    assert lineage[0]["mutation_summary"] == "mut"
     assert best["moons"]["genome_id"] == genome_b.genome_id
     assert best["moons"]["metric_value"] == 0.9
     assert latest == 1
@@ -130,7 +132,24 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
         {"benchmark_id": "iris", "metric_value": 0.95, "status": "ok"},
         {"benchmark_id": "bad", "metric_value": None, "status": "failed"},
     ]
-    sym._write_summary_json(tmp_path, manifest, results, [genome_a, genome_b], 1, RunConfig())
+    best_per_benchmark = {
+        "moons": {"genome_id": genome_b.genome_id},
+        "iris": {"genome_id": genome_a.genome_id},
+    }
+    lineage_records = [
+        {"mutation_summary": "mutation:width", "operator_kind": "mutation"},
+        {"mutation_summary": "crossover", "operator_kind": "crossover"},
+    ]
+    sym._write_summary_json(
+        tmp_path,
+        manifest,
+        results,
+        [genome_a, genome_b],
+        1,
+        RunConfig(),
+        best_per_benchmark=best_per_benchmark,
+        lineage_records=lineage_records,
+    )
     summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
 
     assert summary["system"] == "prism"
@@ -138,6 +157,9 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
     assert summary["generations_completed"] == 2
     assert summary["failure_count"] == 1
     assert summary["benchmarks_evaluated"] == 2
+    assert summary["operator_mix"]["mutation:width"] == 1
+    assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
+    assert summary["failure_patterns"]["failed"] == 1
 
 
 def test_resolve_run_id_prefers_latest_entry(tmp_path: Path):
@@ -269,6 +291,9 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
 
     report = generate_report(run_dir)
     assert "Total Evaluations | 1" in report
+    assert "## Family Benchmark Wins" in report
+    assert "## Operator Mix" in report
+    assert "## Failure Patterns" in report
     assert "| moons | 0.910000 | accuracy | 123 | 0.20 |" in report
 
 
