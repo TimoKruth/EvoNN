@@ -30,5 +30,6 @@ CLI:
 - `uv run stratograph inspect runs/demo`
 - `uv run stratograph symbiosis export runs/demo --pack /path/to/pack.yaml`
 - `uv run stratograph ladder --workspace manual_compare_runs/execution_ladder_20260417`
-- `uv run stratograph ablate -c configs/two_level_value_probe.yaml --workspace manual_compare_runs/two_level_value_probe_20260417`
+- `uv run stratograph ablate --config configs/two_level_value_probe.yaml --workspace manual_compare_runs/two_level_value_probe_20260417`
+- `uv run stratograph ablate-matrix --config configs/ablation_matrix_smoke.yaml --workspace manual_compare_runs/ablation_matrix_20260417_g2`
 - `uv run stratograph motifs analyze --run-dir manual_compare_runs/two_level_value_probe_20260417/runs/two_level_value_probe__two_level_shared`

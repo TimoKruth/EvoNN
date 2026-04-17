@@ -15,18 +15,48 @@ from stratograph.genome.models import (
     PrimitiveKind,
 )
 
+MOTIF_LIBRARY: tuple[tuple[tuple[PrimitiveKind, ActivationKind], ...], ...] = (
+    (
+        (PrimitiveKind.LINEAR, ActivationKind.IDENTITY),
+        (PrimitiveKind.MIX, ActivationKind.IDENTITY),
+    ),
+    (
+        (PrimitiveKind.GATE, ActivationKind.IDENTITY),
+        (PrimitiveKind.NORM, ActivationKind.IDENTITY),
+        (PrimitiveKind.MIX, ActivationKind.RELU),
+    ),
+    (
+        (PrimitiveKind.NORM, ActivationKind.GELU),
+        (PrimitiveKind.RESIDUAL, ActivationKind.GELU),
+        (PrimitiveKind.LINEAR, ActivationKind.TANH),
+        (PrimitiveKind.MIX, ActivationKind.TANH),
+    ),
+    (
+        (PrimitiveKind.GATE, ActivationKind.RELU),
+        (PrimitiveKind.RESIDUAL, ActivationKind.TANH),
+        (PrimitiveKind.GATE, ActivationKind.IDENTITY),
+    ),
+)
+
 
 def mutate_genome(
     genome: HierarchicalGenome,
     *,
     rng: random.Random,
     candidate_id: str,
+    allow_clone_mutation: bool = True,
+    motif_bias: bool = True,
 ) -> HierarchicalGenome:
     """Return mutated copy of a hierarchical genome."""
     macro_nodes = [node.model_copy() for node in genome.macro_nodes]
     macro_edges = [edge.model_copy() for edge in genome.macro_edges]
     cell_library = {cell_id: cell.model_copy(deep=True) for cell_id, cell in genome.cell_library.items()}
-    mode = rng.choice(["width", "activation", "clone_cell", "add_macro", "specialize_cell"])
+    modes = ["width", "activation", "add_macro", "specialize_cell"]
+    if allow_clone_mutation:
+        modes.append("clone_cell")
+    if motif_bias and genome.task != "regression":
+        modes.append("motif_rewrite")
+    mode = rng.choice(modes)
 
     if mode == "width":
         target = rng.choice(macro_nodes)
@@ -40,7 +70,11 @@ def mutate_genome(
         cell_id = rng.choice(list(cell_library))
         cell = cell_library[cell_id]
         target_node = rng.choice(cell.nodes)
-        new_activation = rng.choice(list(ActivationKind))
+        new_activation = (
+            rng.choice([activation for _, activation in rng.choice(MOTIF_LIBRARY)])
+            if motif_bias
+            else rng.choice(list(ActivationKind))
+        )
         replaced = [
             node.model_copy(update={"activation": new_activation})
             if node.node_id == target_node.node_id
@@ -85,9 +119,13 @@ def mutate_genome(
             target = rng.choice(shared_nodes)
             old_cell = cell_library[target.cell_id]
             new_cell_id = f"{target.cell_id}_spec_{rng.randint(0, 9999)}"
-            new_kind = rng.choice(list(PrimitiveKind))
             nodes = old_cell.nodes[:]
-            nodes[0] = nodes[0].model_copy(update={"kind": new_kind})
+            if motif_bias:
+                motif = rng.choice(MOTIF_LIBRARY)
+                nodes = _apply_motif(old_cell.nodes, motif)
+            else:
+                new_kind = rng.choice(list(PrimitiveKind))
+                nodes[0] = nodes[0].model_copy(update={"kind": new_kind})
             cell_library[new_cell_id] = old_cell.model_copy(
                 update={"cell_id": new_cell_id, "shared": False, "nodes": nodes},
                 deep=True,
@@ -96,6 +134,12 @@ def mutate_genome(
                 node.model_copy(update={"cell_id": new_cell_id}) if node.node_id == target.node_id else node
                 for node in macro_nodes
             ]
+
+    elif mode == "motif_rewrite":
+        cell_id = rng.choice(list(cell_library))
+        cell = cell_library[cell_id]
+        motif = rng.choice(MOTIF_LIBRARY)
+        cell_library[cell_id] = cell.model_copy(update={"nodes": _apply_motif(cell.nodes, motif)})
 
     return HierarchicalGenome(
         genome_id=candidate_id,
@@ -114,6 +158,8 @@ def crossover_genomes(
     *,
     rng: random.Random,
     candidate_id: str,
+    allow_clone_mutation: bool = True,
+    motif_bias: bool = True,
 ) -> HierarchicalGenome:
     """Combine two parent genomes into one child."""
     take_left_prefix = max(1, min(len(left.macro_nodes), rng.randint(1, len(left.macro_nodes))))
@@ -151,7 +197,13 @@ def crossover_genomes(
         macro_edges=macro_edges,
         cell_library=cell_library,
     )
-    return mutate_genome(child, rng=rng, candidate_id=candidate_id)
+    return mutate_genome(
+        child,
+        rng=rng,
+        candidate_id=candidate_id,
+        allow_clone_mutation=allow_clone_mutation,
+        motif_bias=motif_bias,
+    )
 
 
 def _resize_cell(cell: CellGene, width: int) -> CellGene:
@@ -161,3 +213,14 @@ def _resize_cell(cell: CellGene, width: int) -> CellGene:
 
 def _clamp_width(width: int) -> int:
     return max(8, min(256, width))
+
+
+def _apply_motif(
+    nodes: list[CellNodeGene],
+    motif: tuple[tuple[PrimitiveKind, ActivationKind], ...],
+) -> list[CellNodeGene]:
+    updated: list[CellNodeGene] = []
+    for index, node in enumerate(nodes):
+        kind, activation = motif[index % len(motif)]
+        updated.append(node.model_copy(update={"kind": kind, "activation": activation}))
+    return updated

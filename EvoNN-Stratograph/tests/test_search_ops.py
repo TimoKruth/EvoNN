@@ -24,6 +24,14 @@ def test_mutate_genome_keeps_valid_hierarchy() -> None:
     assert len(mutated.cell_library) >= 1
 
 
+def test_mutate_genome_without_clone_keeps_valid_hierarchy() -> None:
+    genome = _seed()
+    mutated = mutate_genome(genome, rng=random.Random(7), candidate_id="mutant_nc", allow_clone_mutation=False)
+    assert mutated.genome_id == "mutant_nc"
+    assert mutated.macro_depth >= 1
+    assert len(mutated.cell_library) >= 1
+
+
 def test_crossover_genome_keeps_valid_hierarchy() -> None:
     left = _seed("moons")
     right = _seed("digits")

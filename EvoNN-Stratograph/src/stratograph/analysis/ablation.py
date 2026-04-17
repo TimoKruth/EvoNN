@@ -1,4 +1,4 @@
-"""Ablation runner to test whether two-level hierarchy buys something."""
+"""Ablation runners to test whether Stratograph hierarchy buys something."""
 
 from __future__ import annotations
 
@@ -7,13 +7,19 @@ import json
 from pathlib import Path
 from statistics import mean
 
-from stratograph.config import RunConfig
+from stratograph.config import BenchmarkPoolConfig, RunConfig
 from stratograph.genome import dict_to_genome
 from stratograph.pipeline.coordinator import run_evolution
 from stratograph.storage import RunStore
 
 
-ABLATION_VARIANTS = ["flat_macro", "two_level_unshared", "two_level_shared"]
+ABLATION_VARIANTS = [
+    "flat_macro",
+    "two_level_unshared",
+    "two_level_shared",
+    "two_level_shared_no_clone",
+    "two_level_shared_no_motif_bias",
+]
 
 
 @dataclass(frozen=True)
@@ -24,6 +30,40 @@ class AblationRun:
     genomes: dict[str, dict]
 
 
+@dataclass(frozen=True)
+class AblationPack:
+    name: str
+    benchmarks: list[str]
+    population_size: int
+    generations: int
+    description: str
+
+
+ABALATION_PACKS = {
+    "tabular_local": AblationPack(
+        name="tabular_local",
+        benchmarks=["blobs_f2_c2", "circles", "moons", "breast_cancer", "iris", "wine"],
+        population_size=6,
+        generations=2,
+        description="Cheap local tabular/classification pack",
+    ),
+    "image_smoke": AblationPack(
+        name="image_smoke",
+        benchmarks=["digits", "mnist", "fashion_mnist"],
+        population_size=4,
+        generations=2,
+        description="Image smoke pack",
+    ),
+    "lm_smoke": AblationPack(
+        name="lm_smoke",
+        benchmarks=["tiny_lm_synthetic", "tinystories_lm_smoke", "wikitext2_lm_smoke"],
+        population_size=4,
+        generations=2,
+        description="Language-modeling smoke pack",
+    ),
+}
+
+
 def run_ablation_suite(
     config: RunConfig,
     *,
@@ -31,7 +71,7 @@ def run_ablation_suite(
     config_path: str | Path | None = None,
     variants: list[str] | None = None,
 ) -> Path:
-    """Run ablation variants and write summary report."""
+    """Run one pack across variants and write summary report."""
     workspace = Path(workspace)
     runs_dir = workspace / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -48,17 +88,71 @@ def run_ablation_suite(
         )
         run_dir = runs_dir / variant_config.run_name
         run_evolution(variant_config, run_dir=run_dir, config_path=config_path, resume=False)
-        store = RunStore(run_dir / "metrics.duckdb")
-        runs = store.load_runs()
-        results = store.load_results(runs[0]["run_id"])
-        genomes = {row["genome_id"]: row for row in store.load_genomes(runs[0]["run_id"])}
-        store.close()
-        completed.append(AblationRun(variant=variant, run_dir=run_dir, results=results, genomes=genomes))
+        completed.append(_load_ablation_run(run_dir))
 
     report = _ablation_summary(completed)
     (workspace / "ablation_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     (workspace / "ablation_report.md").write_text(_render_ablation_markdown(report), encoding="utf-8")
     return workspace / "ablation_report.md"
+
+
+def run_ablation_matrix(
+    config: RunConfig,
+    *,
+    workspace: str | Path,
+    config_path: str | Path | None = None,
+    variants: list[str] | None = None,
+    packs: dict[str, AblationPack] | None = None,
+    include_mixed_from_config: bool = True,
+) -> Path:
+    """Run multiple pack ablations and aggregate one matrix report."""
+    workspace = Path(workspace)
+    workspace.mkdir(parents=True, exist_ok=True)
+    variants = variants or ABLATION_VARIANTS
+    packs = dict(packs or ABALATION_PACKS)
+    if include_mixed_from_config:
+        packs["mixed_38_smoke"] = AblationPack(
+            name="mixed_38_smoke",
+            benchmarks=config.benchmark_pool.benchmarks,
+            population_size=config.evolution.population_size,
+            generations=max(2, config.evolution.generations),
+            description="Mixed full smoke pack from config",
+        )
+
+    pack_reports: dict[str, dict] = {}
+    for pack_name, pack in packs.items():
+        pack_workspace = workspace / pack_name
+        pack_config = config.model_copy(
+            update={
+                "run_name": f"{config.run_name or 'ablation_matrix'}__{pack_name}",
+                "benchmark_pool": BenchmarkPoolConfig(name=pack.name, benchmarks=pack.benchmarks),
+                "evolution": config.evolution.model_copy(
+                    update={
+                        "population_size": pack.population_size,
+                        "generations": pack.generations,
+                    }
+                ),
+            }
+        )
+        report_path = run_ablation_suite(pack_config, workspace=pack_workspace, config_path=config_path, variants=variants)
+        pack_reports[pack_name] = json.loads(report_path.with_suffix(".json").read_text(encoding="utf-8"))
+        pack_reports[pack_name]["description"] = pack.description
+        pack_reports[pack_name]["benchmark_count"] = len(pack.benchmarks)
+
+    matrix_report = _matrix_summary(pack_reports)
+    (workspace / "matrix_report.json").write_text(json.dumps(matrix_report, indent=2), encoding="utf-8")
+    (workspace / "matrix_report.md").write_text(_render_matrix_markdown(matrix_report), encoding="utf-8")
+    return workspace / "matrix_report.md"
+
+
+def _load_ablation_run(run_dir: Path) -> AblationRun:
+    store = RunStore(run_dir / "metrics.duckdb")
+    runs = store.load_runs()
+    results = store.load_results(runs[0]["run_id"])
+    genomes = {row["genome_id"]: row for row in store.load_genomes(runs[0]["run_id"])}
+    store.close()
+    variant = run_dir.name.split("__")[-1]
+    return AblationRun(variant=variant, run_dir=run_dir, results=results, genomes=genomes)
 
 
 def _ablation_summary(runs: list[AblationRun]) -> dict:
@@ -74,23 +168,24 @@ def _ablation_summary(runs: list[AblationRun]) -> dict:
                 continue
             genome_row = genome_rows.get(variant, {}).get(record["genome_id"])
             genome = None if genome_row is None else dict_to_genome(genome_row["payload"])
-            entries.append({
-                "variant": variant,
-                "metric_name": record["metric_name"],
-                "metric_direction": record["metric_direction"],
-                "metric_value": record["metric_value"],
-                "parameter_count": record["parameter_count"],
-                "status": record["status"],
-                "reuse_ratio": None if genome is None else genome.reuse_ratio,
-                "macro_depth": None if genome is None else genome.macro_depth,
-                "avg_cell_depth": None if genome is None else genome.average_cell_depth,
-            })
-        winner = _winner(entries)
-        comparisons.append({"benchmark_name": benchmark_name, "winner": winner, "entries": entries})
+            entries.append(
+                {
+                    "variant": variant,
+                    "metric_name": record["metric_name"],
+                    "metric_direction": record["metric_direction"],
+                    "metric_value": record["metric_value"],
+                    "parameter_count": record["parameter_count"],
+                    "status": record["status"],
+                    "reuse_ratio": None if genome is None else genome.reuse_ratio,
+                    "macro_depth": None if genome is None else genome.macro_depth,
+                    "avg_cell_depth": None if genome is None else genome.average_cell_depth,
+                }
+            )
+        comparisons.append({"benchmark_name": benchmark_name, "winner": _winner(entries), "entries": entries})
 
     pairwise = []
     baseline = by_variant.get("two_level_shared", {})
-    for other in ("flat_macro", "two_level_unshared"):
+    for other in [variant for variant in by_variant if variant != "two_level_shared"]:
         wins = 0
         losses = 0
         deltas = []
@@ -154,6 +249,30 @@ def _ablation_summary(runs: list[AblationRun]) -> dict:
         >= pairwise_map.get("two_level_unshared", {}).get("losses", 0),
         "shared_beats_flat": pairwise_map.get("flat_macro", {}).get("wins", 0)
         >= pairwise_map.get("flat_macro", {}).get("losses", 0),
+        "shared_beats_no_clone": pairwise_map.get("two_level_shared_no_clone", {}).get("wins", 0)
+        >= pairwise_map.get("two_level_shared_no_clone", {}).get("losses", 0),
+        "shared_beats_no_motif_bias": pairwise_map.get("two_level_shared_no_motif_bias", {}).get("wins", 0)
+        >= pairwise_map.get("two_level_shared_no_motif_bias", {}).get("losses", 0),
+    }
+
+
+def _matrix_summary(pack_reports: dict[str, dict]) -> dict:
+    variants = next(iter(pack_reports.values()))["variants"] if pack_reports else []
+    global_pairwise: dict[str, dict[str, float]] = {}
+    for pack_name, report in pack_reports.items():
+        for row in report["pairwise"]:
+            agg = global_pairwise.setdefault(
+                row["right"],
+                {"left": "two_level_shared", "right": row["right"], "wins": 0, "losses": 0, "ties": 0},
+            )
+            agg["wins"] += row["wins"]
+            agg["losses"] += row["losses"]
+            agg["ties"] += row["ties"]
+
+    return {
+        "variants": variants,
+        "packs": pack_reports,
+        "global_pairwise": list(global_pairwise.values()),
     }
 
 
@@ -180,6 +299,8 @@ def _render_ablation_markdown(report: dict) -> str:
         f"- Two-Level Shared Wins Overall: `{report['two_level_buys_something']}`",
         f"- Shared Better Than Unshared: `{report['sharing_beats_unshared']}`",
         f"- Shared Better Than Flat: `{report['shared_beats_flat']}`",
+        f"- Shared Better Than No-Clone: `{report['shared_beats_no_clone']}`",
+        f"- Shared Better Than No-Motif-Bias: `{report['shared_beats_no_motif_bias']}`",
         "",
         "## Variant Summary",
         "",
@@ -227,5 +348,35 @@ def _render_ablation_markdown(report: dict) -> str:
             for entry in row["entries"]
         )
         lines.append(f"| {row['benchmark_name']} | {row['winner'] or 'none'} | {variant_text} |")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_matrix_markdown(report: dict) -> str:
+    lines = [
+        "# Stratograph Ablation Matrix",
+        "",
+        "## Global Pairwise",
+        "",
+        "| Left | Right | Wins | Losses | Ties |",
+        "|---|---|---:|---:|---:|",
+    ]
+    for row in report["global_pairwise"]:
+        lines.append(f"| {row['left']} | {row['right']} | {row['wins']} | {row['losses']} | {row['ties']} |")
+    lines.extend(
+        [
+            "",
+            "## Packs",
+            "",
+            "| Pack | Benchmarks | Shared>Unshared | Shared>Flat | Shared>NoClone | Shared>NoMotifBias |",
+            "|---|---:|---|---|---|---|",
+        ]
+    )
+    for pack_name, pack in report["packs"].items():
+        lines.append(
+            f"| {pack_name} | {pack['benchmark_count']} | {pack['sharing_beats_unshared']} | "
+            f"{pack['shared_beats_flat']} | {pack['shared_beats_no_clone']} | "
+            f"{pack['shared_beats_no_motif_bias']} |"
+        )
     lines.append("")
     return "\n".join(lines)

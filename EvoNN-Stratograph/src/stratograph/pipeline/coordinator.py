@@ -24,6 +24,7 @@ from stratograph.genome.models import (
 )
 from stratograph.pipeline.evaluator import EvaluationRecord, evaluate_candidate
 from stratograph.search import crossover_genomes, descriptor, mutate_genome, niche_key, novelty_score
+from stratograph.search.operators import MOTIF_LIBRARY
 from stratograph.storage import RunStore
 
 
@@ -49,6 +50,7 @@ def run_evolution(
     run_id = run_dir.name
     created_at = datetime.now(timezone.utc).isoformat()
     architecture_mode = variant or config.evolution.architecture_mode
+    variant_policy = _variant_policy(architecture_mode)
     completed_benchmarks: set[str] = set()
     if resume and checkpoint_path.exists():
         checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
@@ -175,15 +177,17 @@ def run_evolution(
                 continue
             population = _next_population(
                 evaluated=evaluated,
-                    benchmark_name=benchmark_name,
-                    task=spec.task,
-                    input_dim=spec.model_input_dim,
-                    output_dim=spec.model_output_dim,
-                    seed=config.seed,
-                    generation=generation,
-                    population_size=config.evolution.population_size,
-                    architecture_mode=architecture_mode,
-                )
+                benchmark_name=benchmark_name,
+                task=spec.task,
+                input_dim=spec.model_input_dim,
+                output_dim=spec.model_output_dim,
+                seed=config.seed,
+                generation=generation,
+                population_size=config.evolution.population_size,
+                architecture_mode=architecture_mode,
+                allow_clone_mutation=bool(variant_policy["allow_clone_mutation"]),
+                motif_bias=bool(variant_policy["motif_bias"]),
+            )
 
         if best_genome is None or best_result is None:
             continue
@@ -229,6 +233,8 @@ def run_evolution(
             "effective_training_epochs": config.training.epochs,
             "created_at": created_at,
             "architecture_mode": architecture_mode,
+            "allow_clone_mutation": variant_policy["allow_clone_mutation"],
+            "motif_bias": variant_policy["motif_bias"],
             "novelty_archive_final_size": len(novelty_scores),
             "novelty_score_mean": (sum(novelty_scores) / len(novelty_scores)) if novelty_scores else 0.0,
             "novelty_score_max": max(novelty_scores, default=0.0),
@@ -262,30 +268,55 @@ def _make_candidate(
     architecture_mode: str = "two_level_shared",
 ) -> HierarchicalGenome:
     rng = random.Random(seed * 1000 + candidate_index * 17 + len(benchmark_name))
+    variant_policy = _variant_policy(architecture_mode)
+    base_mode = str(variant_policy["base_mode"])
+    motif_bias = bool(variant_policy["motif_bias"])
     depth = 2 + (candidate_index % 3)
     width_choices = [16, 24, 32, 48, 64, 96, 128]
     width = max(8, min(max(input_dim, min(output_dim, 128)), rng.choice(width_choices)))
-    shared = architecture_mode == "two_level_shared" and candidate_index % 2 == 0
+    shared = base_mode == "two_level_shared" and candidate_index % 2 == 0
     cells: dict[str, CellGene] = {}
     macro_nodes: list[MacroNodeGene] = []
     macro_edges: list[MacroEdgeGene] = [MacroEdgeGene(source="input", target="macro_0")]
 
     for macro_index in range(depth):
         cell_id = "cell_shared" if shared else f"cell_{macro_index}"
-        if architecture_mode in {"two_level_unshared", "flat_macro"}:
+        if base_mode in {"two_level_unshared", "flat_macro"}:
             cell_id = f"cell_{macro_index}"
         if cell_id not in cells:
-            inner_depth = 1 if architecture_mode == "flat_macro" else 2 + ((candidate_index + macro_index) % 3)
+            inner_depth = 1 if base_mode == "flat_macro" else 2 + ((candidate_index + macro_index) % 3)
             node_ids = [f"node_{macro_index}_{node_index}" for node_index in range(inner_depth)]
-            nodes = [
-                CellNodeGene(
-                    node_id=node_id,
-                    kind=PrimitiveKind.LINEAR if architecture_mode == "flat_macro" else rng.choice(list(PrimitiveKind)),
-                    width=width,
-                    activation=ActivationKind.IDENTITY if architecture_mode == "flat_macro" else rng.choice(list(ActivationKind)),
-                )
-                for node_id in node_ids
-            ]
+            if base_mode == "flat_macro":
+                nodes = [
+                    CellNodeGene(
+                        node_id=node_id,
+                        kind=PrimitiveKind.LINEAR,
+                        width=width,
+                        activation=ActivationKind.IDENTITY,
+                    )
+                    for node_id in node_ids
+                ]
+            elif motif_bias and base_mode == "two_level_shared":
+                motif = MOTIF_LIBRARY[(candidate_index + macro_index + len(benchmark_name)) % len(MOTIF_LIBRARY)]
+                nodes = [
+                    CellNodeGene(
+                        node_id=node_id,
+                        kind=motif[node_index % len(motif)][0],
+                        width=width,
+                        activation=motif[node_index % len(motif)][1],
+                    )
+                    for node_index, node_id in enumerate(node_ids)
+                ]
+            else:
+                nodes = [
+                    CellNodeGene(
+                        node_id=node_id,
+                        kind=rng.choice(list(PrimitiveKind)),
+                        width=width,
+                        activation=rng.choice(list(ActivationKind)),
+                    )
+                    for node_id in node_ids
+                ]
             edges = [CellEdgeGene(source="input", target=node_ids[0])]
             for src, dst in zip(node_ids, node_ids[1:]):
                 edges.append(CellEdgeGene(source=src, target=dst))
@@ -294,7 +325,7 @@ def _make_candidate(
                 cell_id=cell_id,
                 input_width=width,
                 output_width=width,
-                shared=shared and architecture_mode == "two_level_shared",
+                shared=shared and base_mode == "two_level_shared",
                 nodes=nodes,
                 edges=edges,
             )
@@ -346,6 +377,8 @@ def _next_population(
     generation: int,
     population_size: int,
     architecture_mode: str,
+    allow_clone_mutation: bool,
+    motif_bias: bool,
 ) -> list[HierarchicalGenome]:
     scored = sorted(
         evaluated,
@@ -360,7 +393,14 @@ def _next_population(
         if len(elites) >= 2 and index % 3 == 0:
             left = elites[index % len(elites)]
             right = elites[(index + 1) % len(elites)]
-            child = crossover_genomes(left, right, rng=rng, candidate_id=candidate_id)
+            child = crossover_genomes(
+                left,
+                right,
+                rng=rng,
+                candidate_id=candidate_id,
+                allow_clone_mutation=allow_clone_mutation,
+                motif_bias=motif_bias,
+            )
         else:
             parent = elites[index % len(elites)] if elites else _make_candidate(
                 benchmark_name=benchmark_name,
@@ -371,7 +411,13 @@ def _next_population(
                 candidate_index=index,
                 architecture_mode=architecture_mode,
             )
-            child = mutate_genome(parent, rng=rng, candidate_id=candidate_id)
+            child = mutate_genome(
+                parent,
+                rng=rng,
+                candidate_id=candidate_id,
+                allow_clone_mutation=allow_clone_mutation,
+                motif_bias=motif_bias,
+            )
         next_population.append(_enforce_architecture_mode(child, architecture_mode))
     return next_population
 
@@ -407,8 +453,23 @@ def _normalize_config(config: RunConfig) -> RunConfig:
     )
 
 
-def _enforce_architecture_mode(genome: HierarchicalGenome, architecture_mode: str) -> HierarchicalGenome:
+def _variant_policy(architecture_mode: str) -> dict[str, str | bool]:
+    if architecture_mode == "flat_macro":
+        return {"base_mode": "flat_macro", "allow_clone_mutation": False, "motif_bias": False}
+    if architecture_mode == "two_level_unshared":
+        return {"base_mode": "two_level_unshared", "allow_clone_mutation": False, "motif_bias": False}
     if architecture_mode == "two_level_shared":
+        return {"base_mode": "two_level_shared", "allow_clone_mutation": True, "motif_bias": True}
+    if architecture_mode == "two_level_shared_no_clone":
+        return {"base_mode": "two_level_shared", "allow_clone_mutation": False, "motif_bias": True}
+    if architecture_mode == "two_level_shared_no_motif_bias":
+        return {"base_mode": "two_level_shared", "allow_clone_mutation": True, "motif_bias": False}
+    raise ValueError(f"Unknown architecture mode: {architecture_mode}")
+
+
+def _enforce_architecture_mode(genome: HierarchicalGenome, architecture_mode: str) -> HierarchicalGenome:
+    base_mode = str(_variant_policy(architecture_mode)["base_mode"])
+    if base_mode == "two_level_shared":
         if len(genome.macro_nodes) < 2:
             return genome
         counts = Counter(node.cell_id for node in genome.macro_nodes)
@@ -441,7 +502,7 @@ def _enforce_architecture_mode(genome: HierarchicalGenome, architecture_mode: st
             for cell_id in used_ids
         }
         return genome.model_copy(update={"cell_library": cell_library})
-    if architecture_mode == "two_level_unshared":
+    if base_mode == "two_level_unshared":
         macro_nodes = []
         cell_library = {}
         for index, node in enumerate(genome.macro_nodes):
@@ -450,7 +511,7 @@ def _enforce_architecture_mode(genome: HierarchicalGenome, architecture_mode: st
             cell_library[cell_id] = source_cell.model_copy(update={"cell_id": cell_id, "shared": False}, deep=True)
             macro_nodes.append(node.model_copy(update={"cell_id": cell_id}))
         return genome.model_copy(update={"macro_nodes": macro_nodes, "cell_library": cell_library})
-    if architecture_mode == "flat_macro":
+    if base_mode == "flat_macro":
         macro_nodes = []
         cell_library = {}
         for index, node in enumerate(genome.macro_nodes):

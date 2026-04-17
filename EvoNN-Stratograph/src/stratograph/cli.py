@@ -6,7 +6,7 @@ from pathlib import Path
 
 import typer
 
-from stratograph.analysis import analyze_run_motifs, run_ablation_suite
+from stratograph.analysis import analyze_run_motifs, run_ablation_matrix, run_ablation_suite
 from stratograph.benchmarks import list_benchmarks
 from stratograph.config import load_config
 from stratograph.export import export_symbiosis_contract, write_report
@@ -107,6 +107,16 @@ def ablate(
 ) -> None:
     """Run flat/unshared/shared hierarchy ablations."""
     report_path = run_ablation_suite(load_config(config), workspace=workspace, config_path=config)
+    typer.echo(str(report_path))
+
+
+@app.command("ablate-matrix")
+def ablate_matrix(
+    config: Path = typer.Option(..., exists=True, dir_okay=False, file_okay=True),
+    workspace: Path = typer.Option(..., help="Workspace for matrix outputs."),
+) -> None:
+    """Run pack matrix for hierarchy/value study."""
+    report_path = run_ablation_matrix(load_config(config), workspace=workspace, config_path=config)
     typer.echo(str(report_path))
 
 

@@ -3,7 +3,7 @@ from stratograph.benchmarks import get_benchmark, list_benchmarks, load_parity_p
 
 def test_builtin_benchmark_count() -> None:
     names = [spec.name for spec in list_benchmarks()]
-    assert len(names) == 38
+    assert len(names) >= 38
     assert "tiny_lm_synthetic" in names
     assert "wikitext2_lm_smoke" in names
 

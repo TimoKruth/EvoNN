@@ -1,6 +1,7 @@
 import json
 
-from stratograph.analysis import analyze_run_motifs, run_ablation_suite
+from stratograph.analysis import analyze_run_motifs, run_ablation_matrix, run_ablation_suite
+from stratograph.analysis.ablation import AblationPack
 from stratograph.config import BenchmarkPoolConfig, load_config
 from stratograph.genome import dict_to_genome
 from stratograph.pipeline import run_evolution
@@ -52,7 +53,37 @@ def test_ablation_suite_outputs_report(repo_root, tmp_path) -> None:
     report_path = run_ablation_suite(config, workspace=tmp_path / "ablation", config_path=config_path)
     payload = json.loads((report_path.with_suffix(".json")).read_text(encoding="utf-8"))
     assert report_path.exists()
-    assert payload["variants"] == ["flat_macro", "two_level_unshared", "two_level_shared"]
+    assert payload["variants"] == [
+        "flat_macro",
+        "two_level_unshared",
+        "two_level_shared",
+        "two_level_shared_no_clone",
+        "two_level_shared_no_motif_bias",
+    ]
+
+
+def test_ablation_matrix_outputs_report(repo_root, tmp_path) -> None:
+    config_path = repo_root / "configs" / "working_33_plus_5_lm_smoke.yaml"
+    config = load_config(config_path).model_copy(update={"run_name": "matrix_test"})
+    report_path = run_ablation_matrix(
+        config,
+        workspace=tmp_path / "matrix",
+        config_path=config_path,
+        variants=["flat_macro", "two_level_shared"],
+        packs={
+            "mini_pack": AblationPack(
+                name="mini_pack",
+                benchmarks=["moons"],
+                population_size=2,
+                generations=1,
+                description="mini",
+            )
+        },
+        include_mixed_from_config=False,
+    )
+    payload = json.loads((report_path.with_suffix(".json")).read_text(encoding="utf-8"))
+    assert report_path.exists()
+    assert "mini_pack" in payload["packs"]
 
 
 def test_motif_analysis_outputs_report(repo_root, tmp_path) -> None:
