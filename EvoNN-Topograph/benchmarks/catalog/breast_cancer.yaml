@@ -1,6 +1,0 @@
-name: breast_cancer
-task: classification
-source: sklearn
-dataset: load_breast_cancer
-input_dim: 30
-num_classes: 2

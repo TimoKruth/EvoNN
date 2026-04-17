@@ -1,7 +1,0 @@
-name: gauss_q_f20_c5
-task: classification
-source: sklearn
-dataset: make_gaussian_quantiles
-input_dim: 20
-num_classes: 5
-n_samples: 1000

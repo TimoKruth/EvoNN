@@ -1,7 +1,0 @@
-name: gauss_q_f2_c2
-task: classification
-source: sklearn
-dataset: make_gaussian_quantiles
-input_dim: 2
-num_classes: 2
-n_samples: 1000

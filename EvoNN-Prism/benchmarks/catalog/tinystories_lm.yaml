@@ -1,7 +1,0 @@
-name: tinystories_lm
-task: language_modeling
-modality: text
-source: lm_cache
-dataset: tinystories_lm
-input_dim: 256
-num_classes: 256

@@ -1,8 +1,0 @@
-name: regression_simple
-task: regression
-source: sklearn
-dataset: make_regression
-input_dim: 10
-num_classes: 1
-n_samples: 500
-noise: 10.0

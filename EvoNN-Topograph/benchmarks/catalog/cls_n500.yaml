@@ -1,8 +1,0 @@
-name: cls_n500
-task: classification
-source: sklearn
-dataset: make_classification
-input_dim: 20
-num_classes: 3
-n_samples: 500
-n_informative: 10

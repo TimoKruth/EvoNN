@@ -1,6 +1,0 @@
-name: diabetes
-task: regression
-source: sklearn
-dataset: load_diabetes
-input_dim: 10
-num_classes: 1
