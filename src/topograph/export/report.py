@@ -39,6 +39,9 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
         config_dict = {}
 
     budget = store.load_budget_metadata(run_id) or {}
+    benchmark_timings = store.load_benchmark_timings(run_id)
+    timing_summary = _summarize_benchmark_timings(benchmark_timings)
+    benchmark_extremes = _benchmark_quality_extremes(store.load_best_benchmark_results(run_id))
 
     lines: list[str] = []
 
@@ -52,6 +55,23 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     lines.append(f"- **Population Size:** {len(population)}")
     if budget.get("wall_clock_seconds"):
         lines.append(f"- **Wall Clock:** {budget['wall_clock_seconds']:.1f}s")
+    if budget.get("evaluation_count"):
+        lines.append(f"- **Evaluations:** {budget['evaluation_count']}")
+    if budget.get("evals_per_second") is not None:
+        lines.append(f"- **Evaluations / Sec:** {budget['evals_per_second']:.4f}")
+    if budget.get("seconds_per_eval") is not None:
+        lines.append(f"- **Seconds / Eval:** {budget['seconds_per_eval']:.4f}")
+    if budget.get("cache_reuse_rate") is not None:
+        lines.append(
+            f"- **Cache Reuse Rate:** {float(budget['cache_reuse_rate']):.1%} "
+            f"({budget.get('cache_reused_count', 0)} reused / "
+            f"{(budget.get('cache_reused_count', 0) + budget.get('cache_trained_count', 0))} total)"
+        )
+    if budget.get("resolved_parallel_workers_max") is not None:
+        lines.append(
+            f"- **Parallel Workers:** requested {budget.get('requested_parallel_workers', 1)}, "
+            f"max resolved {budget['resolved_parallel_workers_max']}"
+        )
     lines.append("")
 
     # --- Best Genome ---
@@ -147,6 +167,50 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
                 f"| {r['metric_direction']} | {val} | {r['status']} |"
             )
         lines.append("")
+
+    if timing_summary["rows"]:
+        lines.append("## Benchmark Timing\n")
+        lines.append("| Benchmark | Total | Load | Eval | Reused | Trained | Failures | Workers |")
+        lines.append("|-----------|-------|------|------|--------|---------|----------|---------|")
+        for row in timing_summary["slowest"][:5]:
+            lines.append(
+                f"| {row['benchmark_name']} | {row['total_seconds']:.2f}s | "
+                f"{row['data_load_seconds']:.2f}s | {row['evaluation_seconds']:.2f}s | "
+                f"{row['reused_count']} | {row['trained_count']} | {row['failed_count']} | "
+                f"{row['resolved_worker_count']} |"
+            )
+        lines.append("")
+        lines.append("### Fastest Benchmarks\n")
+        lines.append("| Benchmark | Total |")
+        lines.append("|-----------|-------|")
+        for row in timing_summary["fastest"][:5]:
+            lines.append(f"| {row['benchmark_name']} | {row['total_seconds']:.2f}s |")
+        lines.append("")
+
+    if benchmark_extremes["best"] or benchmark_extremes["worst"]:
+        lines.append("## Benchmark Fitness Extremes\n")
+        if benchmark_extremes["best"]:
+            lines.append("### Best Benchmarks By Quality\n")
+            lines.append("| Benchmark | Quality | Metric | Value |")
+            lines.append("|-----------|---------|--------|-------|")
+            for row in benchmark_extremes["best"]:
+                value = "N/A" if row["metric_value"] is None else f"{row['metric_value']:.6f}"
+                lines.append(
+                    f"| {row['benchmark_name']} | {row['quality']:.6f} | "
+                    f"{row['metric_name']} | {value} |"
+                )
+            lines.append("")
+        if benchmark_extremes["worst"]:
+            lines.append("### Worst Benchmarks By Quality\n")
+            lines.append("| Benchmark | Quality | Metric | Value |")
+            lines.append("|-----------|---------|--------|-------|")
+            for row in benchmark_extremes["worst"]:
+                value = "N/A" if row["metric_value"] is None else f"{row['metric_value']:.6f}"
+                lines.append(
+                    f"| {row['benchmark_name']} | {row['quality']:.6f} | "
+                    f"{row['metric_name']} | {value} |"
+                )
+            lines.append("")
 
     store.close()
 
@@ -442,3 +506,54 @@ def _resolve_run_id(store: RunStore) -> str:
     if row:
         return row[0]
     return "current"
+
+
+def _summarize_benchmark_timings(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    if not rows:
+        return {"rows": [], "fastest": [], "slowest": []}
+
+    by_name: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        current = by_name.get(row["benchmark_name"])
+        if current is None:
+            current = {
+                "benchmark_name": row["benchmark_name"],
+                "task": row["task"],
+                "data_load_seconds": 0.0,
+                "evaluation_seconds": 0.0,
+                "total_seconds": 0.0,
+                "trained_count": 0,
+                "reused_count": 0,
+                "failed_count": 0,
+                "resolved_worker_count": 0,
+            }
+            by_name[row["benchmark_name"]] = current
+        current["data_load_seconds"] += float(row["data_load_seconds"])
+        current["evaluation_seconds"] += float(row["evaluation_seconds"])
+        current["total_seconds"] += float(row["total_seconds"])
+        current["trained_count"] += int(row["trained_count"])
+        current["reused_count"] += int(row["reused_count"])
+        current["failed_count"] += int(row["failed_count"])
+        current["resolved_worker_count"] = max(
+            int(current["resolved_worker_count"]),
+            int(row["resolved_worker_count"]),
+        )
+
+    summarized = sorted(by_name.values(), key=lambda item: item["total_seconds"])
+    return {
+        "rows": summarized,
+        "fastest": summarized[:5],
+        "slowest": list(reversed(summarized[-5:])),
+    }
+
+
+def _benchmark_quality_extremes(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    ok_rows = [
+        row for row in rows
+        if row["status"] == "ok" and row.get("quality") is not None
+    ]
+    ordered = sorted(ok_rows, key=lambda row: float(row["quality"]), reverse=True)
+    return {
+        "best": ordered[:5],
+        "worst": list(reversed(ordered[-5:])),
+    }

@@ -230,6 +230,9 @@ class EvolvedModel(nn.Module):
         self._last_layer_dim: int | None = (
             self._dims[self._last_layer_inn] if self._last_layer_inn else None
         )
+        self.output_fallback: nn.Module | None = None
+        if not self._output_routing and self._last_layer_dim is not None:
+            self.output_fallback = nn.Linear(self._last_layer_dim, self.num_classes)
 
     def __call__(self, x: mx.array) -> mx.array:
         # Conv stem (NHWC)
@@ -281,10 +284,27 @@ class EvolvedModel(nn.Module):
                 q = self.q_projs[key](summed)
                 k_ = self.k_projs[key](summed)
                 v = self.v_projs[key](summed)
-                head_dim = max(1, summed.shape[-1] // self._num_heads.get(inn, 1))
-                scale = 1.0 / math.sqrt(head_dim)
-                weights = mx.softmax((q * k_) * scale, axis=-1)
-                activated = self.activations[inn](self.o_projs[key](weights * v))
+                num_heads = self._num_heads.get(inn, 1)
+                head_dim = max(1, summed.shape[-1] // num_heads)
+
+                if summed.ndim == 3:
+                    batch_size, seq_len, dim = q.shape
+                    q = q.reshape(batch_size, seq_len, num_heads, head_dim).transpose(0, 2, 1, 3)
+                    k_ = k_.reshape(batch_size, seq_len, num_heads, head_dim).transpose(0, 2, 1, 3)
+                    v = v.reshape(batch_size, seq_len, num_heads, head_dim).transpose(0, 2, 1, 3)
+
+                    scale = 1.0 / math.sqrt(head_dim)
+                    logits = mx.matmul(q, k_.transpose(0, 1, 3, 2)) * scale
+                    mask = mx.tril(mx.ones((seq_len, seq_len), dtype=logits.dtype))
+                    masked_logits = mx.where(mask[None, None, :, :] > 0, logits, -1e9)
+                    weights = mx.softmax(masked_logits, axis=-1)
+                    attended = mx.matmul(weights, v)
+                    attended = attended.transpose(0, 2, 1, 3).reshape(batch_size, seq_len, dim)
+                    activated = self.activations[inn](self.o_projs[key](attended))
+                else:
+                    scale = 1.0 / math.sqrt(head_dim)
+                    weights = mx.softmax((q * k_) * scale, axis=-1)
+                    activated = self.activations[inn](self.o_projs[key](weights * v))
 
             elif op == "spatial":
                 kernel = 2
@@ -322,15 +342,60 @@ class EvolvedModel(nn.Module):
             for pk, src in self._output_routing
             if src in outputs
         ]
-        if not out_incoming and self._last_layer_inn in outputs:
-            fallback = nn.Linear(self._last_layer_dim, self.num_classes)
-            out_incoming.append(fallback(outputs[self._last_layer_inn]))
+        if not out_incoming and self._last_layer_inn in outputs and self.output_fallback is not None:
+            out_incoming.append(self.output_fallback(outputs[self._last_layer_inn]))
 
         logits = out_incoming[0]
         for t in out_incoming[1:]:
             logits = logits + t
 
         return logits if self.task == "regression" else mx.softmax(logits, axis=-1)
+
+
+class CausalLanguageModel(nn.Module):
+    """Wrap an evolved DAG with token/position embeddings and an LM head."""
+
+    def __init__(
+        self,
+        genome: Genome,
+        vocab_size: int,
+        context_length: int,
+        *,
+        embed_dim: int = 128,
+        layer_norm: bool = True,
+    ) -> None:
+        super().__init__()
+        self.task = "language_modeling"
+        self.vocab_size = vocab_size
+        self.context_length = context_length
+        self.embed_dim = embed_dim
+
+        self.token_embed = nn.Embedding(vocab_size, embed_dim)
+        self.pos_embed = nn.Embedding(context_length, embed_dim)
+        self.inner = EvolvedModel(
+            genome,
+            input_dim=embed_dim,
+            num_classes=embed_dim,
+            task="regression",
+            layer_norm=layer_norm,
+        )
+        self.output_norm = nn.LayerNorm(embed_dim)
+        self.lm_head = nn.Linear(embed_dim, vocab_size)
+
+    def __call__(self, x: mx.array) -> mx.array:
+        x = x.astype(mx.int32)
+        _, seq_len = x.shape
+        if seq_len > self.context_length:
+            raise ValueError(
+                f"Sequence length {seq_len} exceeds context length {self.context_length}"
+            )
+
+        positions = mx.arange(seq_len, dtype=mx.int32)
+        h = self.token_embed(x) + self.pos_embed(positions)
+        h = self.inner(h)
+        h = self.output_norm(h)
+        logits = self.lm_head(h)
+        return mx.softmax(logits, axis=-1)
 
 
 def compile_genome(
@@ -342,6 +407,14 @@ def compile_genome(
     layer_norm: bool = True,
 ) -> EvolvedModel:
     """Factory: compile a Genome into a trainable EvolvedModel."""
+    if task == "language_modeling":
+        return CausalLanguageModel(
+            genome,
+            vocab_size=num_classes,
+            context_length=input_dim,
+            embed_dim=min(max(32, input_dim), 128),
+            layer_norm=layer_norm,
+        )
     return EvolvedModel(
         genome, input_dim, num_classes, task,
         image_shape=image_shape, layer_norm=layer_norm,

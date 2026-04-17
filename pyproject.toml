@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.4"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.4"]
 viz = ["matplotlib>=3.9"]
 data = ["openml>=0.14", "pandas>=2.2"]
 baselines = ["xgboost>=2.0", "lightgbm>=4.0"]
@@ -38,3 +38,11 @@ line-length = 100
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["topograph"]
+
+[tool.coverage.report]
+fail_under = 18
+show_missing = true
+skip_covered = true

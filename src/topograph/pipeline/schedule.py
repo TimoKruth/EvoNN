@@ -139,3 +139,26 @@ class MutationScheduler:
             }
             for name, s in sorted(self._stats.items())
         }
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "stats": {
+                name: {
+                    "applications": stats.applications,
+                    "improvements": stats.improvements,
+                    "ema_success": stats.ema_success,
+                }
+                for name, stats in self._stats.items()
+            }
+        }
+
+    def load_dict(self, data: dict[str, object] | None) -> None:
+        stats = data.get("stats", {}) if data else {}
+        for name, raw in stats.items():
+            if name not in self._stats or not isinstance(raw, dict):
+                continue
+            self._stats[name] = OperatorStats(
+                applications=int(raw.get("applications", 0)),
+                improvements=int(raw.get("improvements", 0)),
+                ema_success=float(raw.get("ema_success", 0.5)),
+            )

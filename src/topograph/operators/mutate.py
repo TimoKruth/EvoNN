@@ -6,6 +6,7 @@ and returns a NEW genome with the mutation applied. Never mutates in place.
 
 from __future__ import annotations
 
+import copy
 import math
 import random
 
@@ -34,6 +35,8 @@ def _copy_genome(genome: Genome) -> Genome:
     g.model_bytes = genome.model_bytes
     g.learning_rate = genome.learning_rate
     g.batch_size = genome.batch_size
+    if hasattr(genome, "_eval_cache"):
+        g._eval_cache = copy.deepcopy(genome._eval_cache)
     return g
 
 

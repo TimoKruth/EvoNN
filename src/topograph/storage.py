@@ -53,6 +53,12 @@ class RunStore:
             )
         """)
         self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS run_states (
+                run_id VARCHAR PRIMARY KEY,
+                state_json VARCHAR
+            )
+        """)
+        self.conn.execute("""
             CREATE TABLE IF NOT EXISTS benchmark_results (
                 run_id VARCHAR,
                 generation INTEGER,
@@ -69,6 +75,24 @@ class RunStore:
                 status VARCHAR,
                 failure_reason VARCHAR,
                 PRIMARY KEY (run_id, generation, benchmark_name)
+            )
+        """)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS benchmark_timings (
+                run_id VARCHAR,
+                generation INTEGER,
+                benchmark_order INTEGER,
+                benchmark_name VARCHAR,
+                task VARCHAR,
+                data_load_seconds DOUBLE,
+                evaluation_seconds DOUBLE,
+                total_seconds DOUBLE,
+                trained_count INTEGER,
+                reused_count INTEGER,
+                failed_count INTEGER,
+                requested_worker_count INTEGER,
+                resolved_worker_count INTEGER,
+                PRIMARY KEY (run_id, generation, benchmark_order)
             )
         """)
 
@@ -169,6 +193,21 @@ class RunStore:
             return None
         return json.loads(row[0])
 
+    def save_run_state(self, run_id: str, state: dict) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO run_states (run_id, state_json) VALUES (?, ?)",
+            [run_id, json.dumps(state)],
+        )
+
+    def load_run_state(self, run_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT state_json FROM run_states WHERE run_id = ?",
+            [run_id],
+        ).fetchone()
+        if not row:
+            return None
+        return json.loads(row[0])
+
     # -- Benchmark results -----------------------------------------------------
 
     def save_benchmark_results(
@@ -228,6 +267,70 @@ class RunStore:
                 best[record["benchmark_name"]] = record
 
         return list(best.values())
+
+    def save_benchmark_timings(
+        self, run_id: str, generation: int, timings: list[dict],
+    ) -> None:
+        for timing in timings:
+            self.conn.execute(
+                """INSERT OR REPLACE INTO benchmark_timings (
+                    run_id, generation, benchmark_order, benchmark_name, task,
+                    data_load_seconds, evaluation_seconds, total_seconds,
+                    trained_count, reused_count, failed_count,
+                    requested_worker_count, resolved_worker_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    run_id,
+                    generation,
+                    timing["benchmark_order"],
+                    timing["benchmark_name"],
+                    timing["task"],
+                    timing["data_load_seconds"],
+                    timing["evaluation_seconds"],
+                    timing["total_seconds"],
+                    timing["trained_count"],
+                    timing["reused_count"],
+                    timing["failed_count"],
+                    timing["requested_worker_count"],
+                    timing["resolved_worker_count"],
+                ],
+            )
+
+    def load_benchmark_timings(
+        self, run_id: str, generation: int | None = None,
+    ) -> list[dict]:
+        query = (
+            """SELECT generation, benchmark_order, benchmark_name, task,
+                      data_load_seconds, evaluation_seconds, total_seconds,
+                      trained_count, reused_count, failed_count,
+                      requested_worker_count, resolved_worker_count
+               FROM benchmark_timings
+               WHERE run_id = ?
+            """
+        )
+        params: list[object] = [run_id]
+        if generation is not None:
+            query += " AND generation = ?"
+            params.append(generation)
+        query += " ORDER BY generation, benchmark_order"
+        rows = self.conn.execute(query, params).fetchall()
+        return [
+            {
+                "generation": row[0],
+                "benchmark_order": row[1],
+                "benchmark_name": row[2],
+                "task": row[3],
+                "data_load_seconds": row[4],
+                "evaluation_seconds": row[5],
+                "total_seconds": row[6],
+                "trained_count": row[7],
+                "reused_count": row[8],
+                "failed_count": row[9],
+                "requested_worker_count": row[10],
+                "resolved_worker_count": row[11],
+            }
+            for row in rows
+        ]
 
     # -- Lifecycle -------------------------------------------------------------
 

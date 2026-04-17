@@ -21,6 +21,7 @@ from topograph.benchmarks.parity import (
     get_benchmark,
     get_canonical_id,
     load_parity_pack,
+    resolve_benchmark_pool_names,
 )
 from topograph.benchmarks.spec import BenchmarkSpec
 from topograph.config import RunConfig, load_config
@@ -233,7 +234,11 @@ def _model_summary(genome: Genome, benchmark_spec: BenchmarkSpec) -> dict[str, A
         "input_dim": benchmark_spec.input_dim,
         "num_classes": benchmark_spec.num_classes,
         "fitness": genome.fitness if genome.fitness is not None else None,
-        "validation_metric": "mse" if benchmark_spec.task == "regression" else "cross_entropy",
+        "validation_metric": (
+            "perplexity"
+            if benchmark_spec.task == "language_modeling"
+            else ("mse" if benchmark_spec.task == "regression" else "cross_entropy")
+        ),
     }
 
 
@@ -244,14 +249,18 @@ def _budget_manifest(
     population_size: int,
 ) -> dict[str, Any]:
     """Budget section of the manifest."""
+    generations = latest_gen + 1
+    benchmark_count = (
+        len(resolve_benchmark_pool_names(config.benchmark_pool))
+        if config.benchmark_pool is not None
+        else 1
+    )
     return {
-        "evaluation_count": int(
-            budget_meta.get("evaluation_count", population_size * (latest_gen + 1))
-        ),
+        "evaluation_count": int(population_size * generations * benchmark_count),
         "epochs_per_candidate": config.training.epochs,
         "effective_training_epochs": budget_meta.get("effective_training_epochs"),
         "wall_clock_seconds": budget_meta.get("wall_clock_seconds"),
-        "generations": latest_gen + 1,
+        "generations": generations,
         "population_size": int(
             budget_meta.get("population_size", config.evolution.population_size)
         ),
@@ -414,11 +423,13 @@ def _architecture_summary_str(genome: Genome) -> str:
 
 
 def _benchmark_metric_name(task: str) -> str:
-    return "mse" if task == "regression" else "cross_entropy"
+    if task == "language_modeling":
+        return "perplexity"
+    return "mse" if task == "regression" else "accuracy"
 
 
 def _benchmark_metric_direction(task: str) -> str:
-    return "min"
+    return "min" if task in {"regression", "language_modeling"} else "max"
 
 
 def _detect_device() -> str:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv as csv_mod
+import os
 from enum import Enum
 from pathlib import Path
 
@@ -11,6 +12,11 @@ import yaml
 from pydantic import BaseModel
 from sklearn.model_selection import train_test_split
 
+from topograph.benchmarks.lm import (
+    generate_synthetic_lm_dataset,
+    load_cached_lm_dataset,
+)
+
 
 class DatasetSource(str, Enum):
     SKLEARN = "sklearn"
@@ -18,6 +24,8 @@ class DatasetSource(str, Enum):
     URL = "url"
     LOCAL = "local"
     IMAGE = "image"
+    LM_SYNTHETIC = "lm_synthetic"
+    LM_CACHE = "lm_cache"
 
 
 class DatasetMeta(BaseModel):
@@ -36,16 +44,40 @@ class DatasetMeta(BaseModel):
     tags: list[str] = []
 
 
-# Default catalog dir: <project_root>/benchmarks/catalog/
-CATALOG_DIR = Path(__file__).resolve().parent.parent.parent.parent / "benchmarks" / "catalog"
+_PACKAGE_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _PACKAGE_DIR.parent.parent.parent
+_SUPERPROJECT_ROOT = _PROJECT_ROOT.parent
+_LOCAL_CATALOG_DIR = _PROJECT_ROOT / "benchmarks" / "catalog"
+_DEFAULT_SHARED_ROOT = _SUPERPROJECT_ROOT / "shared-benchmarks"
+_CATALOG_ENV_VAR = "TOPOGRAPH_CATALOG_DIR"
+_SHARED_ROOT_ENV_VAR = "EVONN_SHARED_BENCHMARKS_DIR"
 CACHE_DIR = Path.home() / ".topograph" / "data"
+
+
+def _shared_catalog_dir() -> Path:
+    shared_root = os.environ.get(_SHARED_ROOT_ENV_VAR)
+    if shared_root:
+        root = Path(shared_root).expanduser()
+    else:
+        root = _DEFAULT_SHARED_ROOT
+    return root if root.name == "catalog" else root / "catalog"
+
+
+def _resolve_catalog_dir() -> Path:
+    explicit = os.environ.get(_CATALOG_ENV_VAR)
+    if explicit:
+        return Path(explicit).expanduser()
+    shared = _shared_catalog_dir()
+    if shared.exists():
+        return shared
+    return _LOCAL_CATALOG_DIR
 
 
 class DatasetRegistry:
     """Registry of datasets loaded from YAML catalog files."""
 
     def __init__(self, catalog_dir: str | None = None) -> None:
-        self._catalog_dir = Path(catalog_dir) if catalog_dir else CATALOG_DIR
+        self._catalog_dir = Path(catalog_dir) if catalog_dir else _resolve_catalog_dir()
         self._catalog: dict[str, DatasetMeta] = {}
         self._load_catalog()
 
@@ -87,11 +119,17 @@ class DatasetRegistry:
         self, name: str, seed: int = 42, validation_split: float = 0.2,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         meta = self.get(name)
+        if meta.source == DatasetSource.LM_CACHE:
+            return load_cached_lm_dataset(meta.path or meta.name)
+
         X, y = self._fetch(meta)
 
         if meta.task == "classification":
             y = y.astype(np.int64)
             stratify = y
+        elif meta.task == "language_modeling":
+            y = y.astype(np.int64)
+            stratify = None
         else:
             y = y.astype(np.float32)
             stratify = None
@@ -100,8 +138,10 @@ class DatasetRegistry:
             X, y, test_size=validation_split, random_state=seed, stratify=stratify,
         )
         return (
-            X_train.astype(np.float32), y_train,
-            X_val.astype(np.float32), y_val,
+            X_train.astype(np.int32 if meta.task == "language_modeling" else np.float32),
+            y_train,
+            X_val.astype(np.int32 if meta.task == "language_modeling" else np.float32),
+            y_val,
         )
 
     def _fetch(self, meta: DatasetMeta) -> tuple[np.ndarray, np.ndarray]:
@@ -115,6 +155,8 @@ class DatasetRegistry:
             return self._fetch_sklearn(meta)
         if meta.source == DatasetSource.IMAGE:
             return self._fetch_image(meta)
+        if meta.source == DatasetSource.LM_SYNTHETIC:
+            return self._fetch_lm_synthetic(meta)
         raise ValueError(f"Unsupported source: {meta.source}")
 
     def _fetch_openml(self, meta: DatasetMeta) -> tuple[np.ndarray, np.ndarray]:
@@ -174,6 +216,14 @@ class DatasetRegistry:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             urllib.request.urlretrieve(meta.url, cache_path)
         return self._load_csv_file(cache_path, meta)
+
+    def _fetch_lm_synthetic(self, meta: DatasetMeta) -> tuple[np.ndarray, np.ndarray]:
+        return generate_synthetic_lm_dataset(
+            seed=42,
+            n_samples=meta.n_samples or 7000,
+            context_length=meta.input_dim or 128,
+            vocab_size=meta.num_classes or 256,
+        )
 
     def _fetch_sklearn(self, meta: DatasetMeta) -> tuple[np.ndarray, np.ndarray]:
         from topograph.benchmarks.spec import BenchmarkSpec

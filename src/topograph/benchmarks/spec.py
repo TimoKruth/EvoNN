@@ -1,4 +1,4 @@
-"""BenchmarkSpec: dataset loading for sklearn, CSV, image, and OpenML sources."""
+"""BenchmarkSpec: dataset loading for sklearn, CSV, image, OpenML, and LM sources."""
 
 from __future__ import annotations
 
@@ -9,11 +9,17 @@ import yaml
 from pydantic import BaseModel
 from sklearn.model_selection import train_test_split
 
+from topograph.benchmarks.lm import (
+    generate_synthetic_lm_dataset,
+    load_cached_lm_dataset,
+    split_language_modeling_dataset,
+)
+
 
 class BenchmarkSpec(BaseModel):
     name: str
-    task: str  # "classification" or "regression"
-    source: str  # "sklearn", "csv", "image", "openml"
+    task: str  # "classification", "regression", or "language_modeling"
+    source: str  # "sklearn", "csv", "image", "openml", "lm_synthetic", "lm_cache"
     dataset: str | None = None
     input_dim: int | None = None
     num_classes: int | None = None
@@ -29,6 +35,9 @@ class BenchmarkSpec(BaseModel):
     cluster_std: float | None = None
     n_targets: int | None = None
     factor: float | None = None
+    max_train_samples: int | None = None
+    max_val_samples: int | None = None
+    max_test_samples: int | None = None
 
     def load_data(
         self, seed: int = 42, validation_split: float = 0.2,
@@ -48,6 +57,23 @@ class BenchmarkSpec(BaseModel):
 
             registry = DatasetRegistry()
             return registry.load_data(self.dataset or self.name, seed=seed, validation_split=validation_split)
+        elif self.source == "lm_synthetic":
+            x, y = generate_synthetic_lm_dataset(
+                seed=seed,
+                n_samples=self.n_samples,
+                context_length=self.input_dim or 128,
+                vocab_size=self.num_classes or 256,
+            )
+            return split_language_modeling_dataset(
+                x, y, seed=seed, validation_split=validation_split,
+            )
+        elif self.source == "lm_cache":
+            return load_cached_lm_dataset(
+                self.dataset or self.name,
+                max_train_samples=self.max_train_samples,
+                max_val_samples=self.max_val_samples,
+                max_test_samples=self.max_test_samples,
+            )
         else:
             raise ValueError(f"Unknown source: {self.source}")
 

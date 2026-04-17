@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from topograph.genome import Genome
+from topograph.genome.codec import dict_to_genome, genome_to_dict
 from topograph.genome.genome import INPUT_INNOVATION, OUTPUT_INNOVATION
 
 
@@ -214,6 +215,23 @@ class NoveltyArchive:
         k = min(self.k, len(distances))
         return float(np.mean(distances[:k]))
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "max_size": self.max_size,
+            "k": self.k,
+            "behaviors": [b.tolist() for b in self._behaviors],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object] | None) -> "NoveltyArchive":
+        archive = cls(
+            max_size=int((data or {}).get("max_size", 5000)),
+            k=int((data or {}).get("k", 15)),
+        )
+        for behavior in (data or {}).get("behaviors", []):
+            archive.add(np.array(behavior, dtype=np.float32))
+        return archive
+
 
 # ===========================================================================
 # MAP-Elites archive
@@ -297,6 +315,30 @@ class MAPElitesArchive:
     def clear(self) -> None:
         self._elites.clear()
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "entries": [
+                {
+                    "genome": genome_to_dict(entry.genome),
+                    "behavior": entry.behavior.tolist(),
+                    "fitness": entry.fitness,
+                    "niche": list(entry.niche),
+                }
+                for entry in self.entries()
+            ]
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object] | None) -> "MAPElitesArchive":
+        archive = cls()
+        for raw in (data or {}).get("entries", []):
+            if not isinstance(raw, dict):
+                continue
+            genome = dict_to_genome(raw["genome"])
+            behavior = np.array(raw["behavior"], dtype=np.float32)
+            archive.add(genome, behavior, float(raw["fitness"]))
+        return archive
+
 
 # ===========================================================================
 # Benchmark elite archive
@@ -335,3 +377,30 @@ class BenchmarkEliteArchive:
     def get_elite_indices(self) -> set[int]:
         """Return the set of genome indices that are elites for at least one benchmark."""
         return {e.genome_idx for e in self.elites.values()}
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "elites": {
+                name: {
+                    "benchmark_name": elite.benchmark_name,
+                    "genome_idx": elite.genome_idx,
+                    "fitness": elite.fitness,
+                    "generation": elite.generation,
+                }
+                for name, elite in self.elites.items()
+            }
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object] | None) -> "BenchmarkEliteArchive":
+        archive = cls()
+        for name, raw in ((data or {}).get("elites", {}) or {}).items():
+            if not isinstance(raw, dict):
+                continue
+            archive.elites[name] = BenchmarkElite(
+                benchmark_name=str(raw.get("benchmark_name", name)),
+                genome_idx=int(raw.get("genome_idx", 0)),
+                fitness=float(raw.get("fitness", float("inf"))),
+                generation=int(raw.get("generation", 0)),
+            )
+        return archive

@@ -74,7 +74,7 @@ class Genome:
         mixed_precision: bool = False,
     ) -> Genome:
         if num_layers is None:
-            num_layers = rng.randint(5, 30)
+            num_layers = rng.randint(4, 12)
 
         activations = list(Activation)
         rng.shuffle(activations)

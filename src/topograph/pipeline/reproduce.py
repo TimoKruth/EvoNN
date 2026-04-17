@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass
 
 from topograph.config import RunConfig
 from topograph.genome.genome import Genome, InnovationCounter
@@ -25,7 +26,7 @@ from topograph.operators.mutate import (
 )
 from topograph.pipeline.evaluate import GenerationState
 from topograph.pipeline.schedule import MutationScheduler
-from topograph.pipeline.select import rank_based_select
+from topograph.pipeline.select import non_dominated_sort, rank_based_select
 
 
 # Mutation dispatch table: operator name -> (function, needs_counter)
@@ -44,17 +45,25 @@ _MUTATION_TABLE: dict[str, tuple] = {
 }
 
 
+@dataclass
+class PendingMutationOutcome:
+    genome_idx: int
+    baseline_fitness: float
+    operators: list[str]
+
+
 def reproduce(
     state: GenerationState,
     config: RunConfig,
     innovation_counter: InnovationCounter,
     scheduler: MutationScheduler,
     rng: random.Random,
-) -> tuple[GenerationState, list[tuple[int, list[str]]]]:
+    protected_indices: set[int] | None = None,
+) -> tuple[GenerationState, list[PendingMutationOutcome]]:
     """Create next generation from selected parents.
 
-    Returns (updated_state, applied_ops) where applied_ops is a list of
-    (genome_index_in_new_pop, [operator_names]) for scheduler feedback.
+    Returns (updated_state, pending_outcomes) where pending_outcomes records
+    parent baselines for the next generation's scheduler feedback.
     """
     rates = scheduler.get_rates(state.generation, config.evolution.num_generations)
 
@@ -62,28 +71,53 @@ def reproduce(
     pop_size = config.evolution.population_size
     crossover_ratio = config.evolution.crossover_ratio
 
-    # Elites pass unchanged (lowest fitness = best)
-    sorted_indices = sorted(range(len(state.fitnesses)), key=lambda i: state.fitnesses[i])
-    elites = [_clone_genome(state.population[i]) for i in sorted_indices[:elite_count]]
+    ranked_indices = _ranked_indices(state, config)
+    protected_indices = protected_indices or set()
+    selection_population = [state.population[i] for i in ranked_indices]
+    selection_fitnesses = list(range(len(selection_population)))
+    elites = _select_survivors(
+        state,
+        ranked_indices=ranked_indices,
+        elite_count=elite_count,
+        protected_indices=protected_indices,
+        pop_size=pop_size,
+    )
+
+    for genome in elites:
+        _clear_metrics(genome, drop_eval_cache=False)
 
     offspring: list[Genome] = []
-    applied_ops: list[tuple[int, list[str]]] = []
+    pending_outcomes: list[PendingMutationOutcome] = []
 
     while len(elites) + len(offspring) < pop_size:
-        if rng.random() < crossover_ratio and len(state.population) >= 2:
-            parents = rank_based_select(state.population, state.fitnesses, 2, rng)
+        used_crossover = False
+        if rng.random() < crossover_ratio and len(selection_population) >= 2:
+            parents = rank_based_select(selection_population, selection_fitnesses, 2, rng)
             child = crossover(parents[0], parents[1], rng)
+            used_crossover = True
+            baseline_fitness = min(
+                _fitness_or_inf(parents[0]),
+                _fitness_or_inf(parents[1]),
+            )
         else:
-            [parent] = rank_based_select(state.population, state.fitnesses, 1, rng)
+            [parent] = rank_based_select(selection_population, selection_fitnesses, 1, rng)
             child = _clone_genome(parent)
+            baseline_fitness = _fitness_or_inf(parent)
 
         # Apply mutations
         child, ops = _apply_mutations(child, rates, innovation_counter, rng, config)
+        _clear_metrics(child, drop_eval_cache=used_crossover or bool(ops))
 
         offspring_idx = len(elites) + len(offspring)
         offspring.append(child)
         if ops:
-            applied_ops.append((offspring_idx, ops))
+            pending_outcomes.append(
+                PendingMutationOutcome(
+                    genome_idx=offspring_idx,
+                    baseline_fitness=baseline_fitness,
+                    operators=ops,
+                )
+            )
 
     new_population = elites + offspring
     state.population = new_population
@@ -91,12 +125,64 @@ def reproduce(
     state.fitnesses = []
     state.model_bytes = []
     state.behaviors = []
-    return state, applied_ops
+    state.raw_losses = {}
+    return state, pending_outcomes
 
 
 def _clone_genome(genome: Genome) -> Genome:
     """Deep-copy a genome using the mutate module's copy helper."""
     return _copy_genome(genome)
+
+
+def _clear_metrics(genome: Genome, drop_eval_cache: bool) -> None:
+    genome.fitness = None
+    genome.param_count = 0
+    genome.model_bytes = 0
+    if hasattr(genome, "_last_eval_reused"):
+        delattr(genome, "_last_eval_reused")
+    if drop_eval_cache and hasattr(genome, "_eval_cache"):
+        delattr(genome, "_eval_cache")
+
+
+def _fitness_or_inf(genome: Genome) -> float:
+    return float(genome.fitness) if genome.fitness is not None else float("inf")
+
+
+def _ranked_indices(state: GenerationState, config: RunConfig) -> list[int]:
+    if config.objectives and state.model_bytes and len(state.model_bytes) == len(state.population):
+        fronts = non_dominated_sort(state.fitnesses, state.model_bytes)
+        ranked: list[int] = []
+        for front in fronts:
+            ranked.extend(
+                sorted(front, key=lambda idx: (state.fitnesses[idx], state.model_bytes[idx], idx))
+            )
+        return ranked
+    return sorted(range(len(state.fitnesses)), key=lambda idx: (state.fitnesses[idx], idx))
+
+
+def _select_survivors(
+    state: GenerationState,
+    *,
+    ranked_indices: list[int],
+    elite_count: int,
+    protected_indices: set[int],
+    pop_size: int,
+) -> list[Genome]:
+    survivors: list[Genome] = []
+    added: set[int] = set()
+
+    for idx in ranked_indices[:elite_count]:
+        survivors.append(_clone_genome(state.population[idx]))
+        added.add(idx)
+
+    for idx in ranked_indices:
+        if len(survivors) >= pop_size:
+            break
+        if idx in protected_indices and idx not in added:
+            survivors.append(_clone_genome(state.population[idx]))
+            added.add(idx)
+
+    return survivors
 
 
 def _apply_mutations(

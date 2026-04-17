@@ -1,0 +1,16 @@
+name: wikitext2_lm_smoke
+task: language_modeling
+source: lm_cache
+dataset: wikitext2_lm
+input_dim: 256
+num_classes: 4096
+max_train_samples: 512
+max_val_samples: 128
+description: WikiText-2 LM smoke benchmark using shared EvoNN cache with small sample caps.
+domain: text
+tags:
+  - language_modeling
+  - text
+  - cache
+  - sequence
+  - smoke

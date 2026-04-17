@@ -82,6 +82,47 @@ class TerminalMonitor:
             f"fitness {fitness:.6f}[/dim]"
         )
 
+    def on_benchmark_start(
+        self,
+        *,
+        generation: int,
+        benchmark_name: str,
+        benchmark_order: int,
+        benchmark_total: int,
+        task: str,
+    ) -> None:
+        self.console.print(
+            f"[bold blue]BENCH[/bold blue] gen {generation + 1} "
+            f"[{benchmark_order + 1}/{benchmark_total}] {benchmark_name} ({task})"
+        )
+
+    def on_benchmark_complete(
+        self,
+        *,
+        generation: int,
+        benchmark_name: str,
+        benchmark_order: int,
+        benchmark_total: int,
+        total_seconds: float,
+        data_load_seconds: float,
+        evaluation_seconds: float,
+        reused_count: int,
+        trained_count: int,
+        failed_count: int,
+        resolved_worker_count: int,
+    ) -> None:
+        self.console.print(
+            f"[dim]bench done[/dim] gen {generation + 1} "
+            f"[{benchmark_order + 1}/{benchmark_total}] {benchmark_name} "
+            f"| total {_format_time(total_seconds)} "
+            f"| load {data_load_seconds:.2f}s "
+            f"| eval {evaluation_seconds:.2f}s "
+            f"| reuse {reused_count} "
+            f"| train {trained_count} "
+            f"| fail {failed_count} "
+            f"| workers {resolved_worker_count}"
+        )
+
     def on_complete(
         self, best_fitness: float, total_generations: int, elapsed: float | None = None,
     ) -> None:

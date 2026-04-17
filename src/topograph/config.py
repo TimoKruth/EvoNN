@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # --- Mutation rates ---
@@ -63,7 +63,32 @@ class TrainingConfig(BaseModel):
     partial_epoch_ratio: float = 0.6
     multi_fidelity: bool = True
     multi_fidelity_schedule: list[float] | None = None
-    parallel_workers: int = 0  # 0 = auto, 1 = sequential
+    parallel_workers: int = 0  # 0 = conservative auto, 1 = sequential
+    parallel_cpu_fraction_limit: float = 0.5
+    parallel_memory_fraction_limit: float = 0.5
+    parallel_reserved_system_memory_bytes: int = 8 * 1024**3
+    parallel_worker_thread_limit: int = 1
+
+    @field_validator("parallel_cpu_fraction_limit", "parallel_memory_fraction_limit")
+    @classmethod
+    def _validate_parallel_fraction(cls, v: float) -> float:
+        if v <= 0.0 or v > 1.0:
+            raise ValueError("parallel fraction limits must be > 0 and <= 1")
+        return float(v)
+
+    @field_validator("parallel_reserved_system_memory_bytes")
+    @classmethod
+    def _validate_reserved_memory(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("parallel_reserved_system_memory_bytes must be >= 0")
+        return int(v)
+
+    @field_validator("parallel_worker_thread_limit")
+    @classmethod
+    def _validate_worker_thread_limit(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("parallel_worker_thread_limit must be >= 1")
+        return int(v)
 
 
 # --- Early stopping ---
@@ -75,23 +100,12 @@ class EarlyStoppingConfig(BaseModel):
     enabled: bool = True
 
 
-# --- Speciation ---
-
-
-class SpeciationConfig(BaseModel):
-    enabled: bool = False
-    threshold: float = 3.0
-    c1: float = 1.0
-    c2: float = 1.0
-    c3: float = 0.4
-    stagnation_limit: int = 15
-
-
 # --- Benchmark pool ---
 
 
 class BenchmarkPoolConfig(BaseModel):
-    benchmarks: list[str]
+    benchmarks: list[str] = Field(default_factory=list)
+    suite: str | None = None
     sample_k: int = 3
     aggregation: Literal["percentile"] = "percentile"
     rotation_interval: int | None = None
@@ -103,6 +117,12 @@ class BenchmarkPoolConfig(BaseModel):
         if v is not None and v < 1:
             raise ValueError("rotation_interval must be >= 1 or None")
         return v
+
+    @model_validator(mode="after")
+    def _validate_sources(self) -> "BenchmarkPoolConfig":
+        if not self.benchmarks and not self.suite:
+            raise ValueError("benchmark_pool requires benchmarks and/or suite")
+        return self
 
 
 # --- Device target ---
@@ -139,7 +159,6 @@ class RunConfig(BaseModel):
     evolution: EvolutionConfig = EvolutionConfig()
     training: TrainingConfig = TrainingConfig()
     early_stopping: EarlyStoppingConfig | None = None
-    speciation: SpeciationConfig = SpeciationConfig()
     quantization_schedule: list[QuantizationPhase] | None = None
     benchmark_pool: BenchmarkPoolConfig | None = None
     target_device: DeviceTarget | None = None
@@ -151,7 +170,6 @@ class RunConfig(BaseModel):
     novelty_archive_size: int = 5000
     map_elites: bool = False
     benchmark_elite_archive: bool = True
-    regression_parent_bias: float = 0.3
 
 
 # --- Loader ---

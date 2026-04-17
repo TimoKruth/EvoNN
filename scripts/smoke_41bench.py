@@ -19,7 +19,7 @@ from topograph.benchmarks.preprocess import Preprocessor
 from topograph.config import RunConfig, EvolutionConfig, TrainingConfig, EarlyStoppingConfig
 from topograph.genome import Genome, InnovationCounter
 from topograph.nn.compiler import compile_genome, estimate_model_bytes
-from topograph.nn.train import train_model
+from topograph.nn.train import train_and_evaluate
 from topograph.operators.mutate import mutate_width, mutate_activation, mutate_add_layer
 from topograph.operators.crossover import crossover
 import random
@@ -56,7 +56,7 @@ SEED = 42
 
 
 def mini_evolve(benchmark_name, task, seed=SEED):
-    """Run minimal evolution on one benchmark. Returns (best_loss, best_genome, elapsed)."""
+    """Run minimal evolution on one benchmark."""
     spec = get_benchmark(benchmark_name)
     X_train, y_train, X_val, y_val = spec.load_data(seed=seed)
 
@@ -78,32 +78,35 @@ def mini_evolve(benchmark_name, task, seed=SEED):
 
     best_loss = float("inf")
     best_genome = None
+    best_result = None
 
     for gen in range(NUM_GENS):
         # Evaluate
-        fitnesses = []
+        eval_results = {}
         for g in population:
             try:
                 model = compile_genome(g, input_dim, num_classes, task)
                 lr = 0.001 if task == "regression" else 0.01
-                loss = train_model(
+                result = train_and_evaluate(
                     model, X_train, y_train, X_val, y_val,
                     epochs=EPOCHS, lr=lr, batch_size=BATCH_SIZE, task=task,
                 )
+                loss = result.native_fitness
                 if not np.isfinite(loss):
                     loss = 999.0
                 g.fitness = loss
                 g.model_bytes = estimate_model_bytes(g)
-                fitnesses.append(loss)
+                eval_results[id(g)] = result
             except Exception:
                 g.fitness = 999.0
-                fitnesses.append(999.0)
+                eval_results[id(g)] = None
 
         # Track best
         for g in population:
             if g.fitness < best_loss:
                 best_loss = g.fitness
                 best_genome = g
+                best_result = eval_results.get(id(g))
 
         # Last gen: skip reproduction
         if gen == NUM_GENS - 1:
@@ -134,18 +137,28 @@ def mini_evolve(benchmark_name, task, seed=SEED):
             offspring.append(child)
         population = elites + offspring
 
-    return best_loss, best_genome
+    if best_result is None:
+        return {
+            "metric_name": "accuracy" if task == "classification" else "mse",
+            "metric_direction": "max" if task == "classification" else "min",
+            "metric_value": None,
+            "quality": None,
+            "native_fitness": None,
+            "train_seconds": None,
+            "failure_reason": "no_valid_result",
+            "genome": best_genome,
+        }
 
-
-def loss_to_metric(loss, task, metric_direction):
-    """Convert training loss to the metric expected by the pack."""
-    if task == "classification" and metric_direction == "max":
-        # loss is cross-entropy; approximate accuracy = 1 - min(loss, 1)
-        # More precisely: for well-trained models, accuracy ≈ exp(-loss)
-        return max(0.0, min(1.0, 1.0 - loss)) if loss < 5.0 else 0.0
-    elif task == "regression" and metric_direction == "min":
-        return loss  # MSE directly
-    return loss
+    return {
+        "metric_name": best_result.metric_name,
+        "metric_direction": best_result.metric_direction,
+        "metric_value": float(best_result.metric_value),
+        "quality": float(best_result.quality),
+        "native_fitness": float(best_result.native_fitness),
+        "train_seconds": float(best_result.train_seconds),
+        "failure_reason": best_result.failure_reason,
+        "genome": best_genome,
+    }
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -174,19 +187,31 @@ def main():
         t0 = time.time()
 
         try:
-            loss, genome = mini_evolve(name, task)
+            outcome = mini_evolve(name, task)
             elapsed = time.time() - t0
-            metric_value = loss_to_metric(loss, task, direction)
             status = "ok"
+            genome = outcome["genome"]
             layers = len(genome.enabled_layers) if genome else 0
             conns = len(genome.enabled_connections) if genome else 0
             params = genome.model_bytes if genome else 0
-            print(f"{metric}={metric_value:.4f}  loss={loss:.4f}  {elapsed:.1f}s  ({layers}L/{conns}C)")
+            print(
+                f"{outcome['metric_name']}={outcome['metric_value']:.4f}  "
+                f"quality={outcome['quality']:.4f}  "
+                f"native={outcome['native_fitness']:.4f}  "
+                f"{elapsed:.1f}s  ({layers}L/{conns}C)"
+            )
         except Exception as e:
             elapsed = time.time() - t0
-            metric_value = None
             status = "failed"
             layers = conns = params = 0
+            outcome = {
+                "metric_name": metric,
+                "metric_direction": direction,
+                "metric_value": None,
+                "quality": None,
+                "native_fitness": None,
+                "train_seconds": None,
+            }
             print(f"FAILED ({elapsed:.1f}s): {e}")
             traceback.print_exc()
 
@@ -194,10 +219,11 @@ def main():
             "benchmark_id": canonical,
             "native_id": name,
             "task": task,
-            "metric_name": metric,
-            "metric_direction": direction,
-            "metric_value": metric_value,
-            "loss": loss if status == "ok" else None,
+            "metric_name": outcome["metric_name"],
+            "metric_direction": outcome["metric_direction"],
+            "metric_value": outcome["metric_value"],
+            "quality": outcome["quality"],
+            "native_fitness": outcome["native_fitness"],
             "status": status,
             "elapsed_seconds": round(elapsed, 2),
             "topology": f"{layers}L/{conns}C",

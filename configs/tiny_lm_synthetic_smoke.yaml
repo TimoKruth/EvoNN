@@ -1,0 +1,22 @@
+seed: 42
+benchmark: tiny_lm_synthetic
+evolution:
+  population_size: 3
+  num_generations: 2
+  elite_count: 1
+  crossover_ratio: 0.5
+training:
+  epochs: 1
+  learning_rate: 0.003
+  batch_size: 16
+  validation_split: 0.2
+  lr_schedule: fixed
+  weight_decay: 0.0
+  grad_clip_norm: 1.0
+  layer_norm: true
+  weight_inheritance: false
+  multi_fidelity: false
+complexity_penalty: 0.0
+novelty_weight: 0.0
+map_elites: false
+benchmark_elite_archive: false
