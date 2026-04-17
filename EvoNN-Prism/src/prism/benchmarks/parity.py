@@ -65,15 +65,29 @@ CANONICAL_BENCHMARK_IDS: dict[str, str] = {
 _REVERSE_IDS: dict[str, str] = {v: k for k, v in CANONICAL_BENCHMARK_IDS.items()}
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _PACKAGE_DIR.parent.parent.parent
+_SUPERPROJECT_ROOT = _PROJECT_ROOT.parent
 _PACK_ENV_VAR = "PRISM_PARITY_PACK_DIRS"
+_SHARED_ROOT_ENV_VAR = "EVONN_SHARED_BENCHMARKS_DIR"
 _DEFAULT_PACK_SEARCH_DIRS = [
     _PROJECT_ROOT / "parity_packs",
     _PROJECT_ROOT / "parity_packs" / "generated",
 ]
 
 
+def _shared_pack_dirs() -> list[Path]:
+    shared_root = os.environ.get(_SHARED_ROOT_ENV_VAR)
+    if shared_root:
+        root = Path(shared_root).expanduser()
+    else:
+        root = _SUPERPROJECT_ROOT / "shared-benchmarks"
+    return [
+        root / "suites" / "parity",
+        root / "suites",
+    ]
+
+
 def _pack_search_dirs() -> list[Path]:
-    search_dirs = list(_DEFAULT_PACK_SEARCH_DIRS)
+    search_dirs = list(_DEFAULT_PACK_SEARCH_DIRS) + _shared_pack_dirs()
     env_value = os.environ.get(_PACK_ENV_VAR, "")
     if env_value:
         for raw_path in env_value.split(os.pathsep):

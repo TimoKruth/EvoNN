@@ -1,0 +1,38 @@
+name: Prism CI
+
+on:
+  push:
+    paths:
+      - "EvoNN-Prism/**"
+      - "shared-benchmarks/**"
+      - "MONOREPO.md"
+      - "pyproject.toml"
+      - "uv.lock"
+  pull_request:
+    paths:
+      - "EvoNN-Prism/**"
+      - "shared-benchmarks/**"
+      - "MONOREPO.md"
+      - "pyproject.toml"
+      - "uv.lock"
+
+jobs:
+  prism:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install Prism dev dependencies
+        run: uv sync --package prism --extra dev
+
+      - name: Ruff
+        run: uv run --package prism --extra dev ruff check EvoNN-Prism
+
+      - name: Pytest
+        run: uv run --package prism --extra dev pytest EvoNN-Prism/tests --cov=prism --cov-report=term-missing

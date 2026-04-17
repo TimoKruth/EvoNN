@@ -9,9 +9,21 @@ import numpy as np
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _PACKAGE_DIR.parent.parent.parent
+_SUPERPROJECT_ROOT = _PROJECT_ROOT.parent
+_DEFAULT_SHARED_ROOT = _SUPERPROJECT_ROOT / "shared-benchmarks"
 _DEFAULT_REPO_CACHE_DIR = _PROJECT_ROOT / "benchmarks" / "lm_cache"
 _DEFAULT_LOCAL_CACHE_DIR = Path.home() / ".prism" / "datasets"
 _LM_CACHE_ENV_VAR = "PRISM_LM_CACHE_DIR"
+_SHARED_ROOT_ENV_VAR = "EVONN_SHARED_BENCHMARKS_DIR"
+
+
+def _shared_lm_cache_dir() -> Path:
+    shared_root = os.environ.get(_SHARED_ROOT_ENV_VAR)
+    if shared_root:
+        root = Path(shared_root).expanduser()
+    else:
+        root = _DEFAULT_SHARED_ROOT
+    return root / "lm_cache"
 
 
 def generate_synthetic_lm_dataset(
@@ -126,7 +138,7 @@ def resolve_lm_cache_path(dataset: str) -> Path:
     if env_root:
         root = Path(env_root).expanduser()
         search_roots.extend([root, root / "datasets"])
-    search_roots.extend([_DEFAULT_REPO_CACHE_DIR, _DEFAULT_LOCAL_CACHE_DIR])
+    search_roots.extend([_shared_lm_cache_dir(), _DEFAULT_REPO_CACHE_DIR, _DEFAULT_LOCAL_CACHE_DIR])
 
     for root in search_roots:
         path = root / f"{dataset}.npz"
@@ -136,5 +148,5 @@ def resolve_lm_cache_path(dataset: str) -> Path:
     roots_text = ", ".join(str(root) for root in search_roots)
     raise FileNotFoundError(
         f"LM cache not found for {dataset}. Checked: {roots_text}. "
-        f"Set {_LM_CACHE_ENV_VAR} or place {dataset}.npz in {_DEFAULT_REPO_CACHE_DIR}."
+        f"Set {_LM_CACHE_ENV_VAR} or place {dataset}.npz in {_shared_lm_cache_dir()}."
     )

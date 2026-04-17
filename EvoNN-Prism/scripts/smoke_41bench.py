@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test: run Prism on all 41 shared benchmarks with minimal budget."""
+"""Smoke test: run Prism on shared benchmark suite with minimal budget."""
 
 import json
 import sys
@@ -15,12 +15,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import random
 from prism.genome import create_seed_genome, apply_random_mutation, crossover
 from prism.config import RunConfig
+from prism.benchmarks.parity import get_canonical_id
 from prism.families import compile_genome, compatible_families
 from prism.benchmarks.datasets import get_benchmark
 from prism.benchmarks.preprocess import Preprocessor
 from prism.runtime.training import train_and_evaluate
 
-PACK_PATH = Path(__file__).parent.parent.parent / "EvoNN-Symbiosis" / "parity_packs" / "generated" / "all_shared.yaml"
+PACK_PATH = Path(__file__).parent.parent.parent / "shared-benchmarks" / "suites" / "parity" / "shared_33plus5.yaml"
 
 POP_SIZE = 4
 NUM_GENS = 2
@@ -33,14 +34,14 @@ def load_pack(path):
     with open(path) as f:
         pack = yaml.safe_load(f)
     benchmarks = []
-    for b in pack["benchmarks"]:
-        native = b["native_ids"].get("evonn2", b["benchmark_id"])
+    for native in pack["benchmarks"]:
+        spec = get_benchmark(native)
         benchmarks.append({
-            "canonical_id": b["benchmark_id"],
+            "canonical_id": get_canonical_id(native),
             "native_id": native,
-            "task": b["task_kind"],
-            "metric_name": b["metric_name"],
-            "metric_direction": b["metric_direction"],
+            "task": spec.task,
+            "metric_name": "perplexity" if spec.task == "language_modeling" else ("mse" if spec.task == "regression" else "accuracy"),
+            "metric_direction": "min" if spec.task in {"language_modeling", "regression"} else "max",
         })
     return benchmarks
 

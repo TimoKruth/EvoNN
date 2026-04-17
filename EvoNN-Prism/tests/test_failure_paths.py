@@ -9,6 +9,8 @@ import numpy as np
 import pytest
 
 from prism.benchmarks.datasets import get_benchmark, load_openml
+from prism.benchmarks.lm import resolve_lm_cache_path
+from prism.benchmarks.parity import resolve_pack_path
 from prism.benchmarks.spec import BenchmarkSpec
 from prism.config import RunConfig
 from prism.genome import ModelGenome
@@ -197,6 +199,32 @@ def test_load_openml_requires_data_extra(monkeypatch):
     spec = BenchmarkSpec(id="adult", task="classification", source="openml", source_id=1590)
     with pytest.raises(ImportError, match="uv sync --extra data"):
         load_openml(spec)
+
+
+def test_resolve_lm_cache_path_uses_shared_root(tmp_path, monkeypatch):
+    shared_root = tmp_path / "shared-benchmarks"
+    cache_dir = shared_root / "lm_cache"
+    cache_dir.mkdir(parents=True)
+    fixture = cache_dir / "demo_lm.npz"
+    fixture.write_bytes(b"fixture")
+
+    monkeypatch.delenv("PRISM_LM_CACHE_DIR", raising=False)
+    monkeypatch.setenv("EVONN_SHARED_BENCHMARKS_DIR", str(shared_root))
+
+    assert resolve_lm_cache_path("demo_lm") == fixture
+
+
+def test_resolve_pack_path_uses_shared_root(tmp_path, monkeypatch):
+    shared_root = tmp_path / "shared-benchmarks"
+    suites_dir = shared_root / "suites" / "parity"
+    suites_dir.mkdir(parents=True)
+    fixture = suites_dir / "demo_pack.yaml"
+    fixture.write_text("name: demo\nbenchmarks: []\n", encoding="utf-8")
+
+    monkeypatch.delenv("PRISM_PARITY_PACK_DIRS", raising=False)
+    monkeypatch.setenv("EVONN_SHARED_BENCHMARKS_DIR", str(shared_root))
+
+    assert resolve_pack_path("demo_pack") == fixture
 
 
 class _FakeLoss:

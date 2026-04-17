@@ -23,7 +23,7 @@ uv sync --package prism --extra dev
 Run Prism tests from root:
 
 ```bash
-uv run --package prism pytest --cov=prism --cov-report=term-missing
+uv run --package prism --extra dev pytest EvoNN-Prism/tests --cov=prism --cov-report=term-missing
 ```
 
 Run Prism CLI from root:
