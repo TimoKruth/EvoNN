@@ -42,6 +42,9 @@ class BenchmarkSpec(BaseModel):
     max_train_samples: int | None = None
     max_val_samples: int | None = None
     max_test_samples: int | None = None
+    image_height: int | None = None
+    image_width: int | None = None
+    image_channels: int | None = None
 
     @property
     def metric_name(self) -> str:
@@ -64,6 +67,23 @@ class BenchmarkSpec(BaseModel):
         if self.task == "language_modeling":
             return self.num_classes or 256
         return self.num_classes or 2
+
+    @property
+    def resolved_image_shape(self) -> tuple[int, int, int]:
+        if self.image_height and self.image_width:
+            return (
+                self.image_height,
+                self.image_width,
+                self.image_channels or 1,
+            )
+        fallback = {
+            "digits": (8, 8, 1),
+            "mnist": (28, 28, 1),
+            "fashion_mnist": (28, 28, 1),
+        }.get(self.name)
+        if fallback is None:
+            raise ValueError(f"Image shape metadata missing for benchmark: {self.name}")
+        return fallback
 
     def load_data(
         self,
