@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from random import Random
 
 from prism.genome import ModelGenome, apply_random_mutation, crossover
@@ -32,8 +33,13 @@ def reproduce(
 
     # Build parent pool from archives
     parent_pool, quality_map = _build_parent_pool(state, archives)
-    quality_map = _apply_undercovered_parent_bias(
-        state, quality_map, evolution.undercovered_parent_bias,
+    quality_map = _apply_selection_pressure(
+        state,
+        quality_map,
+        undercovered_bias=evolution.undercovered_parent_bias,
+        family_diversity_bias=evolution.family_diversity_bias,
+        family_stale_penalty=evolution.family_stale_penalty,
+        novelty_bias=evolution.novelty_parent_bias,
     )
 
     if not parent_pool:
@@ -45,20 +51,29 @@ def reproduce(
     lineage: list[dict] = []
     seen_offspring_ids: set[str] = set()
     parent_pool_ids = {genome.genome_id for genome in parent_pool}
+    family_floor_targets = _family_floor_targets(parent_pool, quality_map, evolution.family_offspring_floor)
 
-    for _ in range(evolution.offspring_per_generation):
+    for slot in range(evolution.offspring_per_generation):
         child = None
         record = None
         for _attempt in range(MAX_OFFSPRING_ATTEMPTS):
-            candidate, candidate_record = _make_offspring(parent_pool, quality_map, evolution, rng)
+            family_target = family_floor_targets[slot] if slot < len(family_floor_targets) else None
+            candidate, candidate_record = _make_offspring(
+                parent_pool,
+                quality_map,
+                evolution,
+                rng,
+                family_target=family_target,
+            )
             child = candidate
             record = candidate_record
-            if _is_novel_offspring(
+            is_novel = _is_novel_offspring(
                 child,
                 record.get("parent_ids", []),
                 seen_offspring_ids,
                 parent_pool_ids,
-            ):
+            )
+            if is_novel and (family_target is None or child.family == family_target):
                 break
 
         assert child is not None
@@ -75,7 +90,17 @@ def _make_offspring(
     quality_map: dict[str, float],
     evolution,
     rng: Random,
+    family_target: str | None = None,
 ) -> tuple[ModelGenome, dict]:
+    if family_target is not None:
+        parent = _best_in_family(parent_pool, quality_map, family_target)
+        child, op_name = apply_random_mutation(parent, evolution, rng)
+        return child, {
+            "genome_id": child.genome_id,
+            "parent_ids": [parent.genome_id],
+            "operator": f"mutation:{op_name}",
+        }
+
     if rng.random() < evolution.crossover_rate and len(parent_pool) >= 2:
         p1 = tournament_select(parent_pool, quality_map, evolution.tournament_size, rng)
         p2 = tournament_select(parent_pool, quality_map, evolution.tournament_size, rng)
@@ -191,33 +216,43 @@ def _quality_map_from_results(state) -> dict[str, float]:
     return quality_map
 
 
-def _apply_undercovered_parent_bias(
+def _apply_selection_pressure(
     state,
     quality_map: dict[str, float],
-    bias: float,
+    *,
+    undercovered_bias: float,
+    family_diversity_bias: float,
+    family_stale_penalty: float,
+    novelty_bias: float,
 ) -> dict[str, float]:
-    """Boost genomes that succeed on sparsely-covered benchmarks."""
-    if bias <= 0 or not state.results:
+    """Adjust parent scores toward undercovered, rare-family, and novel genomes."""
+    if not state.results:
         return quality_map
 
+    boosted = dict(quality_map)
+    if not boosted:
+        return boosted
+
+    genomes_by_id = {genome.genome_id: genome for genome in state.population}
     success_counts: dict[str, int] = {}
     for benchmark_results in state.results.values():
         for benchmark_id, result in benchmark_results.items():
             if result.failure_reason is None:
                 success_counts[benchmark_id] = success_counts.get(benchmark_id, 0) + 1
 
-    if not success_counts:
-        return quality_map
-
     population_size = max(1, len(state.population))
     scarcity = {
         benchmark_id: 1.0 - min(1.0, count / population_size)
         for benchmark_id, count in success_counts.items()
     }
+    family_counts = Counter(genome.family for genome in state.population)
+    layer_patterns = Counter(tuple(genome.hidden_layers) for genome in state.population)
 
-    boosted = dict(quality_map)
     for genome_id, benchmark_results in state.results.items():
         if genome_id not in boosted:
+            continue
+        genome = genomes_by_id.get(genome_id)
+        if genome is None:
             continue
         benchmark_scarcity = [
             scarcity[benchmark_id]
@@ -225,6 +260,50 @@ def _apply_undercovered_parent_bias(
             if result.failure_reason is None and benchmark_id in scarcity
         ]
         if benchmark_scarcity:
-            boosted[genome_id] += bias * (sum(benchmark_scarcity) / len(benchmark_scarcity))
+            boosted[genome_id] += undercovered_bias * (
+                sum(benchmark_scarcity) / len(benchmark_scarcity)
+            )
+
+        family_ratio = family_counts[genome.family] / population_size
+        boosted[genome_id] += family_diversity_bias * (1.0 - family_ratio)
+        if family_counts[genome.family] > 1:
+            boosted[genome_id] -= family_stale_penalty * (family_counts[genome.family] - 1) / population_size
+
+        pattern_ratio = layer_patterns[tuple(genome.hidden_layers)] / population_size
+        boosted[genome_id] += novelty_bias * (1.0 - pattern_ratio)
 
     return boosted
+
+
+def _best_in_family(
+    pool: list[ModelGenome],
+    quality_map: dict[str, float],
+    family: str,
+) -> ModelGenome:
+    members = [genome for genome in pool if genome.family == family]
+    if not members:
+        raise ValueError(f"Family {family!r} not present in parent pool")
+    return max(members, key=lambda genome: quality_map.get(genome.genome_id, float("-inf")))
+
+
+def _family_floor_targets(
+    pool: list[ModelGenome],
+    quality_map: dict[str, float],
+    per_family_floor: int,
+) -> list[str]:
+    if per_family_floor <= 0:
+        return []
+
+    by_family: dict[str, list[ModelGenome]] = {}
+    for genome in pool:
+        by_family.setdefault(genome.family, []).append(genome)
+
+    families = sorted(
+        by_family,
+        key=lambda family: max(
+            quality_map.get(genome.genome_id, float("-inf"))
+            for genome in by_family[family]
+        ),
+        reverse=True,
+    )
+    return [family for family in families for _ in range(per_family_floor)]

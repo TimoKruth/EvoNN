@@ -36,6 +36,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     best_per_benchmark = store.load_best_per_benchmark(run_id)
     latest_gen = store.latest_generation(run_id)
     lineage = store.load_lineage(run_id)
+    archives = store.load_archives(run_id)
     store.close()
 
     # Build sections
@@ -144,6 +145,67 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
         sections.append("No lineage data available.")
         sections.append("")
 
+    sections.append("## Operator Success")
+    sections.append("")
+    operator_success = _compute_operator_success(evaluations, genomes, lineage)
+    if operator_success:
+        sections.append("| Operator | Family | Benchmark | Avg Quality | Evaluations |")
+        sections.append("|----------|--------|-----------|-------------|-------------|")
+        for row in operator_success:
+            sections.append(
+                f"| {row['operator']} | {row['family']} | {row['benchmark']} | "
+                f"{row['avg_quality']:.6f} | {row['count']} |"
+            )
+        sections.append("")
+    else:
+        sections.append("No operator/evaluation overlap available.")
+        sections.append("")
+
+    sections.append("## Weight Inheritance")
+    sections.append("")
+    inheritance_summary = _compute_inheritance_summary(evaluations)
+    if inheritance_summary:
+        sections.append("| Metric | Value |")
+        sections.append("|--------|-------|")
+        sections.append(f"| Inheritance Hits | {inheritance_summary['hits']} |")
+        sections.append(f"| Inheritance Rate | {inheritance_summary['rate']:.1f}% |")
+        sections.append(f"| Avg Quality (Hit) | {inheritance_summary['avg_quality_hit']:.6f} |")
+        sections.append(f"| Avg Quality (Miss) | {inheritance_summary['avg_quality_miss']:.6f} |")
+        sections.append("")
+    else:
+        sections.append("No inheritance metadata available.")
+        sections.append("")
+
+    sections.append("## Family Survival")
+    sections.append("")
+    family_survival = _compute_family_survival(evaluations, genomes)
+    if family_survival:
+        sections.append("| Generation | Families Active | Breakdown |")
+        sections.append("|------------|-----------------|-----------|")
+        for row in family_survival:
+            sections.append(
+                f"| {row['generation']} | {row['active_families']} | {row['breakdown']} |"
+            )
+        sections.append("")
+    else:
+        sections.append("No family survival data available.")
+        sections.append("")
+
+    sections.append("## Archive Turnover")
+    sections.append("")
+    archive_turnover = _compute_archive_turnover(archives)
+    if archive_turnover:
+        sections.append("| Generation | Archive Members | New Members | Retained |")
+        sections.append("|------------|-----------------|-------------|----------|")
+        for row in archive_turnover:
+            sections.append(
+                f"| {row['generation']} | {row['members']} | {row['new_members']} | {row['retained']} |"
+            )
+        sections.append("")
+    else:
+        sections.append("No archive history available.")
+        sections.append("")
+
     # Failure patterns
     sections.append("## Failure Patterns")
     sections.append("")
@@ -156,6 +218,21 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
         sections.append("")
     else:
         sections.append("No failed evaluations recorded.")
+        sections.append("")
+
+    sections.append("## Failure Heatmap")
+    sections.append("")
+    failure_heatmap = _compute_failure_heatmap(evaluations)
+    if failure_heatmap:
+        failure_columns = sorted({failure for row in failure_heatmap for failure in row["failures"]})
+        sections.append("| Benchmark | " + " | ".join(failure_columns) + " |")
+        sections.append("|" + "---|" * (len(failure_columns) + 1))
+        for row in failure_heatmap:
+            values = [str(row["failures"].get(column, 0)) for column in failure_columns]
+            sections.append(f"| {row['benchmark']} | " + " | ".join(values) + " |")
+        sections.append("")
+    else:
+        sections.append("No benchmark failure hotspots recorded.")
         sections.append("")
 
     # Per-benchmark results
@@ -291,3 +368,118 @@ def _compute_failure_patterns(evaluations: list[dict[str, Any]]) -> dict[str, in
         if reason:
             counts[str(reason)] += 1
     return dict(counts.most_common())
+
+
+def _compute_operator_success(
+    evaluations: list[dict[str, Any]],
+    genomes: list[ModelGenome],
+    lineage: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    family_by_genome = {genome.genome_id: genome.family for genome in genomes}
+    operator_by_genome = {
+        row["genome_id"]: str(row.get("mutation_summary") or row.get("operator_kind") or "unknown")
+        for row in lineage
+    }
+    grouped: dict[tuple[str, str, str], list[float]] = {}
+    for row in evaluations:
+        if row.get("failure_reason") is not None:
+            continue
+        genome_id = row.get("genome_id", "")
+        operator = operator_by_genome.get(genome_id)
+        family = family_by_genome.get(genome_id)
+        benchmark = row.get("benchmark_id")
+        quality = row.get("quality")
+        if operator is None or family is None or benchmark is None or quality is None:
+            continue
+        grouped.setdefault((operator, family, str(benchmark)), []).append(float(quality))
+
+    rows = []
+    for (operator, family, benchmark), qualities in grouped.items():
+        rows.append({
+            "operator": operator,
+            "family": family,
+            "benchmark": benchmark,
+            "avg_quality": sum(qualities) / len(qualities),
+            "count": len(qualities),
+        })
+    rows.sort(key=lambda row: (-row["avg_quality"], row["operator"], row["family"], row["benchmark"]))
+    return rows[:12]
+
+
+def _compute_inheritance_summary(evaluations: list[dict[str, Any]]) -> dict[str, Any] | None:
+    total = len(evaluations)
+    if total == 0:
+        return None
+    hits = [row for row in evaluations if row.get("inheritance_hit")]
+    misses = [row for row in evaluations if not row.get("inheritance_hit")]
+    hit_qualities = [float(row["quality"]) for row in hits if row.get("quality") is not None]
+    miss_qualities = [float(row["quality"]) for row in misses if row.get("quality") is not None]
+    return {
+        "hits": len(hits),
+        "rate": (len(hits) / total) * 100.0,
+        "avg_quality_hit": sum(hit_qualities) / len(hit_qualities) if hit_qualities else float("nan"),
+        "avg_quality_miss": sum(miss_qualities) / len(miss_qualities) if miss_qualities else float("nan"),
+    }
+
+
+def _compute_family_survival(
+    evaluations: list[dict[str, Any]],
+    genomes: list[ModelGenome],
+) -> list[dict[str, Any]]:
+    family_by_genome = {genome.genome_id: genome.family for genome in genomes}
+    grouped: dict[int, Counter] = {}
+    for row in evaluations:
+        generation = row.get("generation")
+        genome_id = row.get("genome_id")
+        if generation is None or genome_id not in family_by_genome:
+            continue
+        grouped.setdefault(int(generation), Counter())[family_by_genome[genome_id]] += 1
+
+    rows = []
+    for generation in sorted(grouped):
+        counter = grouped[generation]
+        rows.append({
+            "generation": generation,
+            "active_families": len(counter),
+            "breakdown": ", ".join(f"{family}({count})" for family, count in counter.most_common()),
+        })
+    return rows
+
+
+def _compute_archive_turnover(archives: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[int, set[str]] = {}
+    for row in archives:
+        generation = row.get("generation")
+        genome_id = row.get("genome_id")
+        if generation is None or genome_id is None:
+            continue
+        grouped.setdefault(int(generation), set()).add(str(genome_id))
+
+    rows = []
+    previous: set[str] = set()
+    for generation in sorted(grouped):
+        members = grouped[generation]
+        rows.append({
+            "generation": generation,
+            "members": len(members),
+            "new_members": len(members - previous),
+            "retained": len(members & previous),
+        })
+        previous = members
+    return rows
+
+
+def _compute_failure_heatmap(evaluations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, Counter] = {}
+    for row in evaluations:
+        failure = row.get("failure_reason")
+        benchmark = row.get("benchmark_id")
+        if not failure or benchmark is None:
+            continue
+        failure_kind = str(failure).split(":", 1)[0]
+        grouped.setdefault(str(benchmark), Counter())[failure_kind] += 1
+
+    rows = []
+    for benchmark, failures in sorted(grouped.items()):
+        rows.append({"benchmark": benchmark, "failures": dict(failures)})
+    return rows

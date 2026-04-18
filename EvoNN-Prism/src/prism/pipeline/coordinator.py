@@ -115,7 +115,7 @@ def run_evolution(
                 summaries,
                 elite_per_benchmark=evolution.elite_per_benchmark,
             )
-            _persist_archives(store, run_id, state.archives)
+            _persist_archives(store, run_id, gen, state.archives)
 
             # 4. Monitor
             elapsed = time.time() - run_start
@@ -225,6 +225,7 @@ def _checkpoint(run_dir: str, generation: int, state: GenerationState) -> None:
                     "parameter_count": r.parameter_count,
                     "train_seconds": r.train_seconds,
                     "failure_reason": r.failure_reason,
+                    "inherited_from": r.inherited_from,
                 }
                 for bid, r in benchmark_results.items()
             }
@@ -341,13 +342,19 @@ def _persist_lineage(store: RunStore, run_id: str, generation: int, lineage: lis
             )
 
 
-def _persist_archives(store: RunStore, run_id: str, archives: dict) -> None:
+def _persist_archives(store: RunStore, run_id: str, generation: int, archives: dict) -> None:
     for summary in archives.get("pareto", []):
-        store.save_archive(run_id, "pareto", None, summary.genome_id, summary.aggregate_quality)
+        store.save_archive(
+            run_id, generation, "pareto", None, summary.genome_id, summary.aggregate_quality,
+        )
 
     for benchmark_id, elites in archives.get("elite", {}).items():
         for summary in elites:
-            store.save_archive(run_id, "elite", benchmark_id, summary.genome_id, summary.aggregate_quality)
+            store.save_archive(
+                run_id, generation, "elite", benchmark_id, summary.genome_id, summary.aggregate_quality,
+            )
 
     for family, summary in archives.get("niche", {}).items():
-        store.save_archive(run_id, f"niche:{family}", None, summary.genome_id, summary.aggregate_quality)
+        store.save_archive(
+            run_id, generation, f"niche:{family}", None, summary.genome_id, summary.aggregate_quality,
+        )

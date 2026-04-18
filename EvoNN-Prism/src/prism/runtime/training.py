@@ -17,6 +17,7 @@ class EvaluationResult:
     parameter_count: int
     train_seconds: float
     failure_reason: str | None = None
+    inherited_from: str | None = None
 
 
 def cosine_lr(base_lr: float, step: int, total_steps: int, min_lr: float = 1e-6) -> float:

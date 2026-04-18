@@ -41,6 +41,10 @@ class EvolutionConfig(BaseModel):
     activation_choices: list[str] = Field(default_factory=lambda: ["relu", "gelu", "tanh"])
     dropout_choices: list[float] = Field(default_factory=lambda: [0.0, 0.1, 0.2, 0.3])
     undercovered_parent_bias: float = 0.55
+    family_diversity_bias: float = 0.3
+    family_stale_penalty: float = 0.15
+    novelty_parent_bias: float = 0.1
+    family_offspring_floor: int = 1
     undercovered_focus_top_k: int = 3
 
 

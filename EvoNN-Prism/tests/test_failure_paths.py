@@ -208,6 +208,7 @@ def test_reproduce_records_crossover_lineage(monkeypatch):
                 "crossover_rate": 1.0,
                 "tournament_size": 2,
                 "allowed_families": ["mlp", "sparse_mlp"],
+                "family_offspring_floor": 0,
             }
         }
     )
@@ -283,9 +284,24 @@ def test_undercovered_parent_bias_rewards_rare_successes():
         rare.genome_id: 0.7,
         third.genome_id: 0.6,
     }
-    boosted = reproduce_mod._apply_undercovered_parent_bias(state, base, bias=1.0)
+    boosted = reproduce_mod._apply_selection_pressure(
+        state,
+        base,
+        undercovered_bias=1.0,
+        family_diversity_bias=0.0,
+        family_stale_penalty=0.0,
+        novelty_bias=0.0,
+    )
 
     assert boosted[rare.genome_id] > boosted[common.genome_id]
+
+
+def test_family_floor_targets_include_each_family_once():
+    parent_a = _sample_genome("mlp")
+    parent_b = _sample_genome("attention")
+    scores = {parent_a.genome_id: 0.9, parent_b.genome_id: 0.7}
+
+    assert reproduce_mod._family_floor_targets([parent_a, parent_b], scores, 1) == ["mlp", "attention"]
 
 
 def test_get_benchmark_missing_catalog_gives_explicit_error(tmp_path):

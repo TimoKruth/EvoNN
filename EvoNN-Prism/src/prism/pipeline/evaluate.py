@@ -70,8 +70,8 @@ def evaluate(
         genome_results = state.results.get(genome.genome_id, {})
         parent_ids = state.parent_ids.get(genome.genome_id, [])
 
-        if store is not None and run_id is not None:
-            store.save_genome(run_id, genome)
+    if store is not None and run_id is not None:
+        store.save_genome(run_id, genome)
 
         for spec in benchmark_specs:
             benchmark_id = spec.id if hasattr(spec, "id") else spec.name
@@ -104,6 +104,7 @@ def evaluate(
                     result.parameter_count,
                     result.train_seconds,
                     result.failure_reason,
+                    result.inherited_from,
                 )
 
         state.results[genome.genome_id] = genome_results
@@ -197,9 +198,11 @@ def _evaluate_single(
     param_count = compiled.parameter_count
 
     # Weight inheritance
+    inherited_from = None
     if cache is not None:
         for parent_id in parent_ids or []:
             if cache.transfer_weights(parent_id, model):
+                inherited_from = parent_id
                 break
 
     # Load data from spec
@@ -226,6 +229,7 @@ def _evaluate_single(
     # Cache weights on success
     if cache is not None and result.failure_reason is None:
         cache.store(genome.genome_id, model)
+    result.inherited_from = inherited_from
 
     return result
 

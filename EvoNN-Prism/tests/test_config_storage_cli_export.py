@@ -72,17 +72,19 @@ def test_run_store_roundtrip_and_best_per_benchmark(tmp_path: Path):
             "run-1", genome_b.genome_id, 1, "moons", "accuracy", 0.9, 0.9, 120, 0.6
         )
         store.save_lineage("run-1", genome_b.genome_id, genome_a.genome_id, 1, "mut")
-        store.save_archive("run-1", "pareto", "moons", genome_b.genome_id, 0.9)
+        store.save_archive("run-1", 1, "pareto", "moons", genome_b.genome_id, 0.9)
 
         loaded = store.load_genomes("run-1")
         evals = store.load_evaluations("run-1")
         lineage = store.load_lineage("run-1")
+        archives = store.load_archives("run-1")
         best = store.load_best_per_benchmark("run-1")
         latest = store.latest_generation("run-1")
 
     assert [row["_family"] for row in loaded] == ["mlp", "conv2d"]
     assert len(evals) == 2
     assert lineage[0]["mutation_summary"] == "mut"
+    assert archives[0]["generation"] == 1
     assert best["moons"]["genome_id"] == genome_b.genome_id
     assert best["moons"]["metric_value"] == 0.9
     assert latest == 1
@@ -273,6 +275,7 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
             parameter_count=123,
             train_seconds=0.2,
             failure_reason=None,
+            inherited_from=parent_ids[0] if parent_ids else None,
         ),
     )
 
@@ -293,8 +296,88 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
     assert "Total Evaluations | 1" in report
     assert "## Family Benchmark Wins" in report
     assert "## Operator Mix" in report
+    assert "## Operator Success" in report
+    assert "## Weight Inheritance" in report
+    assert "## Family Survival" in report
+    assert "## Archive Turnover" in report
     assert "## Failure Patterns" in report
+    assert "## Failure Heatmap" in report
     assert "| moons | 0.910000 | accuracy | 123 | 0.20 |" in report
+
+
+def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "seed": 17,
+                "training": {"epochs": 3},
+                "evolution": {"population_size": 2},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    genome_a = _sample_genome("mlp", [16, 8])
+    genome_b = _sample_genome("conv2d", [32, 16])
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run(run_dir.name, {"seed": 17})
+        store.save_genome(run_dir.name, genome_a)
+        store.save_genome(run_dir.name, genome_b)
+        store.save_evaluation(
+            run_dir.name,
+            genome_a.genome_id,
+            0,
+            "moons",
+            "accuracy",
+            0.91,
+            0.91,
+            101,
+            0.2,
+            inherited_from="parent-x",
+        )
+        store.save_evaluation(
+            run_dir.name,
+            genome_b.genome_id,
+            0,
+            "iris",
+            "accuracy",
+            0.95,
+            0.95,
+            205,
+            0.3,
+        )
+        store.save_lineage(run_dir.name, genome_a.genome_id, "parent-x", 0, "mutation:width")
+        store.save_lineage(run_dir.name, genome_b.genome_id, genome_a.genome_id, 0, "crossover", "crossover")
+        store.save_archive(run_dir.name, 0, "pareto", None, genome_a.genome_id, 0.91)
+        store.save_archive(run_dir.name, 0, "pareto", None, genome_b.genome_id, 0.95)
+
+    monkeypatch.setattr(sym, "_code_version", lambda: "deadbeef")
+    monkeypatch.setattr(
+        sym,
+        "load_parity_pack",
+        lambda pack_path: [
+            SimpleNamespace(id="moons", task="classification"),
+            SimpleNamespace(id="iris", task="classification"),
+        ],
+    )
+    monkeypatch.setattr(sym, "get_canonical_id", lambda name: f"canon::{name}")
+
+    manifest_path, results_path = sym.export_symbiosis_contract(run_dir, "demo_pack.yaml")
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    results = json.loads(results_path.read_text(encoding="utf-8"))
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert manifest["fairness"]["code_version"] == "deadbeef"
+    assert manifest["fairness"]["benchmark_pack_id"] == "demo_pack"
+    assert manifest["artifacts"]["canonical_benchmarks"] == ["canon::moons", "canon::iris"]
+    assert len(results) == 2
+    assert summary["operator_mix"]["crossover"] == 1
+    assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
+    assert summary["failure_patterns"] == {}
 
 
 def test_language_modeling_specs_load_and_compile():
