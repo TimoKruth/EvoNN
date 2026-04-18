@@ -800,9 +800,11 @@ def evaluate_pool(
     state.fitnesses = _aggregate_pool_fitness(
         raw_losses=raw_losses,
         benchmark_families=benchmark_families,
+        benchmark_timings=benchmark_timings,
         aggregation=pool_cfg.aggregation,
         active_family=state.active_benchmark_family,
         family_focus_weight=pool_cfg.family_focus_weight,
+        benchmark_cost_penalty_alpha=pool_cfg.benchmark_cost_penalty_alpha,
     )
     state.model_bytes = [
         estimate_model_bytes(g) for g in state.population
@@ -1028,9 +1030,11 @@ def _aggregate_pool_fitness(
     *,
     raw_losses: dict[str, list[float]],
     benchmark_families: dict[str, str],
+    benchmark_timings: list[dict[str, object]],
     aggregation: str,
     active_family: str | None,
     family_focus_weight: float,
+    benchmark_cost_penalty_alpha: float,
 ) -> list[float]:
     if aggregation == "percentile" or not raw_losses:
         return compute_percentile_fitness(raw_losses)
@@ -1042,7 +1046,11 @@ def _aggregate_pool_fitness(
             for name, losses in raw_losses.items()
             if benchmark_families.get(name, "tabular") == family
         }
-        family_scores[family] = compute_percentile_fitness(family_losses)
+        family_scores[family] = _family_weighted_percentile_fitness(
+            family_losses=family_losses,
+            benchmark_timings=benchmark_timings,
+            alpha=benchmark_cost_penalty_alpha,
+        )
 
     if not family_scores:
         return compute_percentile_fitness(raw_losses)
@@ -1056,6 +1064,50 @@ def _aggregate_pool_fitness(
             numerators[idx] += weight * score
             denominators[idx] += weight
     return [numerators[idx] / max(denominators[idx], 1e-12) for idx in range(len(numerators))]
+
+
+def _family_weighted_percentile_fitness(
+    *,
+    family_losses: dict[str, list[float]],
+    benchmark_timings: list[dict[str, object]],
+    alpha: float,
+) -> list[float]:
+    if not family_losses:
+        return []
+
+    per_benchmark_percentiles: dict[str, list[float]] = {}
+    for benchmark_name, losses in family_losses.items():
+        per_benchmark_percentiles[benchmark_name] = compute_percentile_fitness(
+            {benchmark_name: losses}
+        )
+
+    timing_lookup = {
+        str(row["benchmark_name"]): float(row["evaluation_seconds"])
+        for row in benchmark_timings
+        if str(row["benchmark_name"]) in family_losses
+    }
+    costs = [timing_lookup.get(name, 1.0) for name in family_losses]
+    median_cost = _median_value(costs) if costs else 1.0
+
+    sample_len = len(next(iter(per_benchmark_percentiles.values())))
+    numerators = [0.0] * sample_len
+    denominators = [0.0] * sample_len
+    for benchmark_name, percentiles in per_benchmark_percentiles.items():
+        cost = timing_lookup.get(benchmark_name, median_cost)
+        ratio = max(cost / max(median_cost, 1e-6), 1e-6)
+        weight = ratio ** (-alpha) if alpha > 0.0 else 1.0
+        for idx, score in enumerate(percentiles):
+            numerators[idx] += weight * score
+            denominators[idx] += weight
+    return [numerators[idx] / max(denominators[idx], 1e-12) for idx in range(sample_len)]
+
+
+def _median_value(values: list[float]) -> float:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2.0
 
 
 def _failure_result(task: str, reason: str) -> EvaluationResult:

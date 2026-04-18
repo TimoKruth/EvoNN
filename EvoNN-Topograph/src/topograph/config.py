@@ -114,6 +114,8 @@ class BenchmarkPoolConfig(BaseModel):
     family_focus_weight: float = 2.0
     family_focus_ratio: float = 0.67
     family_transfer: bool = True
+    benchmark_cost_penalty_alpha: float = 0.2
+    cost_priority_strength: float = 1.0
     family_sequence: list[str] = Field(
         default_factory=lambda: ["tabular", "image", "language_modeling"]
     )
@@ -132,13 +134,20 @@ class BenchmarkPoolConfig(BaseModel):
             raise ValueError("family_stage_generations must be >= 1")
         return v
 
-    @field_validator("family_focus_weight", "family_focus_ratio")
+    @field_validator(
+        "family_focus_weight",
+        "family_focus_ratio",
+        "benchmark_cost_penalty_alpha",
+        "cost_priority_strength",
+    )
     @classmethod
     def _validate_family_focus_params(cls, v: float, info) -> float:
         if info.field_name == "family_focus_weight" and v < 1.0:
             raise ValueError("family_focus_weight must be >= 1")
         if info.field_name == "family_focus_ratio" and not (0.0 < v <= 1.0):
             raise ValueError("family_focus_ratio must be > 0 and <= 1")
+        if info.field_name in {"benchmark_cost_penalty_alpha", "cost_priority_strength"} and v < 0.0:
+            raise ValueError(f"{info.field_name} must be >= 0")
         return float(v)
 
     @model_validator(mode="after")

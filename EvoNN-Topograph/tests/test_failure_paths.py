@@ -322,6 +322,7 @@ def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: P
         "current_sample": [],
         "rotation_counter": 0,
         "benchmark_best_fitness": {"a": 0.9, "b": 0.2, "c": 0.1},
+        "benchmark_cost_seconds": {"a": [0.1], "b": [1.0], "c": [2.0]},
         "family_stage_history": [],
     }
 
@@ -345,8 +346,17 @@ def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: P
         pool_state,
         {"a": [0.5, float("inf")], "b": [float("inf"), 0.3]},
     )
+    coordinator_mod._update_pool_cost_history(
+        pool_state,
+        [
+            {"benchmark_name": "a", "evaluation_seconds": 0.2},
+            {"benchmark_name": "a", "evaluation_seconds": 0.3},
+            {"benchmark_name": "b", "evaluation_seconds": 0.8},
+        ],
+    )
     assert pool_state["benchmark_best_fitness"]["a"] == 0.5
     assert pool_state["benchmark_best_fitness"]["b"] == 0.2
+    assert pool_state["benchmark_cost_seconds"]["a"][-2:] == [0.2, 0.3]
 
     cfg_pop = RunConfig.model_validate(
         cfg.model_dump(mode="json") | {"evolution": {"population_size": 3}}

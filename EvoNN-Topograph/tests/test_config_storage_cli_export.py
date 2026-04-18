@@ -71,6 +71,8 @@ def test_load_config_reads_yaml_and_validates_rotation_interval(tmp_path: Path):
         RunConfig.model_validate({"benchmark_pool": {"benchmarks": [], "suite": None}})
     with pytest.raises(ValueError):
         RunConfig.model_validate({"benchmark_pool": {"benchmarks": ["moons"], "family_stage_generations": 0}})
+    with pytest.raises(ValueError):
+        RunConfig.model_validate({"benchmark_pool": {"benchmarks": ["moons"], "benchmark_cost_penalty_alpha": -0.1}})
 
 
 def test_run_store_roundtrip_and_benchmark_best_selection(tmp_path: Path):

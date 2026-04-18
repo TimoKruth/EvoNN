@@ -96,6 +96,7 @@ def run_evolution(
         "current_family": None,
         "rotation_counter": 0,
         "benchmark_best_fitness": {},
+        "benchmark_cost_seconds": {},
         "family_stage_history": [],
     }
     elapsed_before_resume = 0.0
@@ -130,6 +131,7 @@ def run_evolution(
             pool_state = snapshot.get("pool_state", pool_state)
             pool_state.setdefault("family_stage_history", [])
             pool_state.setdefault("current_family", None)
+            pool_state.setdefault("benchmark_cost_seconds", {})
             scheduler.load_dict(snapshot.get("scheduler"))
             pending_outcomes = [
                 PendingMutationOutcome(
@@ -263,6 +265,8 @@ def run_evolution(
 
             if sampled_specs is not None and state.raw_losses:
                 _update_pool_fitness_history(pool_state, state.raw_losses)
+            if sampled_specs is not None and state.benchmark_timings:
+                _update_pool_cost_history(pool_state, state.benchmark_timings)
 
             if map_elites_archive is not None:
                 for i, genome in enumerate(state.population):
@@ -533,6 +537,7 @@ def _sample_benchmark_specs(
 
     k = min(pool_cfg.sample_k, len(benchmark_specs))
     best_fitness = pool_state.get("benchmark_best_fitness", {})
+    benchmark_cost_seconds = pool_state.get("benchmark_cost_seconds", {})
     ranked = sorted(
         (
             (name, float(loss))
@@ -553,20 +558,28 @@ def _sample_benchmark_specs(
             max(1, int(math.ceil(k * pool_cfg.family_focus_ratio))),
         )
         while family_specs and len(sample) < target_focus:
-            chosen = rng.choice(family_specs)
+            chosen = _choose_weighted_spec(
+                family_specs,
+                rng,
+                undercovered=undercovered,
+                best_fitness=best_fitness,
+                benchmark_cost_seconds=benchmark_cost_seconds,
+                undercovered_bias=pool_cfg.undercovered_benchmark_bias,
+                cost_priority_strength=pool_cfg.cost_priority_strength,
+            )
             sample.append(chosen)
             available.remove(chosen)
             family_specs.remove(chosen)
     while available and len(sample) < k:
-        undercovered_available = [spec for spec in available if spec.name in undercovered]
-        if (
-            pool_cfg.undercovered_benchmark_bias > 0
-            and undercovered_available
-            and rng.random() < pool_cfg.undercovered_benchmark_bias
-        ):
-            chosen = rng.choice(undercovered_available)
-        else:
-            chosen = rng.choice(available)
+        chosen = _choose_weighted_spec(
+            available,
+            rng,
+            undercovered=undercovered,
+            best_fitness=best_fitness,
+            benchmark_cost_seconds=benchmark_cost_seconds,
+            undercovered_bias=pool_cfg.undercovered_benchmark_bias,
+            cost_priority_strength=pool_cfg.cost_priority_strength,
+        )
         sample.append(chosen)
         available.remove(chosen)
 
@@ -613,6 +626,53 @@ def _update_pool_fitness_history(
         previous = float(best_fitness.get(benchmark_name, float("inf")))
         best_fitness[benchmark_name] = min(previous, current)
     pool_state["benchmark_best_fitness"] = best_fitness
+
+
+def _update_pool_cost_history(
+    pool_state: dict[str, object],
+    benchmark_timings: list[dict[str, object]],
+) -> None:
+    history = {
+        str(name): [float(x) for x in values]
+        for name, values in dict(pool_state.get("benchmark_cost_seconds", {})).items()
+    }
+    for timing in benchmark_timings:
+        name = str(timing["benchmark_name"])
+        history.setdefault(name, [])
+        history[name].append(float(timing["evaluation_seconds"]))
+        if len(history[name]) > 5:
+            history[name] = history[name][-5:]
+    pool_state["benchmark_cost_seconds"] = history
+
+
+def _choose_weighted_spec(
+    specs: list[BenchmarkSpec],
+    rng: random.Random,
+    *,
+    undercovered: set[str],
+    best_fitness: dict[str, object],
+    benchmark_cost_seconds: dict[str, object],
+    undercovered_bias: float,
+    cost_priority_strength: float,
+) -> BenchmarkSpec:
+    if len(specs) == 1:
+        return specs[0]
+
+    weights: list[float] = []
+    for spec in specs:
+        weakness = float(best_fitness.get(spec.name, 1.0))
+        weakness = max(weakness, 1e-6)
+        cost_history = benchmark_cost_seconds.get(spec.name, [])
+        avg_cost = (
+            sum(float(x) for x in cost_history) / len(cost_history)
+            if isinstance(cost_history, list) and cost_history
+            else 1.0
+        )
+        undercovered_weight = undercovered_bias if spec.name in undercovered else 1.0
+        cost_weight = 1.0 / max(avg_cost, 1e-6)
+        priority = undercovered_weight * weakness * (cost_weight ** cost_priority_strength)
+        weights.append(max(priority, 1e-6))
+    return rng.choices(specs, weights=weights, k=1)[0]
 
 
 def _blend_novelty(
@@ -877,6 +937,7 @@ def _save_budget_metadata(
         ),
         "worst_benchmark_trend": _worst_benchmark_trend(benchmark_results),
         "family_stage_history": list((pool_state or {}).get("family_stage_history", [])),
+        "benchmark_cost_seconds": dict((pool_state or {}).get("benchmark_cost_seconds", {})),
         "benchmark_elite_families": _benchmark_elite_family_counts(benchmark_elite_archive),
         "topology_atlas_motif_counts": _topology_atlas_motif_counts(benchmark_elite_archive),
         "operator_stats": scheduler.stats_summary(),

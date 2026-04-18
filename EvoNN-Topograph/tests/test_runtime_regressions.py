@@ -252,7 +252,7 @@ def test_reproduce_keeps_protected_survivor_and_resets_metrics():
 def test_family_percentile_aggregation_balances_families():
     raw_losses = {
         "tab_a": [0.1, 0.9],
-        "tab_b": [0.2, 0.8],
+        "tab_b": [0.8, 0.2],
         "lm_a": [0.9, 0.1],
     }
     benchmark_families = {
@@ -261,15 +261,34 @@ def test_family_percentile_aggregation_balances_families():
         "lm_a": "language_modeling",
     }
 
-    scores = _aggregate_pool_fitness(
+    baseline_scores = _aggregate_pool_fitness(
         raw_losses=raw_losses,
         benchmark_families=benchmark_families,
+        benchmark_timings=[
+            {"benchmark_name": "tab_a", "evaluation_seconds": 0.1},
+            {"benchmark_name": "tab_b", "evaluation_seconds": 1.0},
+            {"benchmark_name": "lm_a", "evaluation_seconds": 0.5},
+        ],
         aggregation="family_percentile",
         active_family=None,
         family_focus_weight=2.0,
+        benchmark_cost_penalty_alpha=0.0,
+    )
+    scores = _aggregate_pool_fitness(
+        raw_losses=raw_losses,
+        benchmark_families=benchmark_families,
+        benchmark_timings=[
+            {"benchmark_name": "tab_a", "evaluation_seconds": 0.1},
+            {"benchmark_name": "tab_b", "evaluation_seconds": 1.0},
+            {"benchmark_name": "lm_a", "evaluation_seconds": 0.5},
+        ],
+        aggregation="family_percentile",
+        active_family=None,
+        family_focus_weight=2.0,
+        benchmark_cost_penalty_alpha=0.5,
     )
 
-    assert scores == [0.5, 0.5]
+    assert (scores[0] - scores[1]) < (baseline_scores[0] - baseline_scores[1])
 
 
 def test_family_transfer_uses_family_namespace_cache():
