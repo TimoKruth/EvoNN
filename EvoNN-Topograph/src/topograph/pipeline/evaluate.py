@@ -190,7 +190,11 @@ def evaluate(
     data_load_seconds = time.perf_counter() - load_start
 
     input_dim = benchmark_spec.input_dim or X_train.shape[1]
-    num_classes = benchmark_spec.num_classes or 1
+    num_classes = _resolve_model_output_dim(
+        benchmark_spec=benchmark_spec,
+        X_train=X_train,
+        y_train=y_train,
+    )
 
     fitnesses: list[float] = []
     model_bytes_list: list[int] = []
@@ -400,6 +404,23 @@ def _prepare_benchmark_data(
     return X_train, y_train, X_val, y_val
 
 
+def _resolve_model_output_dim(
+    *,
+    benchmark_spec: BenchmarkSpec,
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+) -> int:
+    """Resolve output dimension, expanding LM vocab if cached tokens exceed catalog cap."""
+    declared = benchmark_spec.num_classes or 1
+    if benchmark_spec.task != "language_modeling":
+        return declared
+    observed_max = max(
+        int(np.max(X_train)) if X_train.size else 0,
+        int(np.max(y_train)) if y_train.size else 0,
+    )
+    return max(declared, observed_max + 1)
+
+
 def _evaluate_single(
     genome: Genome,
     config: RunConfig,
@@ -528,7 +549,11 @@ def evaluate_pool(
         data_load_seconds = time.perf_counter() - load_start
 
         input_dim = spec.input_dim or X_train.shape[1]
-        num_classes = spec.num_classes or 1
+        num_classes = _resolve_model_output_dim(
+            benchmark_spec=spec,
+            X_train=X_train,
+            y_train=y_train,
+        )
 
         losses: list[float] = []
         benchmark_records: list[dict] = []

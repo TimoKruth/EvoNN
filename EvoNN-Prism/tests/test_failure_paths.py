@@ -17,7 +17,7 @@ from prism.config import RunConfig
 from prism.genome import ModelGenome
 from prism.pipeline import evaluate as evaluate_mod
 from prism.pipeline import reproduce as reproduce_mod
-from prism.pipeline.evaluate import GenerationState, _evaluate_single
+from prism.pipeline.evaluate import GenerationState, _evaluate_single, _resolve_output_dim
 from prism.runtime.training import EvaluationResult, train_and_evaluate
 
 
@@ -59,6 +59,54 @@ def test_evaluate_single_reports_compile_error(monkeypatch):
     assert result.failure_reason == "compile_error:ValueError"
     assert result.parameter_count == 0
     assert result.quality == float("-inf")
+
+
+def test_evaluate_single_expands_lm_output_dim(monkeypatch):
+    genome = _sample_genome("attention")
+    spec = SimpleNamespace(
+        id="tinystories_lm",
+        modality="text",
+        task="language_modeling",
+        input_shape=[256],
+        num_classes=4096,
+        output_dim=4096,
+        load_data=lambda seed=42: (
+            np.array([[0, 1, 4095]], dtype=np.int32),
+            np.array([[1, 2, 4096]], dtype=np.int64),
+            np.array([[0, 1, 4095]], dtype=np.int32),
+            np.array([[1, 2, 4096]], dtype=np.int64),
+        ),
+    )
+    captured: dict[str, object] = {}
+
+    def fake_compile(genome_arg, input_shape, output_dim, modality, task):
+        captured["output_dim"] = output_dim
+        return SimpleNamespace(model=object(), parameter_count=7)
+
+    monkeypatch.setattr("prism.families.compiler.compile_genome", fake_compile)
+    monkeypatch.setattr(
+        evaluate_mod,
+        "train_and_evaluate",
+        lambda *args, **kwargs: EvaluationResult(
+            metric_name="perplexity",
+            metric_value=12.0,
+            quality=-12.0,
+            parameter_count=7,
+            train_seconds=0.2,
+        ),
+    )
+
+    result = _evaluate_single(
+        genome=genome,
+        spec=spec,
+        training=RunConfig().training,
+        epoch_scale=1.0,
+        cache=None,
+    )
+
+    assert _resolve_output_dim(spec, spec.load_data()[0], spec.load_data()[1]) == 4097
+    assert captured["output_dim"] == 4097
+    assert result.failure_reason is None
 
 
 def test_evaluate_skips_existing_results(monkeypatch):

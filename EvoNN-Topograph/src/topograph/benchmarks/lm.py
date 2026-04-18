@@ -9,6 +9,7 @@ import numpy as np
 
 SUPERPROJECT_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_SHARED_CACHE_DIR = SUPERPROJECT_ROOT / "EvoNN" / ".cache" / "evonn" / "datasets"
+DEFAULT_REPO_SHARED_CACHE_DIR = SUPERPROJECT_ROOT / "shared-benchmarks" / "lm_cache"
 DEFAULT_LOCAL_CACHE_DIR = Path.home() / ".topograph" / "datasets"
 
 
@@ -124,7 +125,7 @@ def resolve_lm_cache_path(dataset: str) -> Path:
     if env_root:
         root = Path(env_root).expanduser()
         search_roots.extend([root, root / "datasets"])
-    search_roots.extend([DEFAULT_SHARED_CACHE_DIR, DEFAULT_LOCAL_CACHE_DIR])
+    search_roots.extend([DEFAULT_SHARED_CACHE_DIR, DEFAULT_REPO_SHARED_CACHE_DIR, DEFAULT_LOCAL_CACHE_DIR])
 
     for root in search_roots:
         path = root / f"{dataset}.npz"

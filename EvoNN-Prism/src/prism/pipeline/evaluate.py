@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from random import Random
 
+import numpy as np
+
 from prism.genome import ModelGenome
 from prism.storage import RunStore
 from prism.runtime.cache import WeightCache
@@ -175,7 +177,9 @@ def _evaluate_single(
     modality = spec.modality if hasattr(spec, "modality") else "tabular"
     task = spec.task if hasattr(spec, "task") else "classification"
     input_shape = spec.input_shape if hasattr(spec, "input_shape") else None
-    output_dim = spec.output_dim if hasattr(spec, "output_dim") else spec.num_classes
+    # Load data before compile so LM output_dim can expand to observed token range.
+    X_train, y_train, X_val, y_val = _load_data(spec, seed=42)
+    output_dim = _resolve_output_dim(spec, X_train, y_train)
 
     try:
         compiled = compile_genome(genome, input_shape, output_dim, modality, task=task)
@@ -199,8 +203,6 @@ def _evaluate_single(
                 break
 
     # Load data from spec
-    X_train, y_train, X_val, y_val = _load_data(spec, seed=42)
-
     # Apply multi-fidelity epoch scaling
     epochs = max(1, int(training.epochs * epoch_scale))
 
@@ -226,6 +228,18 @@ def _evaluate_single(
         cache.store(genome.genome_id, model)
 
     return result
+
+
+def _resolve_output_dim(spec, X_train: np.ndarray, y_train: np.ndarray) -> int:
+    """Resolve model output dim, expanding LM vocab when cached tokens exceed catalog cap."""
+    declared = spec.output_dim if hasattr(spec, "output_dim") else getattr(spec, "num_classes", 1)
+    if getattr(spec, "task", None) != "language_modeling":
+        return declared
+    observed_max = max(
+        int(np.max(X_train)) if X_train.size else 0,
+        int(np.max(y_train)) if y_train.size else 0,
+    )
+    return max(int(declared), observed_max + 1)
 
 
 def _multi_fidelity_scale(

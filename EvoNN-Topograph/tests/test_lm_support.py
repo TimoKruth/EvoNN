@@ -16,6 +16,9 @@ from topograph.export.symbiosis import _benchmark_metric_direction, _benchmark_m
 from topograph.genome.genome import Genome, InnovationCounter
 from topograph.nn.compiler import compile_genome
 from topograph.nn.train import _compute_metric
+from topograph.pipeline.coordinator import _create_seed_population
+from topograph.pipeline.evaluate import BenchmarkDataCache, EvaluationMemo, GenerationState, _resolve_model_output_dim, evaluate_pool
+from topograph.cache import WeightCache
 
 
 def _write_lm_cache(root: Path, dataset: str) -> None:
@@ -100,6 +103,62 @@ def test_wikitext2_smoke_catalog_caps_shared_cache(tmp_path: Path, monkeypatch):
     assert y_train.shape == (512, 256)
     assert x_val.shape == (128, 256)
     assert y_val.shape == (128, 256)
+
+
+def test_lm_cache_resolves_repo_shared_cache(tmp_path: Path, monkeypatch):
+    _write_lm_cache(tmp_path, "tinystories_lm")
+    monkeypatch.delenv("TOPOGRAPH_LM_CACHE_DIR", raising=False)
+    monkeypatch.setattr(
+        "topograph.benchmarks.lm.DEFAULT_SHARED_CACHE_DIR",
+        tmp_path / "missing-default",
+    )
+    monkeypatch.setattr(
+        "topograph.benchmarks.lm.DEFAULT_REPO_SHARED_CACHE_DIR",
+        tmp_path / "datasets",
+    )
+    monkeypatch.setattr(
+        "topograph.benchmarks.lm.DEFAULT_LOCAL_CACHE_DIR",
+        tmp_path / "missing-local",
+    )
+
+    spec = get_benchmark("tinystories_lm")
+    x_train, y_train, x_val, y_val = spec.load_data(seed=42)
+
+    assert x_train.shape == (600, 256)
+    assert y_train.shape == (600, 256)
+    assert x_val.shape == (200, 256)
+    assert y_val.shape == (200, 256)
+
+
+def test_lm_output_dim_expands_to_observed_token_range():
+    spec = get_benchmark("tinystories_lm")
+    x_train = np.array([[0, 1, 4095]], dtype=np.int32)
+    y_train = np.array([[1, 2, 4096]], dtype=np.int64)
+
+    assert spec.num_classes == 4096
+    assert _resolve_model_output_dim(benchmark_spec=spec, X_train=x_train, y_train=y_train) == 4097
+
+
+def test_evaluate_pool_uses_expanded_lm_output_dim():
+    cfg = load_config(Path(__file__).resolve().parents[1] / "configs" / "tiny_smoke" / "config.yaml")
+    cfg = cfg.model_copy(update={"benchmark_pool": {"benchmarks": ["tinystories_lm_smoke"], "sample_k": 1}})
+    rng = random.Random(42)
+    state = GenerationState(
+        generation=0,
+        population=_create_seed_population(cfg, InnovationCounter(), rng),
+    )
+
+    out = evaluate_pool(
+        state,
+        cfg,
+        [get_benchmark("tinystories_lm_smoke")],
+        cache=WeightCache(),
+        data_cache=BenchmarkDataCache(),
+        evaluation_memo=EvaluationMemo(),
+    )
+
+    assert out.benchmark_results[0]["status"] == "ok"
+    assert out.benchmark_results[0]["metric_value"] is not None
 
 
 def test_language_modeling_metrics_use_perplexity():

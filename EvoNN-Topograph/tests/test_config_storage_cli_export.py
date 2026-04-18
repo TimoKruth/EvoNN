@@ -237,6 +237,66 @@ def test_load_run_config_and_resolve_run_id_from_store(tmp_path: Path):
     assert cfg.benchmark == "moons"
 
 
+def test_symbiosis_export_preserves_failed_benchmarks(tmp_path: Path, monkeypatch):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    pack_path = tmp_path / "pack.yaml"
+    pack_path.write_text(
+        yaml.safe_dump(
+            {
+                "name": "demo_pack",
+                "benchmarks": [
+                    {
+                        "benchmark_id": "tinystories_lm",
+                        "native_ids": {"topograph": "tinystories_lm"},
+                        "task_kind": "language_modeling",
+                        "metric_name": "perplexity",
+                        "metric_direction": "min",
+                    }
+                ],
+                "budget_policy": {"evaluation_count": 1, "epochs_per_candidate": 1},
+                "seed_policy": {"mode": "shared", "required": True},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run("demo", {"seed": 42, "benchmark": "tinystories_lm"})
+        store.save_genomes("demo", 0, [_genome_dict(fitness=0.3, param_count=64, model_bytes=128)])
+        store.save_benchmark_results(
+            "demo",
+            0,
+            [
+                {
+                    "benchmark_name": "tinystories_lm",
+                    "metric_name": "perplexity",
+                    "metric_direction": "min",
+                    "metric_value": None,
+                    "quality": None,
+                    "parameter_count": None,
+                    "train_seconds": None,
+                    "architecture_summary": "failed",
+                    "genome_id": "g0",
+                    "genome_idx": 0,
+                    "status": "failed",
+                    "failure_reason": "lm backend blew up",
+                }
+            ],
+        )
+
+    monkeypatch.setattr(sym, "_write_report_md", lambda output_dir, source_run_dir: None)
+    monkeypatch.setattr(sym, "_write_summary_json", lambda *args, **kwargs: None)
+
+    _, results_path = sym.export_symbiosis_contract(run_dir=run_dir, pack_path=pack_path)
+    rows = json.loads(results_path.read_text(encoding="utf-8"))
+
+    assert rows[0]["status"] == "failed"
+    assert rows[0]["metric_value"] is None
+    assert rows[0]["failure_reason"] == "lm backend blew up"
+
+
 def test_cli_benchmarks_and_symbiosis_export(monkeypatch, tmp_path: Path):
     monkeypatch.setattr("topograph.cli.list_benchmarks", lambda: ["moons"])
     monkeypatch.setattr(

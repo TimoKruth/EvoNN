@@ -87,14 +87,14 @@ def export_symbiosis_contract(
         metric_direction = _benchmark_metric_direction(spec.task)
 
         existing = existing_by_name.get(native_name)
-        if existing and existing.get("status") == "ok":
+        if existing:
             metric_value = existing["metric_value"]
             quality = existing["quality"]
             parameter_count = existing["parameter_count"]
             train_seconds = existing["train_seconds"]
             architecture_summary = existing["architecture_summary"]
-            status = "ok"
-            failure_reason = None
+            status = existing.get("status", "missing")
+            failure_reason = existing.get("failure_reason")
         else:
             # Use representative genome's fitness as fallback for the primary benchmark
             if representative and representative.fitness is not None:
