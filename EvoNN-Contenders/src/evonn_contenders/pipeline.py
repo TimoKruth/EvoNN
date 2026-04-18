@@ -70,13 +70,21 @@ def run_contenders(
     executed_evaluation_count = 0
     cache_hits = 0
     group_counts = {"tabular": 0, "synthetic": 0, "image": 0, "language_modeling": 0}
+    _emit_progress(
+        f"start run_id={run_id} benchmarks={len(config.benchmark_pool.benchmarks)} "
+        f"target_evals={config.baseline.target_evaluation_count or 'auto'} baseline={baseline_id}"
+    )
 
-    for benchmark_name in config.benchmark_pool.benchmarks:
+    benchmark_total = len(config.benchmark_pool.benchmarks)
+    for benchmark_index, benchmark_name in enumerate(config.benchmark_pool.benchmarks, start=1):
         spec = get_benchmark(benchmark_name)
         group = benchmark_group(spec)
         trials = _resolve_trials(config, benchmark_name=benchmark_name, group=group)
         group_counts[group] += 1
         evaluation_count += len(trials)
+        _emit_progress(
+            f"[{benchmark_index}/{benchmark_total}] benchmark={benchmark_name} group={group} trials={len(trials)}"
+        )
 
         cached_records = baseline_store.load_contenders_for_benchmark(baseline_id, benchmark_name)
         cached_best = baseline_store.load_result_for_benchmark(baseline_id, benchmark_name)
@@ -84,6 +92,10 @@ def run_contenders(
             run_store.replace_contenders(run_id=run_id, benchmark_name=benchmark_name, records=cached_records)
             run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=cached_best)
             cache_hits += 1
+            _emit_progress(
+                f"[{benchmark_index}/{benchmark_total}] cache-hit benchmark={benchmark_name} "
+                f"status={cached_best['status']} contender={cached_best['contender_name']}"
+            )
             continue
 
         try:
@@ -110,6 +122,7 @@ def run_contenders(
             run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=failed_records[0])
             baseline_store.replace_contenders(run_id=baseline_id, benchmark_name=benchmark_name, records=failed_records)
             baseline_store.replace_result(run_id=baseline_id, benchmark_name=benchmark_name, record=failed_records[0])
+            _emit_progress(f"[{benchmark_index}/{benchmark_total}] load-failed benchmark={benchmark_name} reason={exc}")
             continue
 
         records: list[dict[str, object]] = []
@@ -133,6 +146,10 @@ def run_contenders(
         run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=best)
         baseline_store.replace_contenders(run_id=baseline_id, benchmark_name=benchmark_name, records=list(records))
         baseline_store.replace_result(run_id=baseline_id, benchmark_name=benchmark_name, record=best)
+        _emit_progress(
+            f"[{benchmark_index}/{benchmark_total}] done benchmark={benchmark_name} "
+            f"best={best['contender_name']} status={best['status']} metric={best.get('metric_value')}"
+        )
 
     run_store.save_budget_metadata(
         run_id=run_id,
@@ -157,6 +174,10 @@ def run_contenders(
     baseline_store.close()
     run_store.close()
     write_report(run_dir)
+    _emit_progress(
+        f"finished run_id={run_id} evaluation_count={evaluation_count} "
+        f"executed={executed_evaluation_count} cache_hits={cache_hits}"
+    )
     return run_dir
 
 
@@ -198,7 +219,11 @@ def materialize_baseline_run(
 
     evaluation_count = 0
     group_counts = {"tabular": 0, "synthetic": 0, "image": 0, "language_modeling": 0}
-    for benchmark_name in config.benchmark_pool.benchmarks:
+    _emit_progress(
+        f"materialize run_id={run_id} benchmarks={len(config.benchmark_pool.benchmarks)} baseline={baseline_id}"
+    )
+    benchmark_total = len(config.benchmark_pool.benchmarks)
+    for benchmark_index, benchmark_name in enumerate(config.benchmark_pool.benchmarks, start=1):
         spec = get_benchmark(benchmark_name)
         group = benchmark_group(spec)
         group_counts[group] += 1
@@ -213,6 +238,10 @@ def materialize_baseline_run(
             raise ValueError(f"benchmark '{benchmark_name}' missing from baseline cache '{baseline_id}'")
         run_store.replace_contenders(run_id=run_id, benchmark_name=benchmark_name, records=cached_records)
         run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=cached_best)
+        _emit_progress(
+            f"[{benchmark_index}/{benchmark_total}] materialized benchmark={benchmark_name} "
+            f"status={cached_best['status']} contender={cached_best['contender_name']}"
+        )
 
     run_store.save_budget_metadata(
         run_id=run_id,
@@ -236,7 +265,12 @@ def materialize_baseline_run(
     baseline_store.close()
     run_store.close()
     write_report(run_dir)
+    _emit_progress(f"materialize-finished run_id={run_id} evaluation_count={evaluation_count}")
     return run_dir
+
+
+def _emit_progress(message: str) -> None:
+    print(f"[evonn-contenders] {message}", flush=True)
 
 
 def _baseline_cache_dir(

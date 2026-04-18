@@ -216,3 +216,33 @@ selection:
     assert "catboost_small" not in contender_names
     assert all(record["status"] == "ok" for record in contenders)
     assert results[0]["status"] == "ok"
+
+
+def test_run_contenders_emits_progress_lines(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: progress_smoke
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+contender_pool:
+  tabular: [logistic, hist_gb]
+  synthetic: [hist_gb]
+  image: [mlp]
+  language_modeling: [bigram_lm]
+selection:
+  max_contenders_per_benchmark: 2
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_contenders(config, run_dir=tmp_path / "run", config_path=config_path)
+
+    output = capsys.readouterr().out
+    assert "[evonn-contenders] start run_id=run" in output
+    assert "[evonn-contenders] [1/1] benchmark=iris" in output
+    assert "[evonn-contenders] finished run_id=run" in output

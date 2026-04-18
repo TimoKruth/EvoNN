@@ -350,6 +350,7 @@ def run_fair_matrix_case(
         pack_path=case.pack_path,
         run_dir=case.contender_run_dir,
         output_dir=case.contender_run_dir,
+        log_dir=case.log_dir,
     )
 
     pack = load_parity_pack(case.pack_path)
@@ -410,9 +411,16 @@ def run_fair_matrix_case(
 def _run_command(spec: CommandSpec, *, log_dir: Path) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"{spec.name}.log"
-    process = subprocess.run(spec.argv, cwd=spec.cwd, text=True, capture_output=True)
-    output = (process.stdout or "") + (process.stderr or "")
-    log_path.write_text(output, encoding="utf-8")
+    with log_path.open("w", encoding="utf-8") as handle:
+        handle.write(f"$ {' '.join(spec.argv)}\n\n")
+        handle.flush()
+        process = subprocess.run(
+            spec.argv,
+            cwd=spec.cwd,
+            text=True,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+        )
     if process.returncode != 0:
         raise RuntimeError(f"{spec.name} failed; see {log_path}")
 
