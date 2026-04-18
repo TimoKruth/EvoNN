@@ -50,6 +50,8 @@ class BenchmarkDataCache:
 
     def __init__(self) -> None:
         self._cache: dict[tuple[str, int, float], tuple[np.ndarray, ...]] = {}
+        self._hits: dict[str, int] = {}
+        self._misses: dict[str, int] = {}
 
     def get(
         self,
@@ -61,7 +63,9 @@ class BenchmarkDataCache:
         key = (benchmark_spec.name, seed, validation_split)
         cached = self._cache.get(key)
         if cached is not None:
+            self._hits[benchmark_spec.name] = self._hits.get(benchmark_spec.name, 0) + 1
             return cached
+        self._misses[benchmark_spec.name] = self._misses.get(benchmark_spec.name, 0) + 1
 
         X_train, y_train, X_val, y_val = benchmark_spec.load_data(
             seed=seed, validation_split=validation_split,
@@ -85,6 +89,11 @@ class BenchmarkDataCache:
 
         self._cache[key] = value
         return value
+
+    def consume_stats(self, benchmark_name: str) -> tuple[int, int]:
+        hits = self._hits.pop(benchmark_name, 0)
+        misses = self._misses.pop(benchmark_name, 0)
+        return hits, misses
 
 
 class EvaluationMemo:
@@ -188,6 +197,7 @@ def evaluate(
         data_cache=data_cache,
     )
     data_load_seconds = time.perf_counter() - load_start
+    data_cache_hits, data_cache_misses = _consume_data_cache_stats(data_cache, benchmark_spec.name)
 
     input_dim = benchmark_spec.input_dim or X_train.shape[1]
     num_classes = _resolve_model_output_dim(
@@ -206,6 +216,7 @@ def evaluate(
     trained_count = 0
     failed_count = 0
     resolved_worker_count = 1
+    worker_clamp_reason = "sequential"
     pending_tasks: list[ParallelGenomeTask] = []
     pending_meta: list[tuple[int, Genome, int, float, int]] = []
     parallel_batch = (
@@ -308,6 +319,7 @@ def evaluate(
             strict=True,
         ):
             resolved_worker_count = parallel_eval.last_resolved_workers
+            worker_clamp_reason = parallel_eval.last_clamp_reason
             result = completed.result
             mb = completed.model_bytes
             _apply_completed_result(
@@ -354,6 +366,9 @@ def evaluate(
             parallel_eval.last_requested_workers if parallel_eval is not None else 1
         ),
         resolved_worker_count=resolved_worker_count,
+        data_cache_hits=data_cache_hits,
+        data_cache_misses=data_cache_misses,
+        worker_clamp_reason=worker_clamp_reason,
     )
 
     state.fitnesses = fitnesses
@@ -402,6 +417,15 @@ def _prepare_benchmark_data(
     X_train = pp.fit_transform(X_train)
     X_val = pp.transform(X_val)
     return X_train, y_train, X_val, y_val
+
+
+def _consume_data_cache_stats(
+    data_cache: BenchmarkDataCache | None,
+    benchmark_name: str,
+) -> tuple[int, int]:
+    if data_cache is None:
+        return (0, 0)
+    return data_cache.consume_stats(benchmark_name)
 
 
 def _resolve_model_output_dim(
@@ -547,6 +571,7 @@ def evaluate_pool(
             data_cache=data_cache,
         )
         data_load_seconds = time.perf_counter() - load_start
+        data_cache_hits, data_cache_misses = _consume_data_cache_stats(data_cache, spec.name)
 
         input_dim = spec.input_dim or X_train.shape[1]
         num_classes = _resolve_model_output_dim(
@@ -564,6 +589,7 @@ def evaluate_pool(
         trained_count = 0
         failed_count = 0
         resolved_worker_count = 1
+        worker_clamp_reason = "sequential"
         parallel_batch = (
             ParallelBatchContext(
                 benchmark_name=spec.name,
@@ -669,6 +695,7 @@ def evaluate_pool(
                 strict=True,
             ):
                 resolved_worker_count = parallel_eval.last_resolved_workers
+                worker_clamp_reason = parallel_eval.last_clamp_reason
                 result = completed.result
                 _apply_completed_result(
                     genome=genome,
@@ -710,6 +737,9 @@ def evaluate_pool(
                 parallel_eval.last_requested_workers if parallel_eval is not None else 1
             ),
             resolved_worker_count=resolved_worker_count,
+            data_cache_hits=data_cache_hits,
+            data_cache_misses=data_cache_misses,
+            worker_clamp_reason=worker_clamp_reason,
         )
         benchmark_timings.append(timing_record)
         cache_reused_total += reused_count
@@ -995,6 +1025,9 @@ def _benchmark_timing_record(
     failed_count: int,
     requested_worker_count: int,
     resolved_worker_count: int,
+    data_cache_hits: int,
+    data_cache_misses: int,
+    worker_clamp_reason: str,
 ) -> dict[str, object]:
     return {
         "benchmark_name": benchmark_name,
@@ -1009,4 +1042,7 @@ def _benchmark_timing_record(
         "failed_count": int(failed_count),
         "requested_worker_count": int(requested_worker_count),
         "resolved_worker_count": int(resolved_worker_count),
+        "data_cache_hits": int(data_cache_hits),
+        "data_cache_misses": int(data_cache_misses),
+        "worker_clamp_reason": str(worker_clamp_reason),
     }

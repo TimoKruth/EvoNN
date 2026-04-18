@@ -92,9 +92,22 @@ class RunStore:
                 failed_count INTEGER,
                 requested_worker_count INTEGER,
                 resolved_worker_count INTEGER,
+                data_cache_hits INTEGER DEFAULT 0,
+                data_cache_misses INTEGER DEFAULT 0,
+                worker_clamp_reason VARCHAR DEFAULT 'sequential',
                 PRIMARY KEY (run_id, generation, benchmark_order)
             )
         """)
+        self.conn.execute(
+            "ALTER TABLE benchmark_timings ADD COLUMN IF NOT EXISTS data_cache_hits INTEGER DEFAULT 0"
+        )
+        self.conn.execute(
+            "ALTER TABLE benchmark_timings ADD COLUMN IF NOT EXISTS data_cache_misses INTEGER DEFAULT 0"
+        )
+        self.conn.execute(
+            "ALTER TABLE benchmark_timings "
+            "ADD COLUMN IF NOT EXISTS worker_clamp_reason VARCHAR DEFAULT 'sequential'"
+        )
 
     # -- Run management --------------------------------------------------------
 
@@ -268,6 +281,43 @@ class RunStore:
 
         return list(best.values())
 
+    def load_benchmark_results(
+        self, run_id: str, generation: int | None = None,
+    ) -> list[dict]:
+        query = (
+            """SELECT generation, benchmark_name, metric_name, metric_direction,
+                      metric_value, quality, parameter_count, train_seconds,
+                      architecture_summary, genome_id, genome_idx, status,
+                      failure_reason
+               FROM benchmark_results
+               WHERE run_id = ?
+            """
+        )
+        params: list[object] = [run_id]
+        if generation is not None:
+            query += " AND generation = ?"
+            params.append(generation)
+        query += " ORDER BY generation, benchmark_name"
+        rows = self.conn.execute(query, params).fetchall()
+        return [
+            {
+                "generation": row[0],
+                "benchmark_name": row[1],
+                "metric_name": row[2],
+                "metric_direction": row[3],
+                "metric_value": row[4],
+                "quality": row[5],
+                "parameter_count": row[6],
+                "train_seconds": row[7],
+                "architecture_summary": row[8],
+                "genome_id": row[9],
+                "genome_idx": row[10],
+                "status": row[11],
+                "failure_reason": row[12],
+            }
+            for row in rows
+        ]
+
     def save_benchmark_timings(
         self, run_id: str, generation: int, timings: list[dict],
     ) -> None:
@@ -277,8 +327,9 @@ class RunStore:
                     run_id, generation, benchmark_order, benchmark_name, task,
                     data_load_seconds, evaluation_seconds, total_seconds,
                     trained_count, reused_count, failed_count,
-                    requested_worker_count, resolved_worker_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    requested_worker_count, resolved_worker_count,
+                    data_cache_hits, data_cache_misses, worker_clamp_reason
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [
                     run_id,
                     generation,
@@ -293,6 +344,9 @@ class RunStore:
                     timing["failed_count"],
                     timing["requested_worker_count"],
                     timing["resolved_worker_count"],
+                    timing.get("data_cache_hits", 0),
+                    timing.get("data_cache_misses", 0),
+                    timing.get("worker_clamp_reason", "sequential"),
                 ],
             )
 
@@ -300,10 +354,11 @@ class RunStore:
         self, run_id: str, generation: int | None = None,
     ) -> list[dict]:
         query = (
-            """SELECT generation, benchmark_order, benchmark_name, task,
+                """SELECT generation, benchmark_order, benchmark_name, task,
                       data_load_seconds, evaluation_seconds, total_seconds,
                       trained_count, reused_count, failed_count,
-                      requested_worker_count, resolved_worker_count
+                      requested_worker_count, resolved_worker_count,
+                      data_cache_hits, data_cache_misses, worker_clamp_reason
                FROM benchmark_timings
                WHERE run_id = ?
             """
@@ -328,6 +383,9 @@ class RunStore:
                 "failed_count": row[9],
                 "requested_worker_count": row[10],
                 "resolved_worker_count": row[11],
+                "data_cache_hits": row[12],
+                "data_cache_misses": row[13],
+                "worker_clamp_reason": row[14],
             }
             for row in rows
         ]

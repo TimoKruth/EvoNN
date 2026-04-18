@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 import yaml
 
+from topograph.benchmarks import parity as parity_mod
 from topograph.benchmarks.registry import DatasetRegistry
 from topograph.benchmarks.spec import BenchmarkSpec
 from topograph.config import EarlyStoppingConfig, RunConfig
@@ -92,6 +93,48 @@ def test_dataset_registry_prefers_shared_catalog_and_skips_invalid_yaml(tmp_path
         registry.get("broken")
 
 
+def test_shared_benchmark_source_errors_are_explicit(tmp_path: Path, monkeypatch):
+    missing_root = tmp_path / "missing-shared"
+    monkeypatch.setenv("EVONN_SHARED_BENCHMARKS_DIR", str(missing_root))
+    monkeypatch.delenv("TOPOGRAPH_CATALOG_DIR", raising=False)
+    monkeypatch.delenv("TOPOGRAPH_SUITES_DIR", raising=False)
+
+    with pytest.raises(FileNotFoundError, match="Shared benchmark catalog not found"):
+        DatasetRegistry()
+    with pytest.raises(FileNotFoundError, match="Shared benchmark suites not found"):
+        parity_mod.load_benchmark_suite_names("smoke")
+
+
+def test_benchmark_env_overrides_use_explicit_paths(tmp_path: Path, monkeypatch):
+    catalog_dir = tmp_path / "catalog"
+    suites_dir = tmp_path / "suites" / "topograph"
+    _write_yaml(
+        catalog_dir / "toy_moons.yaml",
+        {
+            "name": "toy_moons",
+            "source": "sklearn",
+            "dataset": "make_moons",
+            "task": "classification",
+            "input_dim": 2,
+            "num_classes": 2,
+            "n_samples": 12,
+        },
+    )
+    _write_yaml(
+        suites_dir / "toy.yaml",
+        {"benchmarks": ["toy_moons"]},
+    )
+    monkeypatch.setenv("TOPOGRAPH_CATALOG_DIR", str(catalog_dir))
+    monkeypatch.setenv("TOPOGRAPH_SUITES_DIR", str(tmp_path / "suites"))
+
+    registry = DatasetRegistry()
+    names = [meta.name for meta in registry.list()]
+    suite_names = parity_mod.load_benchmark_suite_names("toy")
+
+    assert names == ["toy_moons"]
+    assert suite_names == ["toy_moons"]
+
+
 def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
     empty_run = tmp_path / "empty-run"
     empty_run.mkdir()
@@ -122,8 +165,11 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
                 "cache_reuse_rate": 0.25,
                 "cache_reused_count": 2,
                 "cache_trained_count": 6,
+                "data_cache_hits": 3,
+                "data_cache_misses": 1,
                 "requested_parallel_workers": 4,
                 "resolved_parallel_workers_max": 2,
+                "worker_clamp_reason_counts": {"memory": 1},
             },
         )
         store.save_benchmark_results(
@@ -162,6 +208,51 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
                     "failed_count": 0,
                     "requested_worker_count": 4,
                     "resolved_worker_count": 2,
+                    "data_cache_hits": 3,
+                    "data_cache_misses": 1,
+                    "worker_clamp_reason": "memory",
+                }
+            ],
+        )
+        store.save_benchmark_results(
+            "current",
+            1,
+            [
+                {
+                    "benchmark_name": "iris",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": 0.62,
+                    "quality": 0.62,
+                    "parameter_count": 48,
+                    "train_seconds": 0.2,
+                    "architecture_summary": "2L/2C",
+                    "genome_id": "g2",
+                    "genome_idx": 0,
+                    "status": "ok",
+                    "failure_reason": None,
+                }
+            ],
+        )
+        store.save_benchmark_timings(
+            "current",
+            1,
+            [
+                {
+                    "benchmark_order": 0,
+                    "benchmark_name": "iris",
+                    "task": "classification",
+                    "data_load_seconds": 0.05,
+                    "evaluation_seconds": 0.25,
+                    "total_seconds": 0.3,
+                    "trained_count": 1,
+                    "reused_count": 0,
+                    "failed_count": 0,
+                    "requested_worker_count": 4,
+                    "resolved_worker_count": 1,
+                    "data_cache_hits": 0,
+                    "data_cache_misses": 1,
+                    "worker_clamp_reason": "tasks",
                 }
             ],
         )
@@ -171,6 +262,9 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
     assert "## Benchmark Fitness Extremes" in report
     assert "Parallel Workers" in report
     assert "Cache Reuse Rate" in report
+    assert "Data Cache" in report
+    assert "## Sampled Benchmark Order" in report
+    assert "## Worst Benchmark Trend" in report
 
 
 def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: Path):
@@ -308,6 +402,29 @@ def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: P
                     "failed_count": 0,
                     "requested_worker_count": 4,
                     "resolved_worker_count": 2,
+                    "data_cache_hits": 1,
+                    "data_cache_misses": 0,
+                    "worker_clamp_reason": "memory",
+                }
+            ],
+        )
+        store.save_benchmark_results(
+            "current",
+            0,
+            [
+                {
+                    "benchmark_name": "a",
+                    "metric_name": "loss",
+                    "metric_direction": "min",
+                    "metric_value": 0.5,
+                    "quality": 0.5,
+                    "parameter_count": 12,
+                    "train_seconds": 0.1,
+                    "architecture_summary": "1L/1C",
+                    "genome_id": "g0",
+                    "genome_idx": 0,
+                    "status": "ok",
+                    "failure_reason": None,
                 }
             ],
         )
@@ -340,3 +457,6 @@ def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: P
     assert budget["resolved_parallel_workers_max"] == 2
     assert budget["evals_per_second"] == 2.0
     assert budget["benchmark_elites"] == 1
+    assert budget["data_cache_hits"] == 1
+    assert budget["sampled_benchmark_order_by_generation"] == [{"generation": 0, "benchmarks": ["a"]}]
+    assert budget["worker_clamp_reason_counts"] == {"memory": 1}

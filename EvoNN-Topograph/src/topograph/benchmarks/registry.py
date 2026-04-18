@@ -63,14 +63,30 @@ def _shared_catalog_dir() -> Path:
     return root if root.name == "catalog" else root / "catalog"
 
 
+def _has_local_catalog() -> bool:
+    return any(_LOCAL_CATALOG_DIR.glob("*.yaml"))
+
+
 def _resolve_catalog_dir() -> Path:
     explicit = os.environ.get(_CATALOG_ENV_VAR)
     if explicit:
-        return Path(explicit).expanduser()
+        path = Path(explicit).expanduser()
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Topograph catalog override not found: {path}. "
+                f"Set {_CATALOG_ENV_VAR} to a valid catalog directory."
+            )
+        return path
     shared = _shared_catalog_dir()
     if shared.exists():
         return shared
-    return _LOCAL_CATALOG_DIR
+    if _has_local_catalog():
+        return _LOCAL_CATALOG_DIR
+    raise FileNotFoundError(
+        f"Shared benchmark catalog not found at {shared}. "
+        f"Set {_SHARED_ROOT_ENV_VAR} to the shared-benchmarks root or {_CATALOG_ENV_VAR} "
+        f"to a catalog directory."
+    )
 
 
 class DatasetRegistry:
@@ -82,8 +98,6 @@ class DatasetRegistry:
         self._load_catalog()
 
     def _load_catalog(self) -> None:
-        if not self._catalog_dir.exists():
-            return
         for path in sorted(self._catalog_dir.glob("*.yaml")):
             with open(path) as f:
                 data = yaml.safe_load(f)

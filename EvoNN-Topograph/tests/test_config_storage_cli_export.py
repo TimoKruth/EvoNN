@@ -18,6 +18,11 @@ from topograph.export import symbiosis as sym
 from topograph.export import report as report_mod
 from topograph.genome.codec import genome_to_dict
 from topograph.genome.genome import Genome, InnovationCounter
+from topograph.perf import (
+    PerformanceRegressionError,
+    assert_performance_guardrails,
+    performance_summary,
+)
 from topograph.pipeline import coordinator as coordinator_mod
 from topograph.pipeline.evaluate import BenchmarkDataCache, EvaluationMemo
 from topograph.pipeline.evaluate import GenerationState
@@ -123,6 +128,9 @@ def test_run_store_roundtrip_and_benchmark_best_selection(tmp_path: Path):
                     "failed_count": 0,
                     "requested_worker_count": 4,
                     "resolved_worker_count": 2,
+                    "data_cache_hits": 1,
+                    "data_cache_misses": 0,
+                    "worker_clamp_reason": "memory",
                 }
             ],
         )
@@ -143,6 +151,8 @@ def test_run_store_roundtrip_and_benchmark_best_selection(tmp_path: Path):
     assert best[0]["metric_value"] == 0.9
     assert best[0]["genome_id"] == "g1"
     assert timings[0]["resolved_worker_count"] == 2
+    assert timings[0]["data_cache_hits"] == 1
+    assert timings[0]["worker_clamp_reason"] == "memory"
 
 
 def test_resolve_benchmark_pool_names_supports_suite_and_deduplicates():
@@ -411,6 +421,11 @@ def test_cli_evolve_uses_coordinator(monkeypatch, tmp_path: Path):
         called["benchmark_spec"] = benchmark_spec.name
         called["run_dir"] = run_dir
         called["resume"] = resume
+        called["parallel_workers"] = config.training.parallel_workers
+        called["cpu_limit"] = config.training.parallel_cpu_fraction_limit
+        called["memory_limit"] = config.training.parallel_memory_fraction_limit
+        called["reserved_mem"] = config.training.parallel_reserved_system_memory_bytes
+        called["thread_limit"] = config.training.parallel_worker_thread_limit
         return GenerationState(generation=0, population=[])
 
     monkeypatch.setattr("topograph.pipeline.coordinator.run_evolution", fake_run_evolution)
@@ -419,10 +434,34 @@ def test_cli_evolve_uses_coordinator(monkeypatch, tmp_path: Path):
         lambda name: SimpleNamespace(name=name, task="classification", input_dim=2, num_classes=2),
     )
 
-    result = runner.invoke(app, ["evolve", "-c", str(config_path), "--run-dir", str(tmp_path / "run")])
+    result = runner.invoke(
+        app,
+        [
+            "evolve",
+            "-c",
+            str(config_path),
+            "--run-dir",
+            str(tmp_path / "run"),
+            "--parallel-workers",
+            "4",
+            "--parallel-cpu-fraction-limit",
+            "0.25",
+            "--parallel-memory-fraction-limit",
+            "0.4",
+            "--parallel-reserved-system-memory-bytes",
+            "123456",
+            "--parallel-worker-thread-limit",
+            "2",
+        ],
+    )
     assert result.exit_code == 0
     assert called["benchmark_spec"] == "moons"
     assert called["resume"] is False
+    assert called["parallel_workers"] == 4
+    assert called["cpu_limit"] == 0.25
+    assert called["memory_limit"] == 0.4
+    assert called["reserved_mem"] == 123456
+    assert called["thread_limit"] == 2
 
 
 def test_run_evolution_resumes_from_saved_snapshot(tmp_path: Path, monkeypatch):
@@ -519,9 +558,47 @@ def test_benchmark_data_cache_reuses_loaded_arrays():
 
     first = cache.get(spec, seed=42, validation_split=0.2)
     second = cache.get(spec, seed=42, validation_split=0.2)
+    stats = cache.consume_stats("demo")
 
     assert calls["count"] == 1
     assert first[0] is second[0]
+    assert stats == (1, 1)
+
+
+def test_performance_guardrails_use_budget_metadata(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run("current", {"seed": 42})
+        store.save_budget_metadata(
+            "current",
+            {
+                "wall_clock_seconds": 8.5,
+                "evaluation_count": 12,
+                "cache_reuse_rate": 0.4,
+                "resolved_parallel_workers_max": 3,
+                "benchmark_total_seconds": 7.2,
+                "worker_clamp_reason_counts": {"memory": 2, "requested": 1},
+                "data_cache_hits": 5,
+                "data_cache_misses": 2,
+            },
+        )
+
+    summary = performance_summary(run_dir)
+    assert summary["wall_clock_seconds"] == 8.5
+    assert summary["worker_clamp_reason_counts"]["memory"] == 2
+
+    checked = assert_performance_guardrails(
+        run_dir,
+        max_wall_clock_seconds=9.0,
+        max_resolved_workers=3,
+        min_cache_reuse_rate=0.25,
+        max_benchmark_total_seconds=8.0,
+    )
+    assert checked["data_cache_hits"] == 5
+
+    with pytest.raises(PerformanceRegressionError, match="resolved_parallel_workers_max"):
+        assert_performance_guardrails(run_dir, max_resolved_workers=2)
 
 
 def test_evaluation_memo_reuses_exact_result_without_training(monkeypatch):

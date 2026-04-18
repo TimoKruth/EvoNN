@@ -193,6 +193,7 @@ class ParallelEvaluator:
         self.runtime_limits = runtime_limits or ParallelRuntimeLimits()
         self.last_requested_workers = self.requested_workers
         self.last_resolved_workers = _SEQUENTIAL_WORKERS
+        self.last_clamp_reason = "sequential"
 
     def enabled(self) -> bool:
         return self.max_workers > _SEQUENTIAL_WORKERS
@@ -239,15 +240,28 @@ class ParallelEvaluator:
             int(math.floor((os.cpu_count() or 2) * self.runtime_limits.cpu_fraction_limit)),
         )
         memory_budget = self._memory_limited_workers(batch_context, tasks)
-        return max(
+        candidates = {
+            "requested": self.max_workers,
+            "tasks": max(1, len(tasks)),
+            "cpu": cpu_budget,
+            "memory": memory_budget,
+        }
+        resolved = max(
             1,
             min(
-                self.max_workers,
-                len(tasks),
-                cpu_budget,
-                memory_budget,
+                candidates["requested"],
+                candidates["tasks"],
+                candidates["cpu"],
+                candidates["memory"],
             ),
         )
+        reasons = [
+            name
+            for name, value in candidates.items()
+            if name != "requested" and value == resolved and resolved < candidates["requested"]
+        ]
+        self.last_clamp_reason = "+".join(reasons) if reasons else "requested"
+        return resolved
 
     def evaluate_genomes(
         self,
@@ -261,6 +275,8 @@ class ParallelEvaluator:
         worker_count = self._resolve_worker_count(batch_context, tasks)
         self.last_resolved_workers = worker_count
         if worker_count <= _SEQUENTIAL_WORKERS or len(tasks) == 1:
+            if len(tasks) == 1 and self.last_clamp_reason == "requested":
+                self.last_clamp_reason = "tasks"
             return [
                 _run_parallel_genome_task_with_context(task, batch_context)
                 for task in tasks

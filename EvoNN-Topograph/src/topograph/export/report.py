@@ -40,8 +40,11 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
 
     budget = store.load_budget_metadata(run_id) or {}
     benchmark_timings = store.load_benchmark_timings(run_id)
+    benchmark_results = store.load_benchmark_results(run_id)
     timing_summary = _summarize_benchmark_timings(benchmark_timings)
     benchmark_extremes = _benchmark_quality_extremes(store.load_best_benchmark_results(run_id))
+    sampled_orders = _sampled_benchmark_orders(benchmark_timings)
+    worst_trend = _worst_benchmark_trend(benchmark_results)
 
     lines: list[str] = []
 
@@ -67,11 +70,21 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
             f"({budget.get('cache_reused_count', 0)} reused / "
             f"{(budget.get('cache_reused_count', 0) + budget.get('cache_trained_count', 0))} total)"
         )
+    if budget.get("data_cache_hits") is not None:
+        lines.append(
+            f"- **Data Cache:** {budget.get('data_cache_hits', 0)} hits / "
+            f"{budget.get('data_cache_misses', 0)} misses"
+        )
     if budget.get("resolved_parallel_workers_max") is not None:
         lines.append(
             f"- **Parallel Workers:** requested {budget.get('requested_parallel_workers', 1)}, "
             f"max resolved {budget['resolved_parallel_workers_max']}"
         )
+    if budget.get("worker_clamp_reason_counts"):
+        clamp_counts = ", ".join(
+            f"{name}={count}" for name, count in budget["worker_clamp_reason_counts"].items()
+        )
+        lines.append(f"- **Worker Clamp Reasons:** {clamp_counts}")
     lines.append("")
 
     # --- Best Genome ---
@@ -170,14 +183,21 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
 
     if timing_summary["rows"]:
         lines.append("## Benchmark Timing\n")
-        lines.append("| Benchmark | Total | Load | Eval | Reused | Trained | Failures | Workers |")
-        lines.append("|-----------|-------|------|------|--------|---------|----------|---------|")
+        lines.append(
+            "| Benchmark | Total | Load | Eval | Reused | Trained | Failures | "
+            "Data Cache | Workers | Clamp |"
+        )
+        lines.append(
+            "|-----------|-------|------|------|--------|---------|----------|"
+            "------------|---------|-------|"
+        )
         for row in timing_summary["slowest"][:5]:
             lines.append(
                 f"| {row['benchmark_name']} | {row['total_seconds']:.2f}s | "
                 f"{row['data_load_seconds']:.2f}s | {row['evaluation_seconds']:.2f}s | "
                 f"{row['reused_count']} | {row['trained_count']} | {row['failed_count']} | "
-                f"{row['resolved_worker_count']} |"
+                f"{row['data_cache_hits']}/{row['data_cache_misses']} | "
+                f"{row['resolved_worker_count']} | {row['worker_clamp_reason']} |"
             )
         lines.append("")
         lines.append("### Fastest Benchmarks\n")
@@ -211,6 +231,27 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
                     f"{row['metric_name']} | {value} |"
                 )
             lines.append("")
+
+    if sampled_orders:
+        lines.append("## Sampled Benchmark Order\n")
+        lines.append("| Generation | Benchmarks |")
+        lines.append("|------------|------------|")
+        for row in sampled_orders:
+            lines.append(f"| {row['generation']} | {', '.join(row['benchmarks'])} |")
+        lines.append("")
+
+    if worst_trend:
+        lines.append("## Worst Benchmark Trend\n")
+        lines.append("| Generation | Benchmark | Quality | Metric | Value |")
+        lines.append("|------------|-----------|---------|--------|-------|")
+        for row in worst_trend:
+            metric_value = row["metric_value"]
+            value = "N/A" if metric_value is None else f"{float(metric_value):.6f}"
+            lines.append(
+                f"| {row['generation']} | {row['benchmark_name']} | "
+                f"{row['quality']:.6f} | {row['metric_name']} | {value} |"
+            )
+        lines.append("")
 
     store.close()
 
@@ -525,7 +566,10 @@ def _summarize_benchmark_timings(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "trained_count": 0,
                 "reused_count": 0,
                 "failed_count": 0,
+                "data_cache_hits": 0,
+                "data_cache_misses": 0,
                 "resolved_worker_count": 0,
+                "worker_clamp_reasons": Counter(),
             }
             by_name[row["benchmark_name"]] = current
         current["data_load_seconds"] += float(row["data_load_seconds"])
@@ -534,10 +578,18 @@ def _summarize_benchmark_timings(rows: list[dict[str, Any]]) -> dict[str, Any]:
         current["trained_count"] += int(row["trained_count"])
         current["reused_count"] += int(row["reused_count"])
         current["failed_count"] += int(row["failed_count"])
+        current["data_cache_hits"] += int(row.get("data_cache_hits", 0))
+        current["data_cache_misses"] += int(row.get("data_cache_misses", 0))
         current["resolved_worker_count"] = max(
             int(current["resolved_worker_count"]),
             int(row["resolved_worker_count"]),
         )
+        current["worker_clamp_reasons"][str(row.get("worker_clamp_reason", "sequential"))] += 1
+
+    for current in by_name.values():
+        clamp_reason = current["worker_clamp_reasons"].most_common(1)
+        current["worker_clamp_reason"] = clamp_reason[0][0] if clamp_reason else "sequential"
+        del current["worker_clamp_reasons"]
 
     summarized = sorted(by_name.values(), key=lambda item: item["total_seconds"])
     return {
@@ -557,3 +609,36 @@ def _benchmark_quality_extremes(rows: list[dict[str, Any]]) -> dict[str, list[di
         "best": ordered[:5],
         "worst": list(reversed(ordered[-5:])),
     }
+
+
+def _sampled_benchmark_orders(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_generation: dict[int, list[tuple[int, str]]] = defaultdict(list)
+    for row in rows:
+        by_generation[int(row["generation"])].append(
+            (int(row["benchmark_order"]), str(row["benchmark_name"]))
+        )
+    return [
+        {
+            "generation": generation,
+            "benchmarks": [name for _, name in sorted(entries)],
+        }
+        for generation, entries in sorted(by_generation.items())
+    ]
+
+
+def _worst_benchmark_trend(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_generation: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_generation[int(row["generation"])].append(row)
+
+    trend: list[dict[str, Any]] = []
+    for generation, generation_rows in sorted(by_generation.items()):
+        ok_rows = [
+            row for row in generation_rows
+            if row["status"] == "ok" and row.get("quality") is not None
+        ]
+        if not ok_rows:
+            continue
+        worst = min(ok_rows, key=lambda row: float(row["quality"]))
+        trend.append(worst)
+    return trend

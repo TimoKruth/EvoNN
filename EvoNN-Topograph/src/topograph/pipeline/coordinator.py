@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 import math
 import os
 import random
@@ -381,6 +382,34 @@ def run_evolution(
                 completed=True,
             )
         return state
+    except KeyboardInterrupt:
+        elapsed = elapsed_before_resume + (time.time() - run_start)
+        if store:
+            _save_resume_snapshot(
+                store=store,
+                run_id=run_id,
+                next_generation=state.generation,
+                state=state,
+                innovation_counter=innovation_counter,
+                fitness_history=fitness_history,
+                scheduler=scheduler,
+                novelty_archive=novelty_archive,
+                map_elites_archive=map_elites_archive,
+                benchmark_elite_archive=benchmark_elite_archive,
+                pending_outcomes=pending_outcomes,
+                pool_state=pool_state,
+                elapsed_seconds=elapsed,
+                total_evaluations=state.total_evaluations,
+                novelty_score_sum=novelty_score_sum,
+                novelty_score_count=novelty_score_count,
+                novelty_score_max=novelty_score_max,
+                map_elites_insertions=map_elites_insertions,
+                completed=False,
+            )
+            monitor.on_info(
+                f"Interrupted at generation {state.generation}; resume snapshot saved."
+            )
+        raise
     finally:
         if parallel_eval is not None:
             parallel_eval.close()
@@ -677,10 +706,13 @@ def _save_budget_metadata(
     parallel_eval: ParallelEvaluator | None = None,
 ) -> None:
     timing_rows = store.load_benchmark_timings(run_id)
+    benchmark_results = store.load_benchmark_results(run_id)
     total_timing_seconds = sum(float(row["total_seconds"]) for row in timing_rows)
     reused_count = sum(int(row["reused_count"]) for row in timing_rows)
     trained_count = sum(int(row["trained_count"]) for row in timing_rows)
     failed_count = sum(int(row["failed_count"]) for row in timing_rows)
+    data_cache_hits = sum(int(row.get("data_cache_hits", 0)) for row in timing_rows)
+    data_cache_misses = sum(int(row.get("data_cache_misses", 0)) for row in timing_rows)
     max_resolved_workers = max(
         (int(row["resolved_worker_count"]) for row in timing_rows),
         default=1,
@@ -715,6 +747,8 @@ def _save_budget_metadata(
         "cache_reused_count": reused_count,
         "cache_trained_count": trained_count,
         "cache_failed_count": failed_count,
+        "data_cache_hits": data_cache_hits,
+        "data_cache_misses": data_cache_misses,
         "cache_reuse_rate": (
             round(reused_count / max(reused_count + trained_count, 1), 6)
             if (reused_count + trained_count) > 0
@@ -731,9 +765,69 @@ def _save_budget_metadata(
             parallel_eval.requested_workers if parallel_eval is not None else 1
         ),
         "resolved_parallel_workers_max": max_resolved_workers,
+        "worker_clamp_reason_counts": _worker_clamp_reason_counts(timing_rows),
+        "sampled_benchmark_order_by_generation": _sampled_benchmark_order_by_generation(
+            timing_rows
+        ),
+        "worst_benchmark_trend": _worst_benchmark_trend(benchmark_results),
         "operator_stats": scheduler.stats_summary(),
     }
     store.save_budget_metadata(run_id, metadata)
+
+
+def _worker_clamp_reason_counts(timing_rows: list[dict[str, object]]) -> dict[str, int]:
+    counts = Counter(
+        str(row.get("worker_clamp_reason", "sequential"))
+        for row in timing_rows
+    )
+    return dict(sorted(counts.items()))
+
+
+def _sampled_benchmark_order_by_generation(
+    timing_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    by_generation: dict[int, list[tuple[int, str]]] = {}
+    for row in timing_rows:
+        generation = int(row["generation"])
+        by_generation.setdefault(generation, []).append(
+            (int(row["benchmark_order"]), str(row["benchmark_name"]))
+        )
+    return [
+        {
+            "generation": generation,
+            "benchmarks": [name for _, name in sorted(entries)],
+        }
+        for generation, entries in sorted(by_generation.items())
+    ]
+
+
+def _worst_benchmark_trend(
+    benchmark_results: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    by_generation: dict[int, list[dict[str, object]]] = {}
+    for row in benchmark_results:
+        generation = int(row["generation"])
+        by_generation.setdefault(generation, []).append(row)
+
+    trend: list[dict[str, object]] = []
+    for generation, rows in sorted(by_generation.items()):
+        ok_rows = [
+            row for row in rows
+            if row.get("status") == "ok" and row.get("quality") is not None
+        ]
+        if not ok_rows:
+            continue
+        worst = min(ok_rows, key=lambda row: float(row["quality"]))
+        trend.append(
+            {
+                "generation": generation,
+                "benchmark_name": str(worst["benchmark_name"]),
+                "quality": float(worst["quality"]),
+                "metric_name": str(worst["metric_name"]),
+                "metric_value": worst["metric_value"],
+            }
+        )
+    return trend
 
 
 def _archive_fill_ratio(archive: MAPElitesArchive | None) -> float | None:

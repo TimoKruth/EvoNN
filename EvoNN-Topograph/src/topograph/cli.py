@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from topograph.benchmarks.parity import get_benchmark, list_benchmarks
-from topograph.config import load_config
+from topograph.config import RunConfig, load_config
 
 console = Console()
 app = typer.Typer(name="topograph", help="Topology-first evolutionary NAS")
@@ -58,9 +58,40 @@ def evolve(
     config: str = typer.Option(..., "--config", "-c", help="Path to config YAML"),
     run_dir: Optional[str] = typer.Option(None, "--run-dir", help="Run output directory"),
     resume: bool = typer.Option(False, "--resume", help="Resume from checkpoint"),
+    parallel_workers: int | None = typer.Option(
+        None, "--parallel-workers", help="Override training.parallel_workers",
+    ),
+    parallel_cpu_fraction_limit: float | None = typer.Option(
+        None,
+        "--parallel-cpu-fraction-limit",
+        help="Override training.parallel_cpu_fraction_limit",
+    ),
+    parallel_memory_fraction_limit: float | None = typer.Option(
+        None,
+        "--parallel-memory-fraction-limit",
+        help="Override training.parallel_memory_fraction_limit",
+    ),
+    parallel_reserved_system_memory_bytes: int | None = typer.Option(
+        None,
+        "--parallel-reserved-system-memory-bytes",
+        help="Override training.parallel_reserved_system_memory_bytes",
+    ),
+    parallel_worker_thread_limit: int | None = typer.Option(
+        None,
+        "--parallel-worker-thread-limit",
+        help="Override training.parallel_worker_thread_limit",
+    ),
 ) -> None:
     """Run evolution."""
     cfg = load_config(config)
+    cfg = _apply_evolve_overrides(
+        cfg,
+        parallel_workers=parallel_workers,
+        parallel_cpu_fraction_limit=parallel_cpu_fraction_limit,
+        parallel_memory_fraction_limit=parallel_memory_fraction_limit,
+        parallel_reserved_system_memory_bytes=parallel_reserved_system_memory_bytes,
+        parallel_worker_thread_limit=parallel_worker_thread_limit,
+    )
 
     if run_dir is None:
         run_dir = str(Path("runs") / f"evolve-{cfg.seed}-{uuid.uuid4().hex[:6]}")
@@ -323,3 +354,33 @@ def _resolve_run_id(store) -> str:
     if row:
         return row[0]
     return "current"
+
+
+def _apply_evolve_overrides(
+    cfg: RunConfig,
+    *,
+    parallel_workers: int | None,
+    parallel_cpu_fraction_limit: float | None,
+    parallel_memory_fraction_limit: float | None,
+    parallel_reserved_system_memory_bytes: int | None,
+    parallel_worker_thread_limit: int | None,
+) -> RunConfig:
+    training_updates: dict[str, int | float] = {}
+    if parallel_workers is not None:
+        training_updates["parallel_workers"] = parallel_workers
+    if parallel_cpu_fraction_limit is not None:
+        training_updates["parallel_cpu_fraction_limit"] = parallel_cpu_fraction_limit
+    if parallel_memory_fraction_limit is not None:
+        training_updates["parallel_memory_fraction_limit"] = parallel_memory_fraction_limit
+    if parallel_reserved_system_memory_bytes is not None:
+        training_updates["parallel_reserved_system_memory_bytes"] = (
+            parallel_reserved_system_memory_bytes
+        )
+    if parallel_worker_thread_limit is not None:
+        training_updates["parallel_worker_thread_limit"] = parallel_worker_thread_limit
+    if not training_updates:
+        return cfg
+
+    payload = cfg.model_dump(mode="json")
+    payload.setdefault("training", {}).update(training_updates)
+    return RunConfig.model_validate(payload)

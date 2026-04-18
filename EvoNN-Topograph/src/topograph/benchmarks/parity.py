@@ -85,24 +85,56 @@ def _shared_root_dir() -> Path:
     return _DEFAULT_SHARED_ROOT
 
 
+def _has_local_catalog() -> bool:
+    return any(_LOCAL_CATALOG_DIR.glob("*.yaml"))
+
+
+def _has_local_suites() -> bool:
+    return any(_LOCAL_SUITES_DIR.rglob("*.yaml"))
+
+
 def _resolve_catalog_dir() -> Path:
     explicit = os.environ.get(_CATALOG_ENV_VAR)
     if explicit:
-        return Path(explicit).expanduser()
+        path = Path(explicit).expanduser()
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Topograph catalog override not found: {path}. "
+                f"Set {_CATALOG_ENV_VAR} to a valid catalog directory."
+            )
+        return path
     shared = _shared_root_dir() / "catalog"
     if shared.exists():
         return shared
-    return _LOCAL_CATALOG_DIR
+    if _has_local_catalog():
+        return _LOCAL_CATALOG_DIR
+    raise FileNotFoundError(
+        f"Shared benchmark catalog not found at {shared}. "
+        f"Set {_SHARED_ROOT_ENV_VAR} to the shared-benchmarks root or {_CATALOG_ENV_VAR} "
+        f"to a catalog directory."
+    )
 
 
 def _resolve_suites_dir() -> Path:
     explicit = os.environ.get(_SUITES_ENV_VAR)
     if explicit:
-        return Path(explicit).expanduser()
+        path = Path(explicit).expanduser()
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Topograph suite override not found: {path}. "
+                f"Set {_SUITES_ENV_VAR} to a valid suites directory."
+            )
+        return path
     shared = _shared_root_dir() / "suites"
     if shared.exists():
         return shared
-    return _LOCAL_SUITES_DIR
+    if _has_local_suites():
+        return _LOCAL_SUITES_DIR
+    raise FileNotFoundError(
+        f"Shared benchmark suites not found at {shared}. "
+        f"Set {_SHARED_ROOT_ENV_VAR} to the shared-benchmarks root or {_SUITES_ENV_VAR} "
+        f"to a suites directory."
+    )
 
 
 def get_canonical_id(native_name: str) -> str:
@@ -258,8 +290,6 @@ def get_benchmark(name: str) -> BenchmarkSpec:
 def list_benchmarks() -> list[str]:
     """List all benchmark names available in the catalog."""
     catalog_dir = _resolve_catalog_dir()
-    if not catalog_dir.exists():
-        return []
     names: list[str] = []
     for p in sorted(catalog_dir.glob("*.yaml")):
         with open(p) as f:
