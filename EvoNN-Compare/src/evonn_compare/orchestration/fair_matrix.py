@@ -39,6 +39,7 @@ SYSTEM_ORDER = ("prism", "topograph", "stratograph", "contenders")
 class MatrixPaths:
     workspace: Path
     packs_dir: Path
+    run_roots_dir: Path
     prism_configs_dir: Path
     topograph_configs_dir: Path
     stratograph_configs_dir: Path
@@ -90,6 +91,7 @@ def prepare_fair_matrix_cases(
     paths = MatrixPaths(
         workspace=workspace,
         packs_dir=workspace / "packs",
+        run_roots_dir=workspace / "runs",
         prism_configs_dir=workspace / "configs" / "prism",
         topograph_configs_dir=workspace / "configs" / "topograph",
         stratograph_configs_dir=workspace / "configs" / "stratograph",
@@ -101,6 +103,7 @@ def prepare_fair_matrix_cases(
     for directory in (
         paths.workspace,
         paths.packs_dir,
+        paths.run_roots_dir,
         paths.prism_configs_dir,
         paths.topograph_configs_dir,
         paths.stratograph_configs_dir,
@@ -132,10 +135,10 @@ def prepare_fair_matrix_cases(
                 topograph_config_path=paths.topograph_configs_dir / f"{case_name}.yaml",
                 stratograph_config_path=paths.stratograph_configs_dir / f"{case_name}.yaml",
                 contender_config_path=paths.contender_configs_dir / f"{case_name}.yaml",
-                prism_run_dir=prism_root.resolve() / "runs" / case_name,
-                topograph_run_dir=topograph_root.resolve() / "runs" / case_name,
-                stratograph_run_dir=stratograph_root.resolve() / "runs" / case_name,
-                contender_run_dir=contenders_root.resolve() / "runs" / case_name,
+                prism_run_dir=paths.run_roots_dir / "prism" / case_name,
+                topograph_run_dir=paths.run_roots_dir / "topograph" / case_name,
+                stratograph_run_dir=paths.run_roots_dir / "stratograph" / case_name,
+                contender_run_dir=paths.run_roots_dir / "contenders" / case_name,
                 report_dir=report_dir,
                 summary_output_path=report_dir / "four_way_summary.md",
                 log_dir=paths.logs_dir / case_name,
