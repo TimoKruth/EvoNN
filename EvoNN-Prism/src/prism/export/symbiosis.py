@@ -184,7 +184,7 @@ def export_symbiosis_contract(
             evaluation_count=total_evaluations,
             budget_policy_name="prototype_equal_budget",
             benchmark_entries=benchmark_entries,
-            data_signature=_compute_dataset_hash(benchmark_names),
+            data_signature=_benchmark_signature(pack_name, benchmark_entries),
         ),
     }
 

@@ -142,7 +142,7 @@ def export_symbiosis_contract(
             evaluation_count=budget_meta.get("evaluation_count", len(result_records)),
             budget_policy_name="prototype_equal_budget",
             benchmark_entries=manifest_benchmarks,
-            data_signature=_compute_dataset_hash(dataset_manifest),
+            data_signature=_benchmark_signature(pack.name, manifest_benchmarks),
         ),
     }
     manifest_path = output_dir / "manifest.json"
@@ -154,11 +154,6 @@ def export_symbiosis_contract(
 
 def _write_summary_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
-def _compute_dataset_hash(dataset_manifest: list[dict[str, Any]]) -> str:
-    payload = json.dumps(dataset_manifest, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def _fairness_manifest(
