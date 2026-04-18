@@ -164,6 +164,7 @@ class HierarchicalGenome(BaseModel):
             edges=[
                 CellEdgeGene(source="input", target="mix_0"),
                 CellEdgeGene(source="mix_0", target="gate_0"),
+                CellEdgeGene(source="mix_0", target="res_0"),
                 CellEdgeGene(source="gate_0", target="res_0"),
                 CellEdgeGene(source="res_0", target="output"),
             ],
@@ -176,11 +177,15 @@ class HierarchicalGenome(BaseModel):
             macro_nodes=[
                 MacroNodeGene(node_id="macro_0", cell_id=cell_id, input_width=width, output_width=width, role="stem"),
                 MacroNodeGene(node_id="macro_1", cell_id=cell_id, input_width=width, output_width=width, role="body"),
+                MacroNodeGene(node_id="macro_2", cell_id=cell_id, input_width=width, output_width=width, role="body"),
             ],
             macro_edges=[
                 MacroEdgeGene(source="input", target="macro_0"),
                 MacroEdgeGene(source="macro_0", target="macro_1"),
+                MacroEdgeGene(source="macro_0", target="macro_2"),
+                MacroEdgeGene(source="macro_1", target="macro_2"),
                 MacroEdgeGene(source="macro_1", target="output"),
+                MacroEdgeGene(source="macro_2", target="output"),
             ],
             cell_library={cell_id: cell},
         )

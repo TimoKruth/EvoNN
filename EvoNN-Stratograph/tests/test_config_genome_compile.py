@@ -26,6 +26,7 @@ def test_seed_genome_roundtrip() -> None:
     assert clone.genome_id == genome.genome_id
     assert clone.macro_depth >= 1
     assert clone.average_cell_depth >= 1.0
+    assert len(clone.macro_edges) > len(clone.macro_nodes)
 
 
 def test_compile_classification_shape() -> None:
@@ -41,6 +42,7 @@ def test_compile_classification_shape() -> None:
     output = compiled.forward(np.ones((3, spec.model_input_dim), dtype=np.float32))
     assert output.shape == (3, spec.model_output_dim)
     assert compiled.parameter_count() > 0
+    assert "branch_factor=" in compiled.architecture_summary()
 
 
 def test_compile_lm_shape() -> None:
@@ -56,6 +58,31 @@ def test_compile_lm_shape() -> None:
     tokens = np.arange(2 * spec.model_input_dim, dtype=np.int32).reshape(2, spec.model_input_dim) % spec.model_output_dim
     output = compiled.forward(tokens)
     assert output.shape == (2, spec.model_input_dim, spec.model_output_dim)
+
+
+def test_compile_branching_macro_graph_changes_encoding() -> None:
+    spec = get_benchmark("moons")
+    genome = HierarchicalGenome.create_seed(
+        benchmark_name=spec.name,
+        task=spec.task,
+        input_dim=spec.model_input_dim,
+        output_dim=spec.model_output_dim,
+        seed=42,
+    )
+    chain_genome = genome.model_copy(
+        update={
+            "macro_edges": [
+                edge
+                for edge in genome.macro_edges
+                if (edge.source, edge.target) not in {("macro_0", "macro_2"), ("macro_1", "output")}
+            ]
+        },
+        deep=True,
+    )
+    sample = np.ones((4, spec.model_input_dim), dtype=np.float32)
+    branched = compile_genome(genome).encode(sample)
+    chain = compile_genome(chain_genome).encode(sample)
+    assert not np.allclose(branched, chain)
 
 
 def test_primitive_kind_changes_runtime_output() -> None:

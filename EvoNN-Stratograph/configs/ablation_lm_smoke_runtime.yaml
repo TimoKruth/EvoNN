@@ -1,0 +1,16 @@
+seed: 42
+run_name: hierarchy_ablation_lm_smoke_runtime
+benchmark_pool:
+  name: lm_smoke_runtime
+  benchmarks:
+    - tiny_lm_synthetic
+    - tinystories_lm_smoke
+    - wikitext2_lm_smoke
+training:
+  epochs: 1
+  batch_size: 32
+  learning_rate: 0.001
+evolution:
+  population_size: 4
+  generations: 2
+  architecture_mode: two_level_shared

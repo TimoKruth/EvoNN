@@ -153,6 +153,9 @@ def run_evolution(
                         spec,
                         data=data,
                         inherited_state=inherited_states.get(genome.genome_id),
+                        epochs=config.training.epochs,
+                        batch_size=config.training.batch_size,
+                        learning_rate=config.training.learning_rate,
                     )
                     result = outcome.record
                     trained_states[genome.genome_id] = outcome.training_artifact
@@ -287,13 +290,13 @@ def _make_candidate(
     variant_policy = _variant_policy(architecture_mode)
     base_mode = str(variant_policy["base_mode"])
     motif_bias = bool(variant_policy["motif_bias"])
-    depth = 2 + (candidate_index % 3)
+    depth = 3 + (candidate_index % 3)
     width_choices = [16, 24, 32, 48, 64, 96, 128]
     width = max(8, min(max(input_dim, min(output_dim, 128)), rng.choice(width_choices)))
     shared = base_mode == "two_level_shared" and candidate_index % 2 == 0
     cells: dict[str, CellGene] = {}
     macro_nodes: list[MacroNodeGene] = []
-    macro_edges: list[MacroEdgeGene] = [MacroEdgeGene(source="input", target="macro_0")]
+    macro_edges: list[MacroEdgeGene] = []
 
     for macro_index in range(depth):
         cell_id = "cell_shared" if shared else f"cell_{macro_index}"
@@ -336,6 +339,8 @@ def _make_candidate(
             edges = [CellEdgeGene(source="input", target=node_ids[0])]
             for src, dst in zip(node_ids, node_ids[1:]):
                 edges.append(CellEdgeGene(source=src, target=dst))
+            if len(node_ids) >= 3 and base_mode != "flat_macro":
+                edges.append(CellEdgeGene(source=node_ids[0], target=node_ids[-1]))
             edges.append(CellEdgeGene(source=node_ids[-1], target="output"))
             cells[cell_id] = CellGene(
                 cell_id=cell_id,
@@ -354,9 +359,7 @@ def _make_candidate(
                 role="body" if macro_index else "stem",
             )
         )
-        if macro_index:
-            macro_edges.append(MacroEdgeGene(source=f"macro_{macro_index-1}", target=f"macro_{macro_index}"))
-    macro_edges.append(MacroEdgeGene(source=f"macro_{depth-1}", target="output"))
+    macro_edges = _seed_macro_edges(macro_nodes, rng=rng, shared=shared and base_mode == "two_level_shared")
     return HierarchicalGenome(
         genome_id=f"{benchmark_name}_seed_{seed}_cand_{candidate_index}",
         task=task,
@@ -455,8 +458,10 @@ def _artifact_compatible(genome: HierarchicalGenome, artifact: TrainingArtifact 
         return False
     if artifact.task != genome.task:
         return False
-    if artifact.model_name == "sgd":
-        return int(artifact.payload.get("feature_dim", -1)) > 0
+    if artifact.model_name == "neural_classifier":
+        return int(artifact.payload.get("feature_dim", -1)) > 0 and int(artifact.payload.get("num_classes", -1)) == genome.output_dim
+    if artifact.model_name == "neural_lm_head":
+        return int(artifact.payload.get("feature_dim", -1)) > 0 and int(artifact.payload.get("vocab_size", -1)) == genome.output_dim
     return True
 
 
@@ -645,3 +650,43 @@ def _write_best_genome(
         ),
         encoding="utf-8",
     )
+
+
+def _seed_macro_edges(
+    macro_nodes: list[MacroNodeGene],
+    *,
+    rng: random.Random,
+    shared: bool,
+) -> list[MacroEdgeGene]:
+    if not macro_nodes:
+        return []
+    edges: list[MacroEdgeGene] = [MacroEdgeGene(source="input", target=macro_nodes[0].node_id)]
+    for index, node in enumerate(macro_nodes[1:], start=1):
+        parent = macro_nodes[index - 1]
+        edges.append(MacroEdgeGene(source=parent.node_id, target=node.node_id))
+        if index >= 2 and (shared or rng.random() < 0.7):
+            skip_parent = macro_nodes[max(0, index - 2)]
+            if skip_parent.node_id != parent.node_id:
+                edges.append(MacroEdgeGene(source=skip_parent.node_id, target=node.node_id))
+        if index >= 3 and rng.random() < 0.35:
+            long_parent = macro_nodes[rng.randrange(0, index - 1)]
+            if long_parent.node_id not in {parent.node_id, node.node_id}:
+                edges.append(MacroEdgeGene(source=long_parent.node_id, target=node.node_id))
+
+    sink_sources = {edge.source for edge in edges if edge.target != "output"}
+    for node in macro_nodes:
+        if node.node_id not in sink_sources or rng.random() < 0.25:
+            edges.append(MacroEdgeGene(source=node.node_id, target="output"))
+    return _dedupe_macro_edges(edges)
+
+
+def _dedupe_macro_edges(edges: list[MacroEdgeGene]) -> list[MacroEdgeGene]:
+    seen: set[tuple[str, str]] = set()
+    unique: list[MacroEdgeGene] = []
+    for edge in edges:
+        key = (edge.source, edge.target)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(edge)
+    return unique

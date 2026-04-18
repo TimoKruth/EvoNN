@@ -92,11 +92,15 @@ class CompiledHierarchy:
         )
 
     def architecture_summary(self) -> str:
+        macro_edge_count = sum(1 for edge in self.genome.macro_edges if edge.enabled)
+        macro_branch_factor = macro_edge_count / max(1, len(self.genome.macro_nodes))
         return (
             f"macro_nodes={len(self.genome.macro_nodes)} "
+            f"macro_edges={macro_edge_count} "
             f"cells={len(self.genome.cell_library)} "
             f"macro_depth={self.genome.macro_depth} "
             f"avg_cell_depth={self.genome.average_cell_depth:.1f} "
+            f"branch_factor={macro_branch_factor:.2f} "
             f"reuse_ratio={self.genome.reuse_ratio:.2f}"
         )
 

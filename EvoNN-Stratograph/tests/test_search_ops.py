@@ -22,6 +22,7 @@ def test_mutate_genome_keeps_valid_hierarchy() -> None:
     assert mutated.genome_id == "mutant"
     assert mutated.macro_depth >= 1
     assert len(mutated.cell_library) >= 1
+    assert len(mutated.macro_edges) >= len(mutated.macro_nodes)
 
 
 def test_mutate_genome_without_clone_keeps_valid_hierarchy() -> None:
@@ -40,6 +41,8 @@ def test_crossover_genome_keeps_valid_hierarchy() -> None:
     assert child.input_dim == left.input_dim
     assert child.output_dim == left.output_dim
     assert len(child.macro_nodes) >= 1
+    assert any(edge.target == "output" for edge in child.macro_edges)
+    assert any(edge.source == "input" for edge in child.macro_edges)
 
 
 def test_novelty_descriptor_and_score() -> None:
