@@ -46,6 +46,7 @@ def build_archives(
         "elite": build_elite_archive(scored, elite_per_benchmark),
         "pareto": build_pareto_archive(scored),
         "niche": build_niche_archive(scored),
+        "specialist": build_specialist_archive(scored),
     }
 
 
@@ -113,6 +114,20 @@ def build_niche_archive(
             archive[ind.family] = ind
 
     return archive
+
+
+def build_specialist_archive(
+    summaries: list[IndividualSummary],
+) -> dict[str, dict[str, IndividualSummary]]:
+    """Best individual per benchmark per family."""
+    summaries = _scored(_dedupe(summaries))
+    archive: dict[str, dict[str, IndividualSummary]] = defaultdict(dict)
+    for ind in summaries:
+        for benchmark_id, quality in ind.qualities.items():
+            current = archive[benchmark_id].get(ind.family)
+            if current is None or quality > current.qualities.get(benchmark_id, float("-inf")):
+                archive[benchmark_id][ind.family] = ind
+    return {benchmark_id: dict(families) for benchmark_id, families in archive.items()}
 
 
 # ---------------------------------------------------------------------------

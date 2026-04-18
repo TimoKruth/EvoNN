@@ -206,6 +206,21 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
         sections.append("No archive history available.")
         sections.append("")
 
+    sections.append("## Benchmark Specialists")
+    sections.append("")
+    specialist_summary = _compute_specialist_summary(archives)
+    if specialist_summary:
+        sections.append("| Benchmark | Families With Specialists | Top Families |")
+        sections.append("|-----------|--------------------------|--------------|")
+        for row in specialist_summary:
+            sections.append(
+                f"| {row['benchmark']} | {row['family_count']} | {row['families']} |"
+            )
+        sections.append("")
+    else:
+        sections.append("No specialist archive data available.")
+        sections.append("")
+
     # Failure patterns
     sections.append("## Failure Patterns")
     sections.append("")
@@ -483,3 +498,21 @@ def _compute_failure_heatmap(evaluations: list[dict[str, Any]]) -> list[dict[str
     for benchmark, failures in sorted(grouped.items()):
         rows.append({"benchmark": benchmark, "failures": dict(failures)})
     return rows
+
+
+def _compute_specialist_summary(archives: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, set[str]] = {}
+    for row in archives:
+        archive_kind = str(row.get("archive_kind", ""))
+        if not archive_kind.startswith("specialist:"):
+            continue
+        _, benchmark, family = archive_kind.split(":", 2)
+        grouped.setdefault(benchmark, set()).add(family)
+    return [
+        {
+            "benchmark": benchmark,
+            "family_count": len(families),
+            "families": ", ".join(sorted(families)),
+        }
+        for benchmark, families in sorted(grouped.items())
+    ]

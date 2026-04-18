@@ -130,8 +130,11 @@ def test_load_image_digits_and_unknown_name():
     ("genome", "input_shape", "output_dim", "modality", "task"),
     [
         (_genome("conv2d", [8, 8]), [8, 8, 1], 10, "image", "classification"),
+        (_genome("lite_conv2d", [8, 8]), [8, 8, 1], 10, "image", "classification"),
         (_genome("conv1d", [8, 8]), [16, 4], 3, "sequence", "classification"),
+        (_genome("lite_conv1d", [8, 8]), [16, 4], 3, "sequence", "classification"),
         (_genome("gru", [8, 8]), [16, 4], 3, "sequence", "classification"),
+        (_genome("moe_mlp", [16, 16], num_experts=4, moe_top_k=2), [12], 3, "tabular", "classification"),
         (_genome("embedding", [16, 16], embedding_dim=16), [12], 32, "text", "language_modeling"),
         (_genome("sparse_attention", [16, 16], embedding_dim=16, num_heads=4), [12], 32, "text", "language_modeling"),
     ],

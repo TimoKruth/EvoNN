@@ -24,6 +24,7 @@ class TrainingConfig(BaseModel):
     multi_fidelity_schedule: list[float] = Field(default_factory=lambda: [0.35, 0.65, 1.0])
     benchmark_epoch_min_scale: float = 0.75
     benchmark_epoch_max_scale: float = 1.25
+    operator_adaptation_rate: float = 0.35
 
 
 class EvolutionConfig(BaseModel):
@@ -48,6 +49,7 @@ class EvolutionConfig(BaseModel):
     novelty_parent_bias: float = 0.1
     family_offspring_floor: int = 1
     benchmark_specialist_offspring: int = 2
+    family_prior_bias: float = 0.2
     undercovered_focus_top_k: int = 3
 
 
@@ -65,6 +67,7 @@ class RunConfig(BaseModel):
     benchmark_pack: BenchmarkPoolConfig = Field(default_factory=BenchmarkPoolConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     evolution: EvolutionConfig = Field(default_factory=EvolutionConfig)
+    prior_run_dirs: list[str] = Field(default_factory=list)
 
 
 def load_config(path: str | Path) -> RunConfig:

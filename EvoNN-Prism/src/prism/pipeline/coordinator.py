@@ -17,7 +17,7 @@ from prism.pipeline.archive import (
     build_archives,
     summaries_from_state_results,
 )
-from prism.pipeline.evaluate import GenerationState, evaluate, select_benchmarks
+from prism.pipeline.evaluate import GenerationState, evaluate, select_benchmarks, update_search_memory
 from prism.pipeline.reproduce import reproduce
 from prism.runtime.cache import WeightCache
 from prism.storage import RunStore
@@ -79,11 +79,14 @@ def run_evolution(
 
     # Create seed population
     if state is None:
-        population = _create_seed_population(evolution, rng)
+        prior_memory = _load_prior_run_memory(config.prior_run_dirs)
+        population = _create_seed_population(evolution, rng, prior_genomes=prior_memory["genomes"])
         state = GenerationState(
             generation=0,
             population=population,
             parent_ids={g.genome_id: [] for g in population},
+            operator_stats=prior_memory["operator_stats"],
+            family_stats=prior_memory["family_stats"],
         )
 
     run_start = time.time()
@@ -116,6 +119,7 @@ def run_evolution(
                 elite_per_benchmark=evolution.elite_per_benchmark,
             )
             _persist_archives(store, run_id, gen, state.archives)
+            update_search_memory(state, config.training.operator_adaptation_rate)
 
             # 4. Monitor
             elapsed = time.time() - run_start
@@ -148,6 +152,10 @@ def run_evolution(
                     record["genome_id"]: list(record.get("parent_ids", []))
                     for record in lineage
                 }
+                state.lineage_ops = {
+                    record["genome_id"]: str(record.get("operator", "mutation"))
+                    for record in lineage
+                }
 
                 # Clear per-genome results for the new population
                 active_ids = {g.genome_id for g in state.population}
@@ -177,12 +185,21 @@ def run_evolution(
 def _create_seed_population(
     evolution,
     rng: Random,
+    prior_genomes: list[ModelGenome] | None = None,
 ) -> list[ModelGenome]:
     """Create initial population: one genome per allowed family, then fill randomly."""
     allowed = evolution.allowed_families or ["mlp", "conv2d", "attention"]
 
     population: list[ModelGenome] = []
     seen_ids: set[str] = set()
+
+    for genome in prior_genomes or []:
+        if genome.family not in allowed or genome.genome_id in seen_ids:
+            continue
+        population.append(genome)
+        seen_ids.add(genome.genome_id)
+        if len(population) >= evolution.population_size:
+            return population[: evolution.population_size]
 
     # One seed per family
     for family in allowed:
@@ -235,6 +252,9 @@ def _checkpoint(run_dir: str, generation: int, state: GenerationState) -> None:
         "benchmark_history": state.benchmark_history,
         "benchmark_failures": state.benchmark_failures,
         "benchmark_evaluations": state.benchmark_evaluations,
+        "lineage_ops": state.lineage_ops,
+        "operator_stats": state.operator_stats,
+        "family_stats": state.family_stats,
     }
     path = os.path.join(run_dir, "checkpoints", f"gen_{generation:04d}.json")
     Path(path).write_text(json.dumps(checkpoint, indent=2), encoding="utf-8")
@@ -282,6 +302,18 @@ def _try_resume(run_dir: str) -> tuple[GenerationState | None, int]:
         benchmark_evaluations={
             benchmark_id: int(value)
             for benchmark_id, value in data.get("benchmark_evaluations", {}).items()
+        },
+        lineage_ops={
+            genome_id: str(operator)
+            for genome_id, operator in data.get("lineage_ops", {}).items()
+        },
+        operator_stats={
+            operator: {key: float(value) for key, value in payload.items()}
+            for operator, payload in data.get("operator_stats", {}).items()
+        },
+        family_stats={
+            family: {key: float(value) for key, value in payload.items()}
+            for family, payload in data.get("family_stats", {}).items()
         },
         parent_ids={
             genome_id: list(parent_ids)
@@ -373,3 +405,91 @@ def _persist_archives(store: RunStore, run_id: str, generation: int, archives: d
         store.save_archive(
             run_id, generation, f"niche:{family}", None, summary.genome_id, summary.aggregate_quality,
         )
+
+    for benchmark_id, specialists in archives.get("specialist", {}).items():
+        for family, summary in specialists.items():
+            store.save_archive(
+                run_id,
+                generation,
+                f"specialist:{benchmark_id}:{family}",
+                benchmark_id,
+                summary.genome_id,
+                summary.aggregate_quality,
+            )
+
+
+def _load_prior_run_memory(prior_run_dirs: list[str]) -> dict:
+    genomes: list[ModelGenome] = []
+    operator_stats: dict[str, dict[str, float]] = {}
+    family_stats: dict[str, dict[str, float]] = {}
+
+    for run_dir_str in prior_run_dirs:
+        run_dir = Path(run_dir_str)
+        db_path = run_dir / "metrics.duckdb"
+        if not db_path.exists():
+            continue
+        store = RunStore(db_path)
+        try:
+            run_id = _resolve_store_run_id(store)
+            genome_rows = store.load_genomes(run_id)
+            evaluations = store.load_evaluations(run_id)
+            lineage = store.load_lineage(run_id)
+        finally:
+            store.close()
+
+        genome_map: dict[str, ModelGenome] = {}
+        for row in genome_rows:
+            try:
+                genome = ModelGenome.model_validate(row)
+            except Exception:
+                continue
+            genome_map[genome.genome_id] = genome
+            genomes.append(genome)
+
+        for row in evaluations:
+            genome_id = row.get("genome_id", "")
+            quality = row.get("quality")
+            failure = row.get("failure_reason")
+            genome = genome_map.get(genome_id)
+            if genome is None:
+                continue
+            family_bucket = family_stats.setdefault(
+                genome.family, {"count": 0.0, "quality_sum": 0.0, "failures": 0.0},
+            )
+            family_bucket["count"] += 1.0
+            if quality is not None and failure is None:
+                family_bucket["quality_sum"] += float(quality)
+            if failure is not None:
+                family_bucket["failures"] += 1.0
+
+        lineage_ops = {row["genome_id"]: str(row.get("mutation_summary") or "mutation") for row in lineage}
+        for row in evaluations:
+            operator = lineage_ops.get(row.get("genome_id", ""))
+            if not operator:
+                continue
+            bucket = operator_stats.setdefault(
+                operator, {"count": 0.0, "quality_sum": 0.0, "failures": 0.0},
+            )
+            bucket["count"] += 1.0
+            if row.get("failure_reason") is None and row.get("quality") is not None:
+                bucket["quality_sum"] += float(row["quality"])
+            elif row.get("failure_reason") is not None:
+                bucket["failures"] += 1.0
+
+    unique_genomes: dict[str, ModelGenome] = {}
+    for genome in genomes:
+        unique_genomes.setdefault(genome.genome_id, genome)
+    return {
+        "genomes": list(unique_genomes.values()),
+        "operator_stats": operator_stats,
+        "family_stats": family_stats,
+    }
+
+
+def _resolve_store_run_id(store: RunStore) -> str:
+    row = store.conn.execute(
+        "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    if row:
+        return row[0]
+    return "default"

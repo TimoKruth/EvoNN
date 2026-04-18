@@ -28,6 +28,9 @@ class GenerationState:
     benchmark_history: dict[str, list[float]] = field(default_factory=dict)
     benchmark_failures: dict[str, int] = field(default_factory=dict)
     benchmark_evaluations: dict[str, int] = field(default_factory=dict)
+    lineage_ops: dict[str, str] = field(default_factory=dict)
+    operator_stats: dict[str, dict[str, float]] = field(default_factory=dict)
+    family_stats: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 def evaluate(
@@ -284,6 +287,37 @@ def _record_benchmark_result(
         state.benchmark_history.setdefault(benchmark_id, []).append(float(result.quality))
     else:
         state.benchmark_failures[benchmark_id] = state.benchmark_failures.get(benchmark_id, 0) + 1
+
+
+def update_search_memory(
+    state: GenerationState,
+    adaptation_rate: float,
+) -> None:
+    """Fold latest genome outcomes back into operator and family priors."""
+    for genome in state.population:
+        genome_results = state.results.get(genome.genome_id, {})
+        valid = [result.quality for result in genome_results.values() if result.failure_reason is None]
+        failures = sum(1 for result in genome_results.values() if result.failure_reason is not None)
+        avg_quality = sum(valid) / len(valid) if valid else float("-inf")
+
+        family_bucket = state.family_stats.setdefault(
+            genome.family, {"count": 0.0, "quality_sum": 0.0, "failures": 0.0},
+        )
+        family_bucket["count"] += 1.0
+        if valid:
+            family_bucket["quality_sum"] += float(avg_quality)
+        family_bucket["failures"] += float(failures)
+
+        operator = state.lineage_ops.get(genome.genome_id)
+        if operator is None:
+            continue
+        operator_bucket = state.operator_stats.setdefault(
+            operator, {"count": 0.0, "quality_sum": 0.0, "failures": 0.0},
+        )
+        operator_bucket["count"] += 1.0
+        if valid:
+            operator_bucket["quality_sum"] += float(avg_quality) * adaptation_rate
+        operator_bucket["failures"] += float(failures)
 
 
 def _benchmark_priority_scores(state: GenerationState, benchmark_specs: list) -> dict[str, float]:

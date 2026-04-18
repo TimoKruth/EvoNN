@@ -40,6 +40,7 @@ def reproduce(
         family_diversity_bias=evolution.family_diversity_bias,
         family_stale_penalty=evolution.family_stale_penalty,
         novelty_bias=evolution.novelty_parent_bias,
+        family_prior_bias=evolution.family_prior_bias,
     )
 
     if not parent_pool:
@@ -54,7 +55,6 @@ def reproduce(
     family_floor_targets = _family_floor_targets(parent_pool, quality_map, evolution.family_offspring_floor)
     specialist_targets = _benchmark_specialist_targets(
         state,
-        quality_map,
         evolution.benchmark_specialist_offspring,
     )
 
@@ -69,6 +69,7 @@ def reproduce(
                 quality_map,
                 evolution,
                 rng,
+                state=state,
                 family_target=family_target,
                 specialist_target=specialist_target,
             )
@@ -97,6 +98,7 @@ def _make_offspring(
     quality_map: dict[str, float],
     evolution,
     rng: Random,
+    state,
     family_target: str | None = None,
     specialist_target: dict | None = None,
 ) -> tuple[ModelGenome, dict]:
@@ -106,7 +108,12 @@ def _make_offspring(
         specialist_pool = [genome for genome in parent_pool if genome.genome_id in candidate_ids]
         if specialist_pool:
             parent = max(specialist_pool, key=lambda genome: quality_map.get(genome.genome_id, float("-inf")))
-            child, op_name = apply_random_mutation(parent, evolution, rng)
+            child, op_name = apply_random_mutation(
+                parent,
+                evolution,
+                rng,
+                operator_weights=_operator_weights_for_parent(state, parent),
+            )
             return child, {
                 "genome_id": child.genome_id,
                 "parent_ids": [parent.genome_id],
@@ -115,7 +122,12 @@ def _make_offspring(
 
     if family_target is not None:
         parent = _best_in_family(parent_pool, quality_map, family_target)
-        child, op_name = apply_random_mutation(parent, evolution, rng)
+        child, op_name = apply_random_mutation(
+            parent,
+            evolution,
+            rng,
+            operator_weights=_operator_weights_for_parent(state, parent),
+        )
         return child, {
             "genome_id": child.genome_id,
             "parent_ids": [parent.genome_id],
@@ -138,7 +150,12 @@ def _make_offspring(
         }
 
     parent = tournament_select(parent_pool, quality_map, evolution.tournament_size, rng)
-    child, op_name = apply_random_mutation(parent, evolution, rng)
+    child, op_name = apply_random_mutation(
+        parent,
+        evolution,
+        rng,
+        operator_weights=_operator_weights_for_parent(state, parent),
+    )
     return child, {
         "genome_id": child.genome_id,
         "parent_ids": [parent.genome_id],
@@ -245,6 +262,7 @@ def _apply_selection_pressure(
     family_diversity_bias: float,
     family_stale_penalty: float,
     novelty_bias: float,
+    family_prior_bias: float,
 ) -> dict[str, float]:
     """Adjust parent scores toward undercovered, rare-family, and novel genomes."""
     if not state.results:
@@ -290,6 +308,14 @@ def _apply_selection_pressure(
         if family_counts[genome.family] > 1:
             boosted[genome_id] -= family_stale_penalty * (family_counts[genome.family] - 1) / population_size
 
+        family_stats = getattr(state, "family_stats", {}).get(genome.family, {})
+        family_count = family_stats.get("count", 0.0)
+        if family_count > 0:
+            family_avg = family_stats.get("quality_sum", 0.0) / family_count
+            family_fail = family_stats.get("failures", 0.0) / family_count
+            boosted[genome_id] += family_prior_bias * family_avg
+            boosted[genome_id] -= family_prior_bias * 0.5 * family_fail
+
         pattern_ratio = layer_patterns[tuple(genome.hidden_layers)] / population_size
         boosted[genome_id] += novelty_bias * (1.0 - pattern_ratio)
 
@@ -332,11 +358,27 @@ def _family_floor_targets(
 
 def _benchmark_specialist_targets(
     state,
-    quality_map: dict[str, float],
     specialist_slots: int,
 ) -> list[dict]:
     if specialist_slots <= 0:
         return []
+
+    specialist_archive: dict[str, dict[str, IndividualSummary]] = getattr(state, "archives", {}).get("specialist", {})
+    if specialist_archive:
+        ranked = sorted(
+            specialist_archive,
+            key=lambda benchmark_id: max(
+                (summary.qualities.get(benchmark_id, float("-inf")) for summary in specialist_archive[benchmark_id].values()),
+                default=float("-inf"),
+            ),
+        )
+        return [
+            {
+                "benchmark_id": benchmark_id,
+                "genome_ids": [summary.genome_id for summary in specialist_archive[benchmark_id].values()],
+            }
+            for benchmark_id in ranked[:specialist_slots]
+        ]
 
     benchmark_scores: dict[str, list[tuple[str, float]]] = {}
     for genome_id, benchmark_results in state.results.items():
@@ -364,3 +406,27 @@ def _benchmark_specialist_targets(
             "genome_ids": [genome_id for genome_id, _ in specialists[:2]],
         })
     return targets
+
+
+def _operator_weights_for_parent(state, parent: ModelGenome) -> dict[str, float]:
+    weights: dict[str, float] = {}
+    operator_stats = getattr(state, "operator_stats", {})
+    family_stats = getattr(state, "family_stats", {}).get(parent.family, {})
+    family_count = max(1.0, family_stats.get("count", 0.0))
+    family_failure_rate = family_stats.get("failures", 0.0) / family_count
+    family_quality = family_stats.get("quality_sum", 0.0) / family_count if family_count else 0.0
+
+    for operator, payload in operator_stats.items():
+        bucket_count = max(1.0, payload.get("count", 0.0))
+        operator_quality = payload.get("quality_sum", 0.0) / bucket_count if bucket_count else 0.0
+        operator_failure = payload.get("failures", 0.0) / bucket_count
+        label = operator.rsplit(":", 1)[-1] if ":" in operator else operator
+        weights[label] = max(0.05, 1.0 + operator_quality - (operator_failure * 0.5))
+
+    if family_quality > 0:
+        for label in list(weights):
+            weights[label] += family_quality * 0.1
+    if family_failure_rate > 0:
+        for label in list(weights):
+            weights[label] = max(0.05, weights[label] - family_failure_rate * 0.1)
+    return weights

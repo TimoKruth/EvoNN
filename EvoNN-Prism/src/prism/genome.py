@@ -222,13 +222,14 @@ def apply_random_mutation(
     genome: ModelGenome,
     config: EvolutionConfig,
     rng: Random,
+    operator_weights: dict[str, float] | None = None,
 ) -> tuple[ModelGenome, str]:
     """Apply a single random mutation, returning (child, operator_name)."""
     family_ops = _FAMILY_OPERATORS.get(genome.family)
     operator_pool = [item for item in _OPERATORS if family_ops is None or item[1] in family_ops]
     if not operator_pool:
         operator_pool = _OPERATORS
-    op_name, label = rng.choice(operator_pool)
+    op_name, label = _weighted_operator_choice(operator_pool, operator_weights, rng)
     allowed_families = config.allowed_families or ["mlp", "conv2d", "attention"]
 
     match op_name:
@@ -268,6 +269,28 @@ def apply_random_mutation(
             child = genome
 
     return child, label
+
+
+def _weighted_operator_choice(
+    operator_pool: list[tuple[str, str]],
+    operator_weights: dict[str, float] | None,
+    rng: Random,
+) -> tuple[str, str]:
+    if not operator_weights:
+        return rng.choice(operator_pool)
+
+    weights = [max(0.01, float(operator_weights.get(label, 1.0))) for _, label in operator_pool]
+    total = sum(weights)
+    if total <= 0:
+        return rng.choice(operator_pool)
+
+    draw = rng.random() * total
+    cumulative = 0.0
+    for item, weight in zip(operator_pool, weights):
+        cumulative += weight
+        if draw <= cumulative:
+            return item
+    return operator_pool[-1]
 
 
 # ---------------------------------------------------------------------------

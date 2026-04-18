@@ -15,6 +15,7 @@ from prism.benchmarks.preprocess import Preprocessor
 from prism.benchmarks.spec import BenchmarkSpec
 from prism.config import RunConfig
 from prism.genome import ModelGenome, apply_random_mutation
+from prism.pipeline import archive as archive_mod
 from prism.pipeline import evaluate as evaluate_mod
 from prism.pipeline import reproduce as reproduce_mod
 from prism.pipeline.evaluate import (
@@ -338,6 +339,7 @@ def test_undercovered_parent_bias_rewards_rare_successes():
         family_diversity_bias=0.0,
         family_stale_penalty=0.0,
         novelty_bias=0.0,
+        family_prior_bias=0.0,
     )
 
     assert boosted[rare.genome_id] > boosted[common.genome_id]
@@ -355,6 +357,7 @@ def test_benchmark_specialist_targets_focus_on_weakest_benchmarks():
     strong = _sample_genome("mlp")
     specialist = _sample_genome("attention")
     state = SimpleNamespace(
+        archives={},
         results={
             strong.genome_id: {
                 "easy": EvaluationResult("accuracy", 0.9, 0.9, 10, 0.1),
@@ -367,7 +370,7 @@ def test_benchmark_specialist_targets_focus_on_weakest_benchmarks():
         },
     )
 
-    targets = reproduce_mod._benchmark_specialist_targets(state, {}, 1)
+    targets = reproduce_mod._benchmark_specialist_targets(state, 1)
 
     assert targets == [{"benchmark_id": "hard", "genome_ids": [specialist.genome_id, strong.genome_id]}]
 
@@ -393,6 +396,37 @@ def test_apply_random_mutation_uses_family_specific_pool():
 
     assert label == "embedding_dim"
     assert child.embedding_dim != genome.embedding_dim
+
+
+def test_build_specialist_archive_keeps_best_per_family_and_benchmark():
+    summaries = [
+        archive_mod.IndividualSummary("g1", "mlp", 0, {"moons": 0.8, "iris": 0.7}, 10, 0.1),
+        archive_mod.IndividualSummary("g2", "mlp", 0, {"moons": 0.9}, 12, 0.1),
+        archive_mod.IndividualSummary("g3", "attention", 0, {"moons": 0.85}, 14, 0.1),
+    ]
+
+    specialist = archive_mod.build_specialist_archive(summaries)
+
+    assert specialist["moons"]["mlp"].genome_id == "g2"
+    assert specialist["moons"]["attention"].genome_id == "g3"
+    assert specialist["iris"]["mlp"].genome_id == "g1"
+
+
+def test_operator_weights_for_parent_use_search_memory():
+    parent = _sample_genome("attention")
+    state = SimpleNamespace(
+        operator_stats={
+            "mutation:embedding_dim": {"count": 4.0, "quality_sum": 3.2, "failures": 0.0},
+            "mutation:dropout": {"count": 4.0, "quality_sum": 0.4, "failures": 3.0},
+        },
+        family_stats={
+            "attention": {"count": 4.0, "quality_sum": 2.8, "failures": 0.0},
+        },
+    )
+
+    weights = reproduce_mod._operator_weights_for_parent(state, parent)
+
+    assert weights["embedding_dim"] > weights["dropout"]
 
 
 def test_get_benchmark_missing_catalog_gives_explicit_error(tmp_path):

@@ -5,7 +5,10 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from prism.analysis.compare import aggregate_compare_rows, parse_four_way_summary, render_compare_analysis
+from prism.analysis.matrix import render_matrix_analysis
 from prism.cli import app
+from prism.genome import ModelGenome
+from prism.storage import RunStore
 
 
 runner = CliRunner()
@@ -59,3 +62,54 @@ def test_cli_analyze_compare_writes_output(tmp_path: Path):
     text = output.read_text(encoding="utf-8")
     assert "Aggregated Results" in text
     assert "Prism Actions" in text
+
+
+def test_render_matrix_analysis_aggregates_runs(tmp_path: Path):
+    matrix_root = tmp_path / "matrix"
+    report_dir = matrix_root / "reports" / "pack_seed42"
+    run_dir = matrix_root / "runs" / "prism" / "pack_seed42"
+    report_dir.mkdir(parents=True)
+    run_dir.mkdir(parents=True)
+
+    _write_summary(report_dir / "four_way_summary.md", 304, 42, 2, 1, 2, 29, 4)
+
+    genome = ModelGenome(family="mlp", hidden_layers=[16, 8], activation="relu", dropout=0.1)
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run(run_dir.name, {"seed": 42})
+        store.save_genome(run_dir.name, genome)
+        store.save_evaluation(run_dir.name, genome.genome_id, 0, "moons", "accuracy", 0.91, 0.91, 100, 0.2, inherited_from="parent")
+        store.save_lineage(run_dir.name, genome.genome_id, "parent", 0, "mutation:width")
+        store.save_archive(run_dir.name, 0, "specialist:moons:mlp", "moons", genome.genome_id, 0.91)
+        store.save_archive(run_dir.name, 1, "pareto", None, genome.genome_id, 0.92)
+
+    text = render_matrix_analysis(matrix_root)
+
+    assert "Run Diagnostics" in text
+    assert "Inheritance Hit Rate" in text
+    assert "Avg Specialists" in text
+    assert "Avg New Archive Members" in text
+    assert "mlp(1)" in text
+    assert "Specialist archives active" in text
+
+
+def test_cli_analyze_matrix_writes_output(tmp_path: Path):
+    matrix_root = tmp_path / "matrix"
+    report_dir = matrix_root / "reports" / "pack_seed42"
+    run_dir = matrix_root / "runs" / "prism" / "pack_seed42"
+    output = tmp_path / "matrix_analysis.md"
+    report_dir.mkdir(parents=True)
+    run_dir.mkdir(parents=True)
+    _write_summary(report_dir / "four_way_summary.md", 304, 42, 2, 1, 2, 29, 4)
+
+    genome = ModelGenome(family="mlp", hidden_layers=[16, 8], activation="relu", dropout=0.1)
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run(run_dir.name, {"seed": 42})
+        store.save_genome(run_dir.name, genome)
+        store.save_evaluation(run_dir.name, genome.genome_id, 0, "moons", "accuracy", 0.91, 0.91, 100, 0.2)
+
+    result = runner.invoke(app, ["analyze-matrix", str(matrix_root), "--output", str(output)])
+
+    assert result.exit_code == 0
+    assert output.exists()
+    text = output.read_text(encoding="utf-8")
+    assert "Run Diagnostics" in text

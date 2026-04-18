@@ -430,3 +430,26 @@ def test_smoke_pack_contains_33_plus_5_lm():
     assert "tiny_lm_synthetic" in benchmarks
     assert "tinystories_lm" in benchmarks
     assert "wikitext2_lm" in benchmarks
+
+
+def test_load_prior_run_memory_and_seed_population(tmp_path: Path):
+    run_dir = tmp_path / "prior-run"
+    run_dir.mkdir()
+    genome = _sample_genome("attention", [32, 16])
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run(run_dir.name, {"seed": 42})
+        store.save_genome(run_dir.name, genome)
+        store.save_evaluation(run_dir.name, genome.genome_id, 0, "moons", "accuracy", 0.91, 0.91, 100, 0.2)
+        store.save_lineage(run_dir.name, genome.genome_id, None, 0, "mutation:embedding_dim")
+
+    prior = coordinator._load_prior_run_memory([str(run_dir)])
+    evolution = RunConfig.model_validate(
+        {"evolution": {"population_size": 2, "allowed_families": ["attention", "mlp"]}}
+    ).evolution
+    population = coordinator._create_seed_population(evolution, random.Random(0), prior_genomes=prior["genomes"])
+
+    assert prior["genomes"][0].genome_id == genome.genome_id
+    assert "mutation:embedding_dim" in prior["operator_stats"]
+    assert "attention" in prior["family_stats"]
+    assert any(candidate.genome_id == genome.genome_id for candidate in population)

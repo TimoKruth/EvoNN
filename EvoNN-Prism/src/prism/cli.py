@@ -219,6 +219,24 @@ def analyze_compare(
         console.print(f"\n[green]Analysis saved to {output_path}[/green]")
 
 
+@app.command("analyze-matrix")
+def analyze_matrix(
+    matrix_root: str = typer.Argument(..., help="Path to compare matrix root directory"),
+    output: Optional[str] = typer.Option(None, "--output", help="Optional markdown output path"),
+) -> None:
+    """Aggregate compare summaries and Prism run dirs from one matrix root."""
+    from prism.analysis.matrix import render_matrix_analysis
+
+    text = render_matrix_analysis(matrix_root)
+    console.print(text)
+
+    if output:
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(text, encoding="utf-8")
+        console.print(f"\n[green]Matrix analysis saved to {output_path}[/green]")
+
+
 # ===========================================================================
 # Symbiosis subcommand group
 # ===========================================================================
