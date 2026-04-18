@@ -175,3 +175,44 @@ selection:
     assert len(contenders) == 6
     assert {record["benchmark_name"] for record in contenders} == {"iris", "circles"}
     assert any(record["contender_name"].endswith("@r2") for record in contenders)
+
+
+def test_optional_missing_contenders_are_skipped_by_default(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: optional_skip
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+selection:
+  max_contenders_per_benchmark: null
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    real_find_spec = __import__("importlib.util").util.find_spec
+
+    def fake_find_spec(name: str, *args, **kwargs):
+        if name in {"xgboost", "lightgbm", "catboost"}:
+            return None
+        return real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr("evonn_contenders.pipeline.importlib.util.find_spec", fake_find_spec)
+    config = load_config(config_path)
+    run_dir = tmp_path / "run"
+    run_contenders(config, run_dir=run_dir, config_path=config_path)
+
+    store = RunStore(run_dir / "metrics.duckdb")
+    contenders = store.load_contenders("run")
+    results = store.load_results("run")
+    store.close()
+
+    contender_names = {record["contender_name"] for record in contenders}
+    assert "xgb_small" not in contender_names
+    assert "lgbm_small" not in contender_names
+    assert "catboost_small" not in contender_names
+    assert all(record["status"] == "ok" for record in contenders)
+    assert results[0]["status"] == "ok"

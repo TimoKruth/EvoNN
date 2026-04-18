@@ -1,3 +1,4 @@
+# Requires: `uv run --extra boosted --extra torch ...`
 seed: 42
 run_name: working_33_plus_5_lm_contenders_eval304_seed42
 benchmark_pool:
@@ -44,31 +45,37 @@ benchmark_pool:
 contender_pool:
   tabular:
   - hist_gb
-  - hist_gb_small
   - extra_trees
-  - extra_trees_small
-  - random_forest
-  - random_forest_small
-  - mlp
-  - mlp_small
-  - logistic
+  - mlp_wide
+  - logistic_c10
+  - xgb_small
+  - lgbm_small
+  - catboost_small
+  - linear_svc
   synthetic:
   - hist_gb
-  - hist_gb_deep
   - extra_trees
-  - mlp
-  - random_forest
+  - mlp_wide
+  - extra_trees_deep
+  - linear_svc
+  - xgb_small
+  - lgbm_small
+  - catboost_small
   image:
-  - mlp
-  - mlp_small
-  - logistic
-  - random_forest
+  - mlp_wide
   - extra_trees
+  - mlp
+  - cnn_small
+  - logistic_c10
+  - random_forest
+  - linear_svc
   language_modeling:
-  - bigram_lm
-  - bigram_lm_a10
-  - unigram_lm
-  - unigram_lm_a05
+  - bigram_lm_a01
+  - transformer_lm_tiny
+  - bigram_lm_a20
+  - transformer_lm_small
+  - unigram_lm_a01
+  - unigram_lm_a20
 selection:
   max_contenders_per_benchmark: null
 baseline:

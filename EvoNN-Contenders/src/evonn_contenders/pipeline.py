@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import importlib.util
 from pathlib import Path
 import shutil
 
@@ -337,8 +338,12 @@ def _resolve_trials(config: RunConfig, *, benchmark_name: str, group: str) -> li
     if config.selection.max_contenders_per_benchmark is not None:
         contender_names = contender_names[: config.selection.max_contenders_per_benchmark]
     contenders = resolve_contenders(group, contender_names)
+    contenders = _filter_unavailable_optional_contenders(contenders, config=config)
     if not contenders:
-        raise ValueError(f"no contenders configured for group '{group}'")
+        raise ValueError(
+            f"no runnable contenders configured for group '{group}' "
+            f"on benchmark '{benchmark_name}'"
+        )
 
     slots = len(contenders)
     if config.baseline.mode == "budget_matched":
@@ -358,6 +363,24 @@ def _resolve_trials(config: RunConfig, *, benchmark_name: str, group: str) -> li
             )
         )
     return trials
+
+
+def _filter_unavailable_optional_contenders(contenders: list[object], *, config: RunConfig) -> list[object]:
+    available: list[object] = []
+    for contender in contenders:
+        dependency = getattr(contender, "optional_dependency", None)
+        if dependency is None or importlib.util.find_spec(dependency) is not None:
+            available.append(contender)
+            continue
+
+        if dependency == "torch":
+            if getattr(config.torch, "allow_optional_missing", True):
+                continue
+        elif getattr(config.boosted_trees, "allow_optional_missing", True):
+            continue
+
+        available.append(contender)
+    return available
 
 
 def _budget_matched_slots(config: RunConfig, *, benchmark_name: str) -> int:

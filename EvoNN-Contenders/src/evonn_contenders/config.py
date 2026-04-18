@@ -26,11 +26,24 @@ class ContenderPoolConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     tabular: list[str] = Field(
-        default_factory=lambda: ["hist_gb", "extra_trees", "random_forest", "mlp", "logistic", "linear_svc"]
+        default_factory=lambda: [
+            "hist_gb",
+            "extra_trees",
+            "mlp_wide",
+            "logistic_c10",
+            "xgb_small",
+            "lgbm_small",
+            "catboost_small",
+            "linear_svc",
+        ]
     )
-    synthetic: list[str] = Field(default_factory=lambda: ["hist_gb", "extra_trees", "mlp", "linear_svc"])
-    image: list[str] = Field(default_factory=lambda: ["mlp", "logistic", "random_forest", "cnn_small"])
-    language_modeling: list[str] = Field(default_factory=lambda: ["bigram_lm", "unigram_lm", "transformer_lm_tiny"])
+    synthetic: list[str] = Field(
+        default_factory=lambda: ["hist_gb", "extra_trees", "mlp_wide", "linear_svc", "xgb_small"]
+    )
+    image: list[str] = Field(default_factory=lambda: ["mlp_wide", "extra_trees", "mlp", "cnn_small"])
+    language_modeling: list[str] = Field(
+        default_factory=lambda: ["bigram_lm_a01", "transformer_lm_tiny", "bigram_lm_a20"]
+    )
 
 
 class SelectionConfig(BaseModel):
@@ -74,6 +87,7 @@ class TorchConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    allow_optional_missing: bool = True
     device: str = "cpu"
     batch_size: int = 64
     learning_rate: float = 1e-3
