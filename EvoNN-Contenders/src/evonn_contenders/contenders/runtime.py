@@ -115,6 +115,7 @@ def evaluate_contender(
     contender: ContenderSpec,
     *,
     seed: int,
+    contender_label: str | None = None,
     x_train: np.ndarray,
     y_train: np.ndarray,
     x_val: np.ndarray,
@@ -122,7 +123,8 @@ def evaluate_contender(
     config: Any | None = None,
 ) -> dict[str, Any]:
     """Fit one contender and return metric payload."""
-    contender_id = f"{spec.name}:{contender.name}:seed{seed}"
+    contender_name = contender_label or contender.name
+    contender_id = f"{spec.name}:{contender_name}:seed{seed}"
     started = perf_counter()
     try:
         if contender.backend in {"sklearn_classifier", "boosted_classifier"}:
@@ -179,7 +181,7 @@ def evaluate_contender(
     train_seconds = perf_counter() - started
     quality = _quality_from_metric(spec.metric_direction, metric_value)
     return {
-        "contender_name": contender.name,
+        "contender_name": contender_name,
         "family": contender.family,
         "metric_name": spec.metric_name,
         "metric_direction": spec.metric_direction,

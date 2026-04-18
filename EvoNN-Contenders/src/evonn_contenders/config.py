@@ -48,6 +48,7 @@ class BaselineConfig(BaseModel):
 
     baseline_id: str | None = None
     mode: Literal["fixed_reference", "budget_matched"] = "fixed_reference"
+    target_evaluation_count: int | None = None
     cache_dir: str = ".baseline-cache"
 
 
@@ -106,12 +107,15 @@ def baseline_signature(config: RunConfig) -> str:
     payload = {
         "seed": config.seed,
         "mode": config.baseline.mode,
+        "target_evaluation_count": config.baseline.target_evaluation_count,
         "contender_pool": config.contender_pool.model_dump(mode="json"),
         "selection": config.selection.model_dump(mode="json"),
         "svm": config.svm.model_dump(mode="json"),
         "boosted_trees": config.boosted_trees.model_dump(mode="json"),
         "torch": config.torch.model_dump(mode="json"),
     }
+    if config.baseline.mode == "budget_matched":
+        payload["benchmark_pool"] = config.benchmark_pool.model_dump(mode="json")
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 

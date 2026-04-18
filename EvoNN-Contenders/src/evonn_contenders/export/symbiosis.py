@@ -106,7 +106,7 @@ def export_symbiosis_contract(
             "effective_training_epochs": 1,
             "generations": 1,
             "population_size": budget_meta.get("evaluation_count", len(contenders)),
-            "budget_policy_name": budget_meta.get("budget_policy_name", "fixed_contender_pool"),
+            "budget_policy_name": _export_budget_policy_name(budget_meta.get("budget_policy_name")),
         },
         "device": {
             "device_name": platform.machine(),
@@ -140,3 +140,11 @@ def export_symbiosis_contract(
 
 def _write_summary_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _export_budget_policy_name(name: Any) -> str:
+    if name == "budget_matched_contender_pool":
+        return "prototype_equal_budget"
+    if name == "fixed_reference_contender_pool":
+        return "fixed_reference_contender_pool"
+    return str(name or "fixed_reference_contender_pool")

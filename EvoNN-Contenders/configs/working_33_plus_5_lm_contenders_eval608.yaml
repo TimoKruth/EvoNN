@@ -92,3 +92,6 @@ contender_pool:
   - unigram_lm_a20
 selection:
   max_contenders_per_benchmark: null
+baseline:
+  mode: budget_matched
+  target_evaluation_count: 608

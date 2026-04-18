@@ -56,10 +56,12 @@ class BudgetComparator:
             reasons.append("evaluation_count mismatch exceeds pack tolerance")
         if epoch_diff > tolerance:
             reasons.append("epochs_per_candidate mismatch exceeds pack tolerance")
-        left_policy = left.budget.budget_policy_name
-        right_policy = right.budget.budget_policy_name
+        left_policy = _normalize_budget_policy(left.budget.budget_policy_name)
+        right_policy = _normalize_budget_policy(right.budget.budget_policy_name)
         if left_policy != right_policy:
-            if left_policy and right_policy:
+            if {left_policy, right_policy} <= {None, "prototype_equal_budget"}:
+                pass
+            elif left_policy and right_policy:
                 reasons.append(f"budget policy mismatch: {left_policy} vs {right_policy}")
             else:
                 reasons.append("budget policy missing on one side")
@@ -72,3 +74,13 @@ def _relative_diff(left: int, right: int) -> float:
     if right == 0:
         return 0.0 if left == 0 else float("inf")
     return abs(left - right) / right
+
+
+def _normalize_budget_policy(name: str | None) -> str | None:
+    if not name:
+        return None
+    if name == "budget_matched_contender_pool":
+        return "prototype_equal_budget"
+    if name == "fixed_contender_pool":
+        return "fixed_reference_contender_pool"
+    return name

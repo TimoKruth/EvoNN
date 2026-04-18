@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import shutil
@@ -17,6 +18,15 @@ from evonn_contenders.contender_pool import (
 )
 from evonn_contenders.export.report import write_report
 from evonn_contenders.storage import RunStore
+
+
+@dataclass(frozen=True)
+class ContenderTrial:
+    """One concrete contender fit under a pack budget."""
+
+    contender: object
+    contender_name: str
+    seed: int
 
 
 def run_contenders(
@@ -63,16 +73,13 @@ def run_contenders(
     for benchmark_name in config.benchmark_pool.benchmarks:
         spec = get_benchmark(benchmark_name)
         group = benchmark_group(spec)
-        contender_names = contender_names_for_config(config, group)
-        if config.selection.max_contenders_per_benchmark is not None:
-            contender_names = contender_names[: config.selection.max_contenders_per_benchmark]
-        contenders = resolve_contenders(group, contender_names)
+        trials = _resolve_trials(config, benchmark_name=benchmark_name, group=group)
         group_counts[group] += 1
-        evaluation_count += len(contenders)
+        evaluation_count += len(trials)
 
         cached_records = baseline_store.load_contenders_for_benchmark(baseline_id, benchmark_name)
         cached_best = baseline_store.load_result_for_benchmark(baseline_id, benchmark_name)
-        if cached_records and cached_best is not None:
+        if cached_records and cached_best is not None and len(cached_records) == len(trials):
             run_store.replace_contenders(run_id=run_id, benchmark_name=benchmark_name, records=cached_records)
             run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=cached_best)
             cache_hits += 1
@@ -81,41 +88,45 @@ def run_contenders(
         try:
             x_train, y_train, x_val, y_val = spec.load_data(seed=config.seed)
         except Exception as exc:
-            failed = {
-                "contender_name": "load_failed",
-                "family": "load_failed",
-                "metric_name": spec.metric_name,
-                "metric_direction": spec.metric_direction,
-                "metric_value": None,
-                "quality": float("-inf") if spec.metric_direction == "max" else float("inf"),
-                "parameter_count": 0,
-                "train_seconds": 0.0,
-                "architecture_summary": "load_failed",
-                "contender_id": f"{benchmark_name}:load_failed",
-                "status": "failed",
-                "failure_reason": str(exc),
-            }
-            run_store.replace_contenders(run_id=run_id, benchmark_name=benchmark_name, records=[failed])
-            run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=failed)
-            baseline_store.replace_contenders(run_id=baseline_id, benchmark_name=benchmark_name, records=[failed])
-            baseline_store.replace_result(run_id=baseline_id, benchmark_name=benchmark_name, record=failed)
+            failed_records = [
+                {
+                    "contender_name": trial.contender_name,
+                    "family": "load_failed",
+                    "metric_name": spec.metric_name,
+                    "metric_direction": spec.metric_direction,
+                    "metric_value": None,
+                    "quality": float("-inf") if spec.metric_direction == "max" else float("inf"),
+                    "parameter_count": 0,
+                    "train_seconds": 0.0,
+                    "architecture_summary": "load_failed",
+                    "contender_id": f"{benchmark_name}:{trial.contender_name}:seed{trial.seed}",
+                    "status": "failed",
+                    "failure_reason": str(exc),
+                }
+                for trial in trials
+            ]
+            run_store.replace_contenders(run_id=run_id, benchmark_name=benchmark_name, records=failed_records)
+            run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=failed_records[0])
+            baseline_store.replace_contenders(run_id=baseline_id, benchmark_name=benchmark_name, records=failed_records)
+            baseline_store.replace_result(run_id=baseline_id, benchmark_name=benchmark_name, record=failed_records[0])
             continue
 
         records: list[dict[str, object]] = []
-        for contender in contenders:
+        for trial in trials:
             record = evaluate_contender(
                 spec,
-                contender,
-                seed=config.seed,
+                trial.contender,
+                seed=trial.seed,
                 x_train=x_train,
                 y_train=y_train,
                 x_val=x_val,
                 y_val=y_val,
                 config=config,
+                contender_label=trial.contender_name,
             )
             run_store.record_contender(run_id=run_id, benchmark_name=benchmark_name, record=record)
             records.append(record)
-        executed_evaluation_count += len(contenders)
+        executed_evaluation_count += len(trials)
 
         best = choose_best(spec.metric_direction, records)
         run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=best)
@@ -137,6 +148,7 @@ def run_contenders(
             "budget_policy_name": f"{config.baseline.mode}_contender_pool",
             "baseline_id": baseline_id,
             "baseline_signature": baseline_sig,
+            "target_evaluation_count": config.baseline.target_evaluation_count,
         },
     )
     _update_baseline_budget_metadata(baseline_store, baseline_id=baseline_id, created_at=created_at)
@@ -188,15 +200,13 @@ def materialize_baseline_run(
     for benchmark_name in config.benchmark_pool.benchmarks:
         spec = get_benchmark(benchmark_name)
         group = benchmark_group(spec)
-        contender_names = contender_names_for_config(config, group)
-        if config.selection.max_contenders_per_benchmark is not None:
-            contender_names = contender_names[: config.selection.max_contenders_per_benchmark]
         group_counts[group] += 1
-        evaluation_count += len(resolve_contenders(group, contender_names))
+        trials = _resolve_trials(config, benchmark_name=benchmark_name, group=group)
+        evaluation_count += len(trials)
 
         cached_records = baseline_store.load_contenders_for_benchmark(baseline_id, benchmark_name)
         cached_best = baseline_store.load_result_for_benchmark(baseline_id, benchmark_name)
-        if not cached_records or cached_best is None:
+        if not cached_records or cached_best is None or len(cached_records) != len(trials):
             baseline_store.close()
             run_store.close()
             raise ValueError(f"benchmark '{benchmark_name}' missing from baseline cache '{baseline_id}'")
@@ -218,6 +228,7 @@ def materialize_baseline_run(
             "budget_policy_name": f"{config.baseline.mode}_contender_pool",
             "baseline_id": baseline_id,
             "baseline_signature": baseline_sig,
+            "target_evaluation_count": config.baseline.target_evaluation_count,
         },
     )
 
@@ -285,6 +296,7 @@ def _ensure_baseline_metadata(
             "budget_policy_name": f"{config.baseline.mode}_contender_pool",
             "baseline_id": baseline_id,
             "baseline_signature": baseline_sig,
+            "target_evaluation_count": config.baseline.target_evaluation_count,
             "created_at": created_at,
         },
     )
@@ -318,3 +330,54 @@ def _update_baseline_budget_metadata(
             "created_at": created_at,
         },
     )
+
+
+def _resolve_trials(config: RunConfig, *, benchmark_name: str, group: str) -> list[ContenderTrial]:
+    contender_names = contender_names_for_config(config, group)
+    if config.selection.max_contenders_per_benchmark is not None:
+        contender_names = contender_names[: config.selection.max_contenders_per_benchmark]
+    contenders = resolve_contenders(group, contender_names)
+    if not contenders:
+        raise ValueError(f"no contenders configured for group '{group}'")
+
+    slots = len(contenders)
+    if config.baseline.mode == "budget_matched":
+        slots = _budget_matched_slots(config, benchmark_name=benchmark_name)
+
+    trials: list[ContenderTrial] = []
+    for slot_index in range(slots):
+        contender = contenders[slot_index % len(contenders)]
+        repeat_index = slot_index // len(contenders)
+        contender_name = contender.name if repeat_index == 0 else f"{contender.name}@r{repeat_index + 1}"
+        trial_seed = config.seed + (repeat_index * 1009) + slot_index
+        trials.append(
+            ContenderTrial(
+                contender=contender,
+                contender_name=contender_name,
+                seed=trial_seed,
+            )
+        )
+    return trials
+
+
+def _budget_matched_slots(config: RunConfig, *, benchmark_name: str) -> int:
+    target = config.baseline.target_evaluation_count
+    if target is None:
+        raise ValueError("budget_matched mode requires baseline.target_evaluation_count")
+    benchmark_names = config.benchmark_pool.benchmarks
+    benchmark_count = len(benchmark_names)
+    if benchmark_count == 0:
+        raise ValueError("budget_matched mode requires at least one benchmark")
+    if target < benchmark_count:
+        raise ValueError(
+            "budget_matched target_evaluation_count must be >= benchmark_count "
+            f"({target} < {benchmark_count})"
+        )
+    try:
+        benchmark_index = benchmark_names.index(benchmark_name)
+    except ValueError as exc:
+        raise ValueError(f"benchmark '{benchmark_name}' not found in benchmark pool") from exc
+
+    base_slots = target // benchmark_count
+    remainder = target % benchmark_count
+    return base_slots + (1 if benchmark_index < remainder else 0)

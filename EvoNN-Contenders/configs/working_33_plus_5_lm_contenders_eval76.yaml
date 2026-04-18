@@ -56,3 +56,6 @@ contender_pool:
   - bigram_lm
 selection:
   max_contenders_per_benchmark: null
+baseline:
+  mode: budget_matched
+  target_evaluation_count: 76

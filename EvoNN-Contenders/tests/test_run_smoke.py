@@ -131,3 +131,45 @@ selection:
     assert meta["cache_hits"] == 1
     assert meta["executed_evaluation_count"] == 0
     assert len(results) == 1
+
+
+def test_budget_matched_mode_hits_exact_target_evaluation_count(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: budget_matched_contenders
+benchmark_pool:
+  name: tiny_pack
+  benchmarks:
+  - iris
+  - circles
+baseline:
+  mode: budget_matched
+  target_evaluation_count: 6
+  cache_dir: baseline-cache
+contender_pool:
+  tabular: [logistic, hist_gb]
+  synthetic: [hist_gb, extra_trees]
+  image: [mlp]
+  language_modeling: [bigram_lm]
+selection:
+  max_contenders_per_benchmark: null
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "run"
+    run_contenders(config, run_dir=run_dir, config_path=config_path)
+
+    store = RunStore(run_dir / "metrics.duckdb")
+    meta = store.load_budget_metadata("run")
+    contenders = store.load_contenders("run")
+    store.close()
+
+    assert meta["evaluation_count"] == 6
+    assert meta["executed_evaluation_count"] == 6
+    assert len(contenders) == 6
+    assert {record["benchmark_name"] for record in contenders} == {"iris", "circles"}
+    assert any(record["contender_name"].endswith("@r2") for record in contenders)

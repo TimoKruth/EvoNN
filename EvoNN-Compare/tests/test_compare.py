@@ -146,3 +146,23 @@ def test_compare_marks_budget_policy_mismatch_as_asymmetric(tmp_path: Path) -> N
 
     assert result.parity_status == "asymmetric"
     assert "budget policy mismatch" in result.reasons[0]
+
+
+def test_compare_treats_budget_matched_missing_policy_as_fair(tmp_path: Path) -> None:
+    left_dir = tmp_path / "prism"
+    right_dir = tmp_path / "contenders"
+    _write_run(left_dir, system="prism")
+    _write_run(right_dir, system="contenders", budget_policy_name="prototype_equal_budget")
+
+    pack = load_parity_pack(PACK_PATH)
+    left = SystemIngestor(left_dir)
+    right = SystemIngestor(right_dir)
+    result = ComparisonEngine().compare(
+        left_manifest=left.load_manifest(),
+        left_results=left.load_results(),
+        right_manifest=right.load_manifest(),
+        right_results=right.load_results(),
+        pack=pack,
+    )
+
+    assert result.parity_status == "fair"
