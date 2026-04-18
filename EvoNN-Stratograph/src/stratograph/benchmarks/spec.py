@@ -30,6 +30,9 @@ class BenchmarkSpec(BaseModel):
     task: TaskKind
     source: str
     dataset: str | None = None
+    url: str | None = None
+    path: str | None = None
+    target_column: str | None = None
     input_dim: int | None = None
     num_classes: int | None = None
     n_samples: int = 1024
@@ -118,8 +121,29 @@ class BenchmarkSpec(BaseModel):
                 x_val = x_val[: min(len(x_val), 256)]
                 y_val = y_val[: min(len(y_val), 256)]
             return x_train, y_train, x_val, y_val
-        raise NotImplementedError(
-            f"Source '{self.source}' metadata available, full loader not implemented yet"
+        from stratograph.benchmarks.registry import DatasetMeta, DatasetRegistry
+
+        if self.source in {"local", "url"}:
+            return DatasetRegistry().load_meta(
+                DatasetMeta(
+                    name=self.name,
+                    source=self.source,
+                    url=getattr(self, "url", None),
+                    path=getattr(self, "path", None),
+                    task=self.task,
+                    target_column=getattr(self, "target_column", None),
+                    input_dim=self.input_dim,
+                    num_classes=self.num_classes,
+                    n_samples=self.n_samples,
+                ),
+                seed=seed,
+                validation_split=validation_split,
+            )
+
+        return DatasetRegistry().load_data(
+            self.dataset or self.name,
+            seed=seed,
+            validation_split=validation_split,
         )
 
     def _load_sklearn(self, *, seed: int) -> tuple[np.ndarray, np.ndarray]:

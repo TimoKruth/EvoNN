@@ -116,6 +116,15 @@ class DatasetRegistry:
         validation_split: float = 0.2,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         meta = self.get(name)
+        return self.load_meta(meta, seed=seed, validation_split=validation_split)
+
+    def load_meta(
+        self,
+        meta: DatasetMeta,
+        *,
+        seed: int = 42,
+        validation_split: float = 0.2,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         if meta.source == DatasetSource.LM_CACHE:
             return load_cached_lm_dataset(meta.path or meta.name)
 

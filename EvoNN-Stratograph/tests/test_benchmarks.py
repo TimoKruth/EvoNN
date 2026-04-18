@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from stratograph.benchmarks import get_benchmark, list_benchmarks, load_parity_pack
+from stratograph.benchmarks.spec import BenchmarkSpec
 
 
 def test_builtin_benchmark_count() -> None:
@@ -24,3 +27,21 @@ def test_simple_pack_parses(repo_root) -> None:
     assert pack.name == "working_33_plus_5_lm_smoke"
     assert len(pack.benchmarks) == 38
     assert pack.benchmarks[0].metric_name == "accuracy"
+
+
+def test_local_csv_spec_loads(tmp_path) -> None:
+    csv_path = tmp_path / "toy.csv"
+    csv_path.write_text("f1,f2,target\n0,1,a\n1,0,b\n0,0,a\n1,1,b\n", encoding="utf-8")
+    spec = BenchmarkSpec(
+        name="toy_local",
+        task="classification",
+        source="local",
+        path=str(Path(csv_path)),
+        target_column="target",
+        input_dim=2,
+        num_classes=2,
+    )
+    x_train, y_train, x_val, y_val = spec.load_data(seed=42, validation_split=0.5)
+    assert x_train.shape[1] == 2
+    assert x_val.shape[1] == 2
+    assert set(y_train.tolist() + y_val.tolist()) == {0, 1}
