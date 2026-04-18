@@ -24,6 +24,8 @@ class TrainingConfig(BaseModel):
     multi_fidelity_schedule: list[float] = Field(default_factory=lambda: [0.35, 0.65, 1.0])
     benchmark_epoch_min_scale: float = 0.75
     benchmark_epoch_max_scale: float = 1.25
+    efficiency_epoch_min_scale: float = 0.85
+    efficiency_epoch_max_scale: float = 1.15
     operator_adaptation_rate: float = 0.35
 
 
@@ -51,6 +53,11 @@ class EvolutionConfig(BaseModel):
     benchmark_specialist_offspring: int = 2
     family_prior_bias: float = 0.2
     undercovered_focus_top_k: int = 3
+    efficiency_bias_start: float = 0.15
+    efficiency_bias_end: float = 0.40
+    efficiency_warmup_generations: int = 2
+    time_penalty_weight: float = 0.6
+    param_penalty_weight: float = 0.4
 
 
 class BenchmarkPoolConfig(BaseModel):

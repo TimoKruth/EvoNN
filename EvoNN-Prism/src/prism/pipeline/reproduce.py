@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from math import log1p
 from random import Random
 
 from prism.genome import ModelGenome, apply_random_mutation, crossover
@@ -32,7 +33,7 @@ def reproduce(
     archives = state.archives
 
     # Build parent pool from archives
-    parent_pool, quality_map = _build_parent_pool(state, archives)
+    parent_pool, quality_map = _build_parent_pool(state, archives, evolution)
     quality_map = _apply_selection_pressure(
         state,
         quality_map,
@@ -46,7 +47,7 @@ def reproduce(
     if not parent_pool:
         # Fallback: use current population
         parent_pool = list(state.population)
-        quality_map = _quality_map_from_results(state)
+        quality_map = _quality_map_from_results(state, evolution)
 
     offspring: list[ModelGenome] = []
     lineage: list[dict] = []
@@ -195,6 +196,7 @@ def tournament_select(
 def _build_parent_pool(
     state,
     archives: dict,
+    evolution,
 ) -> tuple[list[ModelGenome], dict[str, float]]:
     """Build a diverse parent pool from archives and population.
 
@@ -202,7 +204,7 @@ def _build_parent_pool(
     niche representatives, and the current population.
     """
     genome_map: dict[str, ModelGenome] = {g.genome_id: g for g in state.population}
-    quality_map: dict[str, float] = _quality_map_from_results(state)
+    quality_map: dict[str, float] = _quality_map_from_results(state, evolution)
 
     pool_ids: set[str] = set()
     pool: list[ModelGenome] = []
@@ -234,6 +236,13 @@ def _build_parent_pool(
     for summary in niche_archive.values():
         _add(summary.genome_id, summary.aggregate_quality)
 
+    efficient_archive = archives.get("efficient", {})
+    for summary in efficient_archive.get("family", {}).values():
+        _add(summary.genome_id, summary.aggregate_quality)
+    for summaries in efficient_archive.get("benchmark", {}).values():
+        for summary in summaries:
+            _add(summary.genome_id, summary.aggregate_quality)
+
     # Current population (ensures pool is never empty)
     for genome in state.population:
         _add(genome.genome_id)
@@ -241,16 +250,44 @@ def _build_parent_pool(
     return pool, quality_map
 
 
-def _quality_map_from_results(state) -> dict[str, float]:
-    """Extract aggregate quality per genome from state.results."""
-    quality_map: dict[str, float] = {}
+def _quality_map_from_results(state, evolution) -> dict[str, float]:
+    """Extract efficiency-adjusted parent score per genome from state.results."""
+    profiles: dict[str, dict[str, float]] = {}
     for genome_id, benchmark_results in state.results.items():
-        qualities = [
-            r.quality for r in benchmark_results.values()
-            if r.failure_reason is None
-        ]
-        if qualities:
-            quality_map[genome_id] = sum(qualities) / len(qualities)
+        valid = [result for result in benchmark_results.values() if result.failure_reason is None]
+        if not valid:
+            continue
+        avg_quality = sum(result.quality for result in valid) / len(valid)
+        avg_time = sum(result.train_seconds for result in valid) / len(valid)
+        avg_params = sum(result.parameter_count for result in valid) / len(valid)
+        profiles[genome_id] = {
+            "quality": avg_quality,
+            "time": avg_time,
+            "params": avg_params,
+        }
+
+    if not profiles:
+        return {}
+
+    bias = _efficiency_bias(
+        getattr(state, "generation", 0),
+        getattr(evolution, "num_generations", 1),
+        evolution.efficiency_bias_start,
+        evolution.efficiency_bias_end,
+        evolution.efficiency_warmup_generations,
+    )
+    time_logs = [log1p(profile["time"]) for profile in profiles.values()]
+    param_logs = [log1p(profile["params"]) for profile in profiles.values()]
+    time_weight = evolution.time_penalty_weight
+    param_weight = evolution.param_penalty_weight
+    total_weight = max(1e-9, time_weight + param_weight)
+
+    quality_map: dict[str, float] = {}
+    for genome_id, profile in profiles.items():
+        time_penalty = _normalized_range(log1p(profile["time"]), time_logs)
+        param_penalty = _normalized_range(log1p(profile["params"]), param_logs)
+        efficiency_penalty = ((time_weight * time_penalty) + (param_weight * param_penalty)) / total_weight
+        quality_map[genome_id] = profile["quality"] - (bias * efficiency_penalty)
     return quality_map
 
 
@@ -311,7 +348,7 @@ def _apply_selection_pressure(
         family_stats = getattr(state, "family_stats", {}).get(genome.family, {})
         family_count = family_stats.get("count", 0.0)
         if family_count > 0:
-            family_avg = family_stats.get("quality_sum", 0.0) / family_count
+            family_avg = family_stats.get("efficiency_sum", family_stats.get("quality_sum", 0.0)) / family_count
             family_fail = family_stats.get("failures", 0.0) / family_count
             boosted[genome_id] += family_prior_bias * family_avg
             boosted[genome_id] -= family_prior_bias * 0.5 * family_fail
@@ -414,11 +451,11 @@ def _operator_weights_for_parent(state, parent: ModelGenome) -> dict[str, float]
     family_stats = getattr(state, "family_stats", {}).get(parent.family, {})
     family_count = max(1.0, family_stats.get("count", 0.0))
     family_failure_rate = family_stats.get("failures", 0.0) / family_count
-    family_quality = family_stats.get("quality_sum", 0.0) / family_count if family_count else 0.0
+    family_quality = family_stats.get("efficiency_sum", family_stats.get("quality_sum", 0.0)) / family_count if family_count else 0.0
 
     for operator, payload in operator_stats.items():
         bucket_count = max(1.0, payload.get("count", 0.0))
-        operator_quality = payload.get("quality_sum", 0.0) / bucket_count if bucket_count else 0.0
+        operator_quality = payload.get("efficiency_sum", payload.get("quality_sum", 0.0)) / bucket_count if bucket_count else 0.0
         operator_failure = payload.get("failures", 0.0) / bucket_count
         label = operator.rsplit(":", 1)[-1] if ":" in operator else operator
         weights[label] = max(0.05, 1.0 + operator_quality - (operator_failure * 0.5))
@@ -430,3 +467,29 @@ def _operator_weights_for_parent(state, parent: ModelGenome) -> dict[str, float]
         for label in list(weights):
             weights[label] = max(0.05, weights[label] - family_failure_rate * 0.1)
     return weights
+
+
+def _efficiency_bias(
+    generation: int,
+    total_generations: int,
+    start: float,
+    end: float,
+    warmup_generations: int,
+) -> float:
+    if total_generations <= 1:
+        return end
+    if generation < warmup_generations:
+        return start
+    active_total = max(1, total_generations - 1 - warmup_generations)
+    progress = min(1.0, max(0.0, (generation - warmup_generations) / active_total))
+    return start + ((end - start) * progress)
+
+
+def _normalized_range(value: float, values: list[float]) -> float:
+    if not values:
+        return 0.5
+    lo = min(values)
+    hi = max(values)
+    if hi <= lo + 1e-9:
+        return 1.0
+    return (value - lo) / (hi - lo)

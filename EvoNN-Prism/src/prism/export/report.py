@@ -176,6 +176,53 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
         sections.append("No inheritance metadata available.")
         sections.append("")
 
+    sections.append("## Efficiency")
+    sections.append("")
+    efficiency_summary = _compute_efficiency_summary(evaluations)
+    if efficiency_summary:
+        sections.append("| Metric | Value |")
+        sections.append("|--------|-------|")
+        sections.append(f"| Avg Train Seconds | {efficiency_summary['avg_train_seconds']:.4f} |")
+        sections.append(f"| Avg Parameter Count | {efficiency_summary['avg_parameter_count']:.1f} |")
+        sections.append(f"| Avg Quality / Second | {efficiency_summary['quality_per_second']:.6f} |")
+        sections.append(f"| Avg Quality / 1k Params | {efficiency_summary['quality_per_kparam']:.6f} |")
+        sections.append("")
+    else:
+        sections.append("No efficiency data available.")
+        sections.append("")
+
+    sections.append("## Family Efficiency")
+    sections.append("")
+    family_efficiency = _compute_family_efficiency(evaluations, genomes)
+    if family_efficiency:
+        sections.append("| Family | Avg Quality | Avg Time (s) | Avg Params | Quality / Second | Quality / 1k Params |")
+        sections.append("|--------|-------------|--------------|------------|------------------|---------------------|")
+        for row in family_efficiency:
+            sections.append(
+                f"| {row['family']} | {row['avg_quality']:.6f} | {row['avg_train_seconds']:.4f} | "
+                f"{row['avg_parameter_count']:.1f} | {row['quality_per_second']:.6f} | {row['quality_per_kparam']:.6f} |"
+            )
+        sections.append("")
+    else:
+        sections.append("No family efficiency data available.")
+        sections.append("")
+
+    sections.append("## Operator Efficiency")
+    sections.append("")
+    operator_efficiency = _compute_operator_efficiency(evaluations, genomes, lineage)
+    if operator_efficiency:
+        sections.append("| Operator | Family | Avg Quality | Avg Time (s) | Avg Params | Quality / Second | Quality / 1k Params |")
+        sections.append("|----------|--------|-------------|--------------|------------|------------------|---------------------|")
+        for row in operator_efficiency:
+            sections.append(
+                f"| {row['operator']} | {row['family']} | {row['avg_quality']:.6f} | {row['avg_train_seconds']:.4f} | "
+                f"{row['avg_parameter_count']:.1f} | {row['quality_per_second']:.6f} | {row['quality_per_kparam']:.6f} |"
+            )
+        sections.append("")
+    else:
+        sections.append("No operator efficiency data available.")
+        sections.append("")
+
     sections.append("## Family Survival")
     sections.append("")
     family_survival = _compute_family_survival(evaluations, genomes)
@@ -437,6 +484,71 @@ def _compute_inheritance_summary(evaluations: list[dict[str, Any]]) -> dict[str,
     }
 
 
+def _compute_efficiency_summary(evaluations: list[dict[str, Any]]) -> dict[str, float] | None:
+    valid = [row for row in evaluations if row.get("failure_reason") is None]
+    if not valid:
+        return None
+    avg_quality = sum(float(row.get("quality") or 0.0) for row in valid) / len(valid)
+    avg_time = sum(float(row.get("train_seconds") or 0.0) for row in valid) / len(valid)
+    avg_params = sum(float(row.get("parameter_count") or 0.0) for row in valid) / len(valid)
+    return {
+        "avg_quality": avg_quality,
+        "avg_train_seconds": avg_time,
+        "avg_parameter_count": avg_params,
+        "quality_per_second": avg_quality / max(1e-9, avg_time),
+        "quality_per_kparam": avg_quality / max(1.0, avg_params / 1000.0),
+    }
+
+
+def _compute_family_efficiency(
+    evaluations: list[dict[str, Any]],
+    genomes: list[ModelGenome],
+) -> list[dict[str, Any]]:
+    family_by_genome = {genome.genome_id: genome.family for genome in genomes}
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in evaluations:
+        if row.get("failure_reason") is not None:
+            continue
+        family = family_by_genome.get(row.get("genome_id", ""))
+        if family is None:
+            continue
+        grouped.setdefault(family, []).append(row)
+    return _efficiency_rows(grouped, group_label="family")
+
+
+def _compute_operator_efficiency(
+    evaluations: list[dict[str, Any]],
+    genomes: list[ModelGenome],
+    lineage: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    family_by_genome = {genome.genome_id: genome.family for genome in genomes}
+    operator_by_genome = {
+        row["genome_id"]: str(row.get("mutation_summary") or row.get("operator_kind") or "unknown")
+        for row in lineage
+    }
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in evaluations:
+        if row.get("failure_reason") is not None:
+            continue
+        genome_id = row.get("genome_id", "")
+        operator = operator_by_genome.get(genome_id)
+        family = family_by_genome.get(genome_id)
+        if operator is None or family is None:
+            continue
+        grouped.setdefault((operator, family), []).append(row)
+
+    rows = []
+    for (operator, family), items in grouped.items():
+        payload = _aggregate_efficiency(items)
+        rows.append({
+            "operator": operator,
+            "family": family,
+            **payload,
+        })
+    rows.sort(key=lambda row: (-row["quality_per_second"], -row["quality_per_kparam"], row["operator"], row["family"]))
+    return rows[:12]
+
+
 def _compute_family_survival(
     evaluations: list[dict[str, Any]],
     genomes: list[ModelGenome],
@@ -516,3 +628,32 @@ def _compute_specialist_summary(archives: list[dict[str, Any]]) -> list[dict[str
         }
         for benchmark, families in sorted(grouped.items())
     ]
+
+
+def _efficiency_rows(
+    grouped: dict[str, list[dict[str, Any]]],
+    *,
+    group_label: str,
+) -> list[dict[str, Any]]:
+    rows = []
+    for label, items in grouped.items():
+        payload = _aggregate_efficiency(items)
+        rows.append({
+            group_label: label,
+            **payload,
+        })
+    rows.sort(key=lambda row: (-row["quality_per_second"], -row["quality_per_kparam"], row[group_label]))
+    return rows
+
+
+def _aggregate_efficiency(items: list[dict[str, Any]]) -> dict[str, float]:
+    avg_quality = sum(float(row.get("quality") or 0.0) for row in items) / len(items)
+    avg_time = sum(float(row.get("train_seconds") or 0.0) for row in items) / len(items)
+    avg_params = sum(float(row.get("parameter_count") or 0.0) for row in items) / len(items)
+    return {
+        "avg_quality": avg_quality,
+        "avg_train_seconds": avg_time,
+        "avg_parameter_count": avg_params,
+        "quality_per_second": avg_quality / max(1e-9, avg_time),
+        "quality_per_kparam": avg_quality / max(1.0, avg_params / 1000.0),
+    }

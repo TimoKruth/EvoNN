@@ -36,6 +36,7 @@ class IndividualSummary:
 def build_archives(
     summaries: list[IndividualSummary],
     elite_per_benchmark: int = 3,
+    efficient_per_benchmark: int = 2,
 ) -> dict:
     """Build all archive types from individual summaries.
 
@@ -47,6 +48,7 @@ def build_archives(
         "pareto": build_pareto_archive(scored),
         "niche": build_niche_archive(scored),
         "specialist": build_specialist_archive(scored),
+        "efficient": build_efficient_archive(scored, efficient_per_benchmark),
     }
 
 
@@ -130,6 +132,38 @@ def build_specialist_archive(
     return {benchmark_id: dict(families) for benchmark_id, families in archive.items()}
 
 
+def build_efficient_archive(
+    summaries: list[IndividualSummary],
+    efficient_per_benchmark: int = 2,
+) -> dict[str, dict | list]:
+    """Best quality/efficiency tradeoff per family and benchmark."""
+    summaries = _scored(_dedupe(summaries))
+    if not summaries:
+        return {"family": {}, "benchmark": {}}
+
+    family_archive: dict[str, IndividualSummary] = {}
+    benchmark_archive: dict[str, list[IndividualSummary]] = defaultdict(list)
+    for ind in summaries:
+        family_current = family_archive.get(ind.family)
+        if family_current is None or _efficiency_tradeoff_score(ind, summaries) > _efficiency_tradeoff_score(family_current, summaries):
+            family_archive[ind.family] = ind
+        for benchmark_id in ind.qualities:
+            benchmark_archive[benchmark_id].append(ind)
+
+    ranked_benchmark_archive = {
+        benchmark_id: sorted(
+            inds,
+            key=lambda ind: _efficiency_tradeoff_score(ind, summaries),
+            reverse=True,
+        )[:efficient_per_benchmark]
+        for benchmark_id, inds in benchmark_archive.items()
+    }
+    return {
+        "family": family_archive,
+        "benchmark": ranked_benchmark_archive,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -158,6 +192,29 @@ def _dedupe(summaries: list[IndividualSummary]) -> list[IndividualSummary]:
 def _scored(summaries: list[IndividualSummary]) -> list[IndividualSummary]:
     """Filter to individuals that have at least one quality score."""
     return [s for s in summaries if s.qualities]
+
+
+def _efficiency_tradeoff_score(
+    summary: IndividualSummary,
+    population: list[IndividualSummary],
+) -> float:
+    times = [ind.train_seconds for ind in population]
+    params = [float(ind.parameter_count) for ind in population]
+    time_norm = _normalized_value(summary.train_seconds, times, invert=True)
+    param_norm = _normalized_value(float(summary.parameter_count), params, invert=True)
+    return summary.aggregate_quality + (0.12 * time_norm) + (0.06 * param_norm)
+
+
+def _normalized_value(value: float, values: list[float], *, invert: bool) -> float:
+    if not values:
+        return 0.5
+    lo = min(values)
+    hi = max(values)
+    if hi <= lo + 1e-9:
+        score = 1.0
+    else:
+        score = (value - lo) / (hi - lo)
+    return 1.0 - score if invert else score
 
 
 def summaries_from_state_results(

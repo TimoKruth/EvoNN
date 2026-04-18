@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import log1p
 from random import Random
 
 import numpy as np
@@ -11,6 +12,7 @@ from prism.genome import ModelGenome
 from prism.storage import RunStore
 from prism.runtime.cache import WeightCache
 from prism.runtime.training import EvaluationResult, train_and_evaluate
+from prism.families.compiler import is_genome_compatible
 
 
 @dataclass
@@ -73,6 +75,7 @@ def evaluate(
     )
 
     priority_scores = _benchmark_priority_scores(state, benchmark_specs)
+    genome_profiles = _genome_profiles(state)
 
     for genome in state.population:
         genome_results = state.results.get(genome.genome_id, {})
@@ -93,17 +96,27 @@ def evaluate(
                 training.benchmark_epoch_min_scale,
                 training.benchmark_epoch_max_scale,
             )
+            genome_scale = _genome_epoch_multiplier(
+                genome,
+                genome_profiles,
+                state.generation,
+                evolution,
+                training.efficiency_epoch_min_scale,
+                training.efficiency_epoch_max_scale,
+            )
 
             result = _evaluate_single(
                 genome=genome,
                 spec=spec,
                 training=training,
-                epoch_scale=epoch_scale * benchmark_scale,
+                epoch_scale=epoch_scale * benchmark_scale * genome_scale,
                 cache=cache,
                 parent_ids=parent_ids,
             )
 
             genome_results[benchmark_id] = result
+            if result.failure_reason == "unsupported_benchmark":
+                continue
             state.total_evaluations += 1
             _record_benchmark_result(state, benchmark_id, result)
 
@@ -172,6 +185,15 @@ def _evaluate_single(
     modality = spec.modality if hasattr(spec, "modality") else "tabular"
     task = spec.task if hasattr(spec, "task") else "classification"
     input_shape = spec.input_shape if hasattr(spec, "input_shape") else None
+    if not is_genome_compatible(genome, modality, task):
+        return EvaluationResult(
+            metric_name=_default_metric_name(task),
+            metric_value=float("nan"),
+            quality=float("-inf"),
+            parameter_count=0,
+            train_seconds=0.0,
+            failure_reason="unsupported_benchmark",
+        )
     # Load data before compile so LM output_dim can expand to observed token range.
     X_train, y_train, X_val, y_val = _load_data(spec, seed=42)
     output_dim = _resolve_output_dim(spec, X_train, y_train)
@@ -198,6 +220,13 @@ def _evaluate_single(
             if cache.transfer_weights(parent_id, model):
                 inherited_from = parent_id
                 break
+        if inherited_from is None and hasattr(cache, "transfer_best_available"):
+            inherited_from = cache.transfer_best_available(
+                model,
+                family=genome.family,
+                preferred_ids=parent_ids or [],
+                exclude_ids={genome.genome_id},
+            )
 
     # Load data from spec
     # Apply multi-fidelity epoch scaling
@@ -222,7 +251,7 @@ def _evaluate_single(
 
     # Cache weights on success
     if cache is not None and result.failure_reason is None:
-        cache.store(genome.genome_id, model)
+        cache.store(genome.genome_id, model, family=genome.family)
     result.inherited_from = inherited_from
 
     return result
@@ -277,6 +306,14 @@ def _load_data(spec, seed: int = 42):
     return spec.x_train, spec.y_train, spec.x_val, spec.y_val
 
 
+def _default_metric_name(task: str) -> str:
+    if task == "classification":
+        return "accuracy"
+    if task == "language_modeling":
+        return "perplexity"
+    return "mse"
+
+
 def _record_benchmark_result(
     state: GenerationState,
     benchmark_id: str,
@@ -291,32 +328,81 @@ def _record_benchmark_result(
 
 def update_search_memory(
     state: GenerationState,
-    adaptation_rate: float,
+    config,
 ) -> None:
     """Fold latest genome outcomes back into operator and family priors."""
+    adaptation_rate = config.training.operator_adaptation_rate
+    bias = _efficiency_bias(
+        state.generation,
+        config.evolution.num_generations,
+        config.evolution.efficiency_bias_start,
+        config.evolution.efficiency_bias_end,
+        config.evolution.efficiency_warmup_generations,
+    )
     for genome in state.population:
         genome_results = state.results.get(genome.genome_id, {})
-        valid = [result.quality for result in genome_results.values() if result.failure_reason is None]
-        failures = sum(1 for result in genome_results.values() if result.failure_reason is not None)
-        avg_quality = sum(valid) / len(valid) if valid else float("-inf")
+        valid_results = [result for result in genome_results.values() if result.failure_reason is None]
+        failures = sum(1 for result in genome_results.values() if result.failure_reason not in {None, "unsupported_benchmark"})
+        avg_quality = (
+            sum(result.quality for result in valid_results) / len(valid_results)
+            if valid_results else float("-inf")
+        )
+        avg_time = (
+            sum(result.train_seconds for result in valid_results) / len(valid_results)
+            if valid_results else 0.0
+        )
+        avg_params = (
+            sum(result.parameter_count for result in valid_results) / len(valid_results)
+            if valid_results else float(genome.parameter_estimate)
+        )
+        efficiency_score = _efficiency_adjusted_value(
+            avg_quality,
+            avg_time,
+            avg_params,
+            bias,
+            config.evolution.time_penalty_weight,
+            config.evolution.param_penalty_weight,
+        )
 
         family_bucket = state.family_stats.setdefault(
-            genome.family, {"count": 0.0, "quality_sum": 0.0, "failures": 0.0},
+            genome.family,
+            {
+                "count": 0.0,
+                "quality_sum": 0.0,
+                "time_sum": 0.0,
+                "param_sum": 0.0,
+                "efficiency_sum": 0.0,
+                "failures": 0.0,
+            },
         )
         family_bucket["count"] += 1.0
-        if valid:
+        if valid_results:
             family_bucket["quality_sum"] += float(avg_quality)
+            family_bucket["time_sum"] += float(avg_time)
+            family_bucket["param_sum"] += float(avg_params)
+            family_bucket["efficiency_sum"] += float(efficiency_score)
         family_bucket["failures"] += float(failures)
 
         operator = state.lineage_ops.get(genome.genome_id)
         if operator is None:
             continue
         operator_bucket = state.operator_stats.setdefault(
-            operator, {"count": 0.0, "quality_sum": 0.0, "failures": 0.0},
+            operator,
+            {
+                "count": 0.0,
+                "quality_sum": 0.0,
+                "time_sum": 0.0,
+                "param_sum": 0.0,
+                "efficiency_sum": 0.0,
+                "failures": 0.0,
+            },
         )
         operator_bucket["count"] += 1.0
-        if valid:
+        if valid_results:
             operator_bucket["quality_sum"] += float(avg_quality) * adaptation_rate
+            operator_bucket["time_sum"] += float(avg_time) * adaptation_rate
+            operator_bucket["param_sum"] += float(avg_params) * adaptation_rate
+            operator_bucket["efficiency_sum"] += float(efficiency_score) * adaptation_rate
         operator_bucket["failures"] += float(failures)
 
 
@@ -359,3 +445,110 @@ def _benchmark_epoch_multiplier(
         return 1.0
     normalized = (score - min_score) / (max_score - min_score)
     return min_scale + normalized * (max_scale - min_scale)
+
+
+def _genome_profiles(state: GenerationState) -> dict[str, dict[str, float]]:
+    profiles: dict[str, dict[str, float]] = {}
+    for genome in state.population:
+        valid = [
+            result for result in state.results.get(genome.genome_id, {}).values()
+            if result.failure_reason is None
+        ]
+        if valid:
+            profiles[genome.genome_id] = {
+                "quality": sum(result.quality for result in valid) / len(valid),
+                "time": sum(result.train_seconds for result in valid) / len(valid),
+                "params": sum(result.parameter_count for result in valid) / len(valid),
+            }
+        else:
+            profiles[genome.genome_id] = {
+                "quality": 0.0,
+                "time": 0.0,
+                "params": float(genome.parameter_estimate),
+            }
+    return profiles
+
+
+def _genome_epoch_multiplier(
+    genome: ModelGenome,
+    profiles: dict[str, dict[str, float]],
+    generation: int,
+    evolution,
+    min_scale: float,
+    max_scale: float,
+) -> float:
+    if not profiles:
+        return 1.0
+    bias = _efficiency_bias(
+        generation,
+        evolution.num_generations,
+        evolution.efficiency_bias_start,
+        evolution.efficiency_bias_end,
+        evolution.efficiency_warmup_generations,
+    )
+    time_logs = [log1p(profile["time"]) for profile in profiles.values()]
+    param_logs = [log1p(profile["params"]) for profile in profiles.values()]
+    score_values = []
+    for profile in profiles.values():
+        time_penalty = _normalized_range(log1p(profile["time"]), time_logs)
+        param_penalty = _normalized_range(log1p(profile["params"]), param_logs)
+        total_weight = max(1e-9, evolution.time_penalty_weight + evolution.param_penalty_weight)
+        efficiency_penalty = (
+            (evolution.time_penalty_weight * time_penalty)
+            + (evolution.param_penalty_weight * param_penalty)
+        ) / total_weight
+        score_values.append(profile["quality"] - (bias * efficiency_penalty))
+
+    profile = profiles[genome.genome_id]
+    time_penalty = _normalized_range(log1p(profile["time"]), time_logs)
+    param_penalty = _normalized_range(log1p(profile["params"]), param_logs)
+    total_weight = max(1e-9, evolution.time_penalty_weight + evolution.param_penalty_weight)
+    efficiency_penalty = (
+        (evolution.time_penalty_weight * time_penalty)
+        + (evolution.param_penalty_weight * param_penalty)
+    ) / total_weight
+    score = profile["quality"] - (bias * efficiency_penalty)
+    normalized = _normalized_range(score, score_values)
+    return min_scale + (normalized * (max_scale - min_scale))
+
+
+def _efficiency_adjusted_value(
+    quality: float,
+    train_seconds: float,
+    parameter_count: float,
+    bias: float,
+    time_weight: float,
+    param_weight: float,
+) -> float:
+    total_weight = max(1e-9, time_weight + param_weight)
+    penalty = (
+        (time_weight * log1p(max(0.0, train_seconds)))
+        + (param_weight * (log1p(max(1.0, parameter_count)) / 10.0))
+    ) / total_weight
+    return ((1.0 - bias) * quality) - (bias * penalty)
+
+
+def _efficiency_bias(
+    generation: int,
+    total_generations: int,
+    start: float,
+    end: float,
+    warmup_generations: int,
+) -> float:
+    if total_generations <= 1:
+        return end
+    if generation < warmup_generations:
+        return start
+    active_total = max(1, total_generations - 1 - warmup_generations)
+    progress = min(1.0, max(0.0, (generation - warmup_generations) / active_total))
+    return start + ((end - start) * progress)
+
+
+def _normalized_range(value: float, values: list[float]) -> float:
+    if not values:
+        return 0.5
+    lo = min(values)
+    hi = max(values)
+    if hi <= lo + 1e-9:
+        return 1.0
+    return (value - lo) / (hi - lo)

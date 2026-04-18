@@ -119,7 +119,7 @@ def run_evolution(
                 elite_per_benchmark=evolution.elite_per_benchmark,
             )
             _persist_archives(store, run_id, gen, state.archives)
-            update_search_memory(state, config.training.operator_adaptation_rate)
+            update_search_memory(state, config)
 
             # 4. Monitor
             elapsed = time.time() - run_start
@@ -406,6 +406,17 @@ def _persist_archives(store: RunStore, run_id: str, generation: int, archives: d
             run_id, generation, f"niche:{family}", None, summary.genome_id, summary.aggregate_quality,
         )
 
+    efficient_archive = archives.get("efficient", {})
+    for family, summary in efficient_archive.get("family", {}).items():
+        store.save_archive(
+            run_id, generation, f"efficient:family:{family}", None, summary.genome_id, summary.aggregate_quality,
+        )
+    for benchmark_id, summaries in efficient_archive.get("benchmark", {}).items():
+        for summary in summaries:
+            store.save_archive(
+                run_id, generation, f"efficient:{benchmark_id}", benchmark_id, summary.genome_id, summary.aggregate_quality,
+            )
+
     for benchmark_id, specialists in archives.get("specialist", {}).items():
         for family, summary in specialists.items():
             store.save_archive(
@@ -454,11 +465,22 @@ def _load_prior_run_memory(prior_run_dirs: list[str]) -> dict:
             if genome is None:
                 continue
             family_bucket = family_stats.setdefault(
-                genome.family, {"count": 0.0, "quality_sum": 0.0, "failures": 0.0},
+                genome.family,
+                {
+                    "count": 0.0,
+                    "quality_sum": 0.0,
+                    "time_sum": 0.0,
+                    "param_sum": 0.0,
+                    "efficiency_sum": 0.0,
+                    "failures": 0.0,
+                },
             )
             family_bucket["count"] += 1.0
             if quality is not None and failure is None:
                 family_bucket["quality_sum"] += float(quality)
+                family_bucket["time_sum"] += float(row.get("train_seconds") or 0.0)
+                family_bucket["param_sum"] += float(row.get("parameter_count") or 0.0)
+                family_bucket["efficiency_sum"] += float(quality)
             if failure is not None:
                 family_bucket["failures"] += 1.0
 
@@ -468,11 +490,22 @@ def _load_prior_run_memory(prior_run_dirs: list[str]) -> dict:
             if not operator:
                 continue
             bucket = operator_stats.setdefault(
-                operator, {"count": 0.0, "quality_sum": 0.0, "failures": 0.0},
+                operator,
+                {
+                    "count": 0.0,
+                    "quality_sum": 0.0,
+                    "time_sum": 0.0,
+                    "param_sum": 0.0,
+                    "efficiency_sum": 0.0,
+                    "failures": 0.0,
+                },
             )
             bucket["count"] += 1.0
             if row.get("failure_reason") is None and row.get("quality") is not None:
                 bucket["quality_sum"] += float(row["quality"])
+                bucket["time_sum"] += float(row.get("train_seconds") or 0.0)
+                bucket["param_sum"] += float(row.get("parameter_count") or 0.0)
+                bucket["efficiency_sum"] += float(row["quality"])
             elif row.get("failure_reason") is not None:
                 bucket["failures"] += 1.0
 

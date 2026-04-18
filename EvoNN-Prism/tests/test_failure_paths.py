@@ -15,6 +15,7 @@ from prism.benchmarks.preprocess import Preprocessor
 from prism.benchmarks.spec import BenchmarkSpec
 from prism.config import RunConfig
 from prism.genome import ModelGenome, apply_random_mutation
+from prism.export import report as report_mod
 from prism.pipeline import archive as archive_mod
 from prism.pipeline import evaluate as evaluate_mod
 from prism.pipeline import reproduce as reproduce_mod
@@ -23,6 +24,7 @@ from prism.pipeline.evaluate import (
     _benchmark_epoch_multiplier,
     _benchmark_priority_scores,
     _evaluate_single,
+    _genome_epoch_multiplier,
     _resolve_output_dim,
 )
 from prism.runtime.training import EvaluationResult, train_and_evaluate
@@ -166,6 +168,32 @@ def test_evaluate_updates_history_for_multiple_genomes(monkeypatch):
     assert updated.benchmark_evaluations["moons"] == 2
 
 
+def test_evaluate_skips_unsupported_pairs_without_counting(monkeypatch):
+    genome = _sample_genome("mlp")
+    spec = _sample_spec(task="language_modeling")
+    spec.modality = "text"
+    spec.input_shape = [32]
+    spec.output_dim = 32
+    spec.num_classes = 32
+    compile_calls = []
+
+    monkeypatch.setattr(
+        "prism.families.compiler.compile_genome",
+        lambda *args, **kwargs: compile_calls.append(args) or None,
+    )
+
+    state = GenerationState(
+        generation=0,
+        population=[genome],
+        parent_ids={genome.genome_id: []},
+    )
+    updated = evaluate_mod.evaluate(state, RunConfig(), [spec])
+
+    assert updated.total_evaluations == 0
+    assert updated.results[genome.genome_id]["moons"].failure_reason == "unsupported_benchmark"
+    assert compile_calls == []
+
+
 def test_evaluate_single_uses_parent_inheritance_and_stores_success(monkeypatch):
     genome = _sample_genome()
     model = object()
@@ -178,7 +206,7 @@ def test_evaluate_single_uses_parent_inheritance_and_stores_success(monkeypatch)
             transfer_calls.append(parent_id)
             return parent_id == "parent-b"
 
-        def store(self, genome_id, child_model):
+        def store(self, genome_id, child_model, family=None):
             assert child_model is model
             stored_ids.append(genome_id)
 
@@ -212,6 +240,65 @@ def test_evaluate_single_uses_parent_inheritance_and_stores_success(monkeypatch)
     assert result.failure_reason is None
     assert result.metric_value == 0.95
     assert result.inherited_from == "parent-b"
+
+
+def test_evaluate_single_falls_back_to_best_compatible_cache(monkeypatch):
+    genome = _sample_genome("attention")
+    model = object()
+    fallback_calls = []
+
+    class FakeCache:
+        def transfer_weights(self, parent_id, child_model):
+            assert child_model is model
+            return False
+
+        def transfer_best_available(self, child_model, *, family, preferred_ids, exclude_ids):
+            assert child_model is model
+            fallback_calls.append((family, tuple(preferred_ids), tuple(sorted(exclude_ids))))
+            return "prior-attention"
+
+        def store(self, genome_id, child_model, family=None):
+            assert child_model is model
+
+    monkeypatch.setattr(
+        "prism.families.compiler.compile_genome",
+        lambda *args, **kwargs: SimpleNamespace(model=model, parameter_count=7),
+    )
+    monkeypatch.setattr(
+        evaluate_mod,
+        "train_and_evaluate",
+        lambda *args, **kwargs: EvaluationResult(
+            metric_name="accuracy",
+            metric_value=0.9,
+            quality=0.9,
+            parameter_count=7,
+            train_seconds=0.2,
+        ),
+    )
+
+    result = _evaluate_single(
+        genome=genome,
+        spec=SimpleNamespace(
+            id="seq",
+            modality="sequence",
+            task="classification",
+            input_shape=[16, 4],
+            output_dim=3,
+            load_data=lambda seed=42: (
+                np.zeros((4, 16, 4), dtype=np.float32),
+                np.zeros(4, dtype=np.int64),
+                np.zeros((2, 16, 4), dtype=np.float32),
+                np.zeros(2, dtype=np.int64),
+            ),
+        ),
+        training=RunConfig().training,
+        epoch_scale=1.0,
+        cache=FakeCache(),
+        parent_ids=["parent-a"],
+    )
+
+    assert fallback_calls == [("attention", ("parent-a",), (genome.genome_id,))]
+    assert result.inherited_from == "prior-attention"
 
 
 def test_benchmark_priority_scores_and_epoch_multiplier():
@@ -398,6 +485,53 @@ def test_apply_random_mutation_uses_family_specific_pool():
     assert child.embedding_dim != genome.embedding_dim
 
 
+def test_quality_map_prefers_faster_candidate_when_quality_close():
+    fast = _sample_genome("mlp")
+    slow = _sample_genome("sparse_mlp")
+    state = SimpleNamespace(
+        generation=4,
+        results={
+            fast.genome_id: {"b": EvaluationResult("accuracy", 0.84, 0.84, 120, 0.2)},
+            slow.genome_id: {"b": EvaluationResult("accuracy", 0.85, 0.85, 5000, 4.5)},
+        },
+    )
+    evolution = RunConfig.model_validate(
+        {
+            "evolution": {
+                "num_generations": 10,
+                "efficiency_bias_start": 0.15,
+                "efficiency_bias_end": 0.40,
+                "efficiency_warmup_generations": 2,
+                "time_penalty_weight": 0.6,
+                "param_penalty_weight": 0.4,
+            }
+        }
+    ).evolution
+
+    score_map = reproduce_mod._quality_map_from_results(state, evolution)
+
+    assert score_map[fast.genome_id] > score_map[slow.genome_id]
+
+
+def test_genome_epoch_multiplier_rewards_good_cheap_profiles():
+    fast = _sample_genome("mlp")
+    slow = _sample_genome("sparse_mlp")
+    profiles = {
+        fast.genome_id: {"quality": 0.84, "time": 0.2, "params": 120.0},
+        slow.genome_id: {"quality": 0.85, "time": 4.5, "params": 5000.0},
+    }
+    evolution = RunConfig.model_validate(
+        {"evolution": {"num_generations": 10, "efficiency_warmup_generations": 2}}
+    ).evolution
+
+    fast_scale = _genome_epoch_multiplier(fast, profiles, 6, evolution, 0.85, 1.15)
+    slow_scale = _genome_epoch_multiplier(slow, profiles, 6, evolution, 0.85, 1.15)
+
+    assert fast_scale > slow_scale
+    assert fast_scale > 1.0
+    assert slow_scale < 1.0
+
+
 def test_build_specialist_archive_keeps_best_per_family_and_benchmark():
     summaries = [
         archive_mod.IndividualSummary("g1", "mlp", 0, {"moons": 0.8, "iris": 0.7}, 10, 0.1),
@@ -410,6 +544,19 @@ def test_build_specialist_archive_keeps_best_per_family_and_benchmark():
     assert specialist["moons"]["mlp"].genome_id == "g2"
     assert specialist["moons"]["attention"].genome_id == "g3"
     assert specialist["iris"]["mlp"].genome_id == "g1"
+
+
+def test_build_efficient_archive_prefers_better_tradeoff():
+    summaries = [
+        archive_mod.IndividualSummary("fast", "mlp", 0, {"moons": 0.83}, 100, 0.2),
+        archive_mod.IndividualSummary("slow", "mlp", 0, {"moons": 0.84}, 5000, 5.0),
+        archive_mod.IndividualSummary("attn", "attention", 0, {"moons": 0.82}, 200, 0.3),
+    ]
+
+    efficient = archive_mod.build_efficient_archive(summaries, efficient_per_benchmark=1)
+
+    assert efficient["family"]["mlp"].genome_id == "fast"
+    assert efficient["benchmark"]["moons"][0].genome_id == "fast"
 
 
 def test_operator_weights_for_parent_use_search_memory():
@@ -427,6 +574,39 @@ def test_operator_weights_for_parent_use_search_memory():
     weights = reproduce_mod._operator_weights_for_parent(state, parent)
 
     assert weights["embedding_dim"] > weights["dropout"]
+
+
+def test_report_efficiency_helpers_summarize_family_and_operator():
+    genomes = [_sample_genome("mlp"), _sample_genome("attention")]
+    evaluations = [
+        {
+            "genome_id": genomes[0].genome_id,
+            "quality": 0.9,
+            "train_seconds": 0.3,
+            "parameter_count": 120,
+            "failure_reason": None,
+        },
+        {
+            "genome_id": genomes[1].genome_id,
+            "quality": 0.8,
+            "train_seconds": 0.8,
+            "parameter_count": 400,
+            "failure_reason": None,
+        },
+    ]
+    lineage = [
+        {"genome_id": genomes[0].genome_id, "mutation_summary": "mutation:width"},
+        {"genome_id": genomes[1].genome_id, "mutation_summary": "mutation:embedding_dim"},
+    ]
+
+    summary = report_mod._compute_efficiency_summary(evaluations)
+    family_rows = report_mod._compute_family_efficiency(evaluations, genomes)
+    operator_rows = report_mod._compute_operator_efficiency(evaluations, genomes, lineage)
+
+    assert summary is not None
+    assert summary["quality_per_second"] > 0
+    assert family_rows[0]["family"] == "mlp"
+    assert operator_rows[0]["quality_per_second"] >= operator_rows[1]["quality_per_second"]
 
 
 def test_get_benchmark_missing_catalog_gives_explicit_error(tmp_path):
