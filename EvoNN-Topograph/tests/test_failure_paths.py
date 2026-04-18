@@ -256,6 +256,27 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
                 }
             ],
         )
+        store.save_run_state(
+            "current",
+            {
+                "benchmark_elite_archive": {
+                    "elites": {
+                        "moons": {
+                            "benchmark_name": "moons",
+                            "benchmark_family": "tabular",
+                            "genome_idx": 1,
+                            "fitness": 0.15,
+                            "generation": 0,
+                            "genome": genome_to_dict(genome_b),
+                            "param_count": genome_b.param_count,
+                            "model_bytes": genome_b.model_bytes,
+                            "behavior": [2, 2, 0, 0, 3, 4, 0.5, 0],
+                            "architecture_summary": "3L/4C",
+                        }
+                    }
+                }
+            },
+        )
 
     report = report_mod.generate_report(run_dir)
     assert "## Benchmark Timing" in report
@@ -265,6 +286,7 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
     assert "Data Cache" in report
     assert "## Sampled Benchmark Order" in report
     assert "## Worst Benchmark Trend" in report
+    assert "## Topology Atlas" in report
 
 
 def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: Path):
@@ -291,17 +313,33 @@ def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: P
             ],
         }
     )
-    specs = [SimpleNamespace(name=name) for name in ["a", "b", "c"]]
-    pool_state = {"current_sample": [], "rotation_counter": 0, "benchmark_best_fitness": {"a": 0.9, "b": 0.2, "c": 0.1}}
+    specs = [
+        SimpleNamespace(name="a", task="classification", source="sklearn"),
+        SimpleNamespace(name="b", task="classification", source="image"),
+        SimpleNamespace(name="c", task="language_modeling", source="lm_cache"),
+    ]
+    pool_state = {
+        "current_sample": [],
+        "rotation_counter": 0,
+        "benchmark_best_fitness": {"a": 0.9, "b": 0.2, "c": 0.1},
+        "family_stage_history": [],
+    }
 
-    first = coordinator_mod._sample_benchmark_specs(cfg, specs, random.Random(1), pool_state)
-    second = coordinator_mod._sample_benchmark_specs(cfg, specs, random.Random(9), pool_state)
-    third = coordinator_mod._sample_benchmark_specs(cfg, specs, random.Random(11), pool_state)
+    first = coordinator_mod._sample_benchmark_specs(
+        cfg, specs, random.Random(1), pool_state, generation=0
+    )
+    second = coordinator_mod._sample_benchmark_specs(
+        cfg, specs, random.Random(9), pool_state, generation=1
+    )
+    third = coordinator_mod._sample_benchmark_specs(
+        cfg, specs, random.Random(11), pool_state, generation=2
+    )
 
     assert "a" in {spec.name for spec in first}
     assert len(first) == 2
     assert [spec.name for spec in second] == [spec.name for spec in first]
     assert len(third) == 2
+    assert any(spec.name == "b" for spec in third)
 
     coordinator_mod._update_pool_fitness_history(
         pool_state,
@@ -334,7 +372,16 @@ def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: P
         total_evaluations=8,
     )
     elite_archive = BenchmarkEliteArchive()
-    elite_archive.update("a", 0, 0.3, 0)
+    elite_archive.update(
+        "a",
+        0,
+        0.3,
+        0,
+        benchmark_family="tabular",
+        genome=population[0],
+        behavior=np.zeros(8, dtype=np.float32),
+        architecture_summary="3L/4C",
+    )
     stats = coordinator_mod._generation_stats(first, elite_archive, state)
     assert "Benchmarks" in stats
     assert stats["Benchmark Elites"] == 1
@@ -434,6 +481,9 @@ def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: P
         map_elites.add(population[0], np.zeros(8, dtype=np.float32), 0.2)
         scheduler = MutationScheduler()
         scheduler.record_outcome("width", True)
+        pool_state["family_stage_history"] = [
+            {"generation": 0, "active_family": "tabular", "sampled_benchmarks": ["a"]}
+        ]
         coordinator_mod._save_budget_metadata(
             store=store,
             run_id="current",
@@ -450,6 +500,7 @@ def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: P
             benchmark_elite_archive=elite_archive,
             scheduler=scheduler,
             parallel_eval=ParallelEvaluator(max_workers=4),
+            pool_state=pool_state,
         )
         budget = store.load_budget_metadata("current")
 
@@ -460,3 +511,5 @@ def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: P
     assert budget["data_cache_hits"] == 1
     assert budget["sampled_benchmark_order_by_generation"] == [{"generation": 0, "benchmarks": ["a"]}]
     assert budget["worker_clamp_reason_counts"] == {"memory": 1}
+    assert budget["benchmark_elite_families"] == {"tabular": 1}
+    assert budget["family_stage_history"] == pool_state["family_stage_history"]

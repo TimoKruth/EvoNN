@@ -8,6 +8,7 @@ from typing import Any
 
 from topograph.genome.codec import dict_to_genome
 from topograph.genome.genome import INPUT_INNOVATION, OUTPUT_INNOVATION, Genome
+from topograph.pipeline.archive import BenchmarkEliteArchive
 from topograph.storage import RunStore
 
 
@@ -39,12 +40,16 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
         config_dict = {}
 
     budget = store.load_budget_metadata(run_id) or {}
+    run_state = store.load_run_state(run_id) or {}
     benchmark_timings = store.load_benchmark_timings(run_id)
     benchmark_results = store.load_benchmark_results(run_id)
     timing_summary = _summarize_benchmark_timings(benchmark_timings)
     benchmark_extremes = _benchmark_quality_extremes(store.load_best_benchmark_results(run_id))
     sampled_orders = _sampled_benchmark_orders(benchmark_timings)
     worst_trend = _worst_benchmark_trend(benchmark_results)
+    benchmark_elite_archive = BenchmarkEliteArchive.from_dict(run_state.get("benchmark_elite_archive"))
+    atlas_rows = _benchmark_atlas_rows(benchmark_elite_archive)
+    atlas_clusters = _atlas_motif_clusters(benchmark_elite_archive)
 
     lines: list[str] = []
 
@@ -85,6 +90,11 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
             f"{name}={count}" for name, count in budget["worker_clamp_reason_counts"].items()
         )
         lines.append(f"- **Worker Clamp Reasons:** {clamp_counts}")
+    if budget.get("benchmark_elite_families"):
+        family_counts = ", ".join(
+            f"{family}={count}" for family, count in budget["benchmark_elite_families"].items()
+        )
+        lines.append(f"- **Atlas Families:** {family_counts}")
     lines.append("")
 
     # --- Best Genome ---
@@ -239,6 +249,17 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
         for row in sampled_orders:
             lines.append(f"| {row['generation']} | {', '.join(row['benchmarks'])} |")
         lines.append("")
+    family_stage_history = budget.get("family_stage_history") or []
+    if family_stage_history:
+        lines.append("## Family Stages\n")
+        lines.append("| Generation | Active Family | Benchmarks |")
+        lines.append("|------------|---------------|------------|")
+        for row in family_stage_history:
+            lines.append(
+                f"| {row['generation']} | {row['active_family']} | "
+                f"{', '.join(row.get('sampled_benchmarks', []))} |"
+            )
+        lines.append("")
 
     if worst_trend:
         lines.append("## Worst Benchmark Trend\n")
@@ -250,6 +271,28 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
             lines.append(
                 f"| {row['generation']} | {row['benchmark_name']} | "
                 f"{row['quality']:.6f} | {row['metric_name']} | {value} |"
+            )
+            lines.append("")
+
+    if atlas_rows:
+        lines.append("## Topology Atlas\n")
+        lines.append("| Benchmark | Family | Generation | Fitness | Params | Bytes | Summary | Motifs |")
+        lines.append("|-----------|--------|------------|---------|--------|-------|---------|--------|")
+        for row in atlas_rows:
+            lines.append(
+                f"| {row['benchmark_name']} | {row['benchmark_family']} | {row['generation']} | "
+                f"{row['fitness']:.6f} | {row['param_count'] or 'N/A'} | "
+                f"{row['model_bytes'] or 'N/A'} | {row['architecture_summary'] or 'N/A'} | "
+                f"{', '.join(row['motifs'])} |"
+            )
+        lines.append("")
+    if atlas_clusters:
+        lines.append("## Atlas Motif Clusters\n")
+        lines.append("| Motif | Count | Benchmarks |")
+        lines.append("|-------|-------|------------|")
+        for motif, payload in atlas_clusters.items():
+            lines.append(
+                f"| {motif} | {payload['count']} | {', '.join(payload['benchmarks'])} |"
             )
         lines.append("")
 
@@ -642,3 +685,63 @@ def _worst_benchmark_trend(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         worst = min(ok_rows, key=lambda row: float(row["quality"]))
         trend.append(worst)
     return trend
+
+
+def _benchmark_atlas_rows(
+    archive: BenchmarkEliteArchive,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for elite in archive.elites.values():
+        motifs = ["unknown"]
+        if elite.genome is not None:
+            motifs = _motif_tags(dict_to_genome(elite.genome))
+        rows.append(
+            {
+                "benchmark_name": elite.benchmark_name,
+                "benchmark_family": elite.benchmark_family,
+                "generation": elite.generation,
+                "fitness": elite.fitness,
+                "param_count": elite.param_count,
+                "model_bytes": elite.model_bytes,
+                "architecture_summary": elite.architecture_summary,
+                "motifs": motifs,
+            }
+        )
+    return sorted(rows, key=lambda row: (row["benchmark_family"], row["benchmark_name"]))
+
+
+def _atlas_motif_clusters(
+    archive: BenchmarkEliteArchive,
+) -> dict[str, dict[str, Any]]:
+    clusters: dict[str, dict[str, Any]] = {}
+    for elite in archive.elites.values():
+        if elite.genome is None:
+            continue
+        for motif in _motif_tags(dict_to_genome(elite.genome)):
+            current = clusters.setdefault(motif, {"count": 0, "benchmarks": []})
+            current["count"] += 1
+            current["benchmarks"].append(elite.benchmark_name)
+    for payload in clusters.values():
+        payload["benchmarks"] = sorted(payload["benchmarks"])
+    return dict(sorted(clusters.items()))
+
+
+def _motif_tags(genome: Genome) -> list[str]:
+    summary = dag_summary(genome)
+    tags: list[str] = []
+    if summary["depth"] >= 4:
+        tags.append("deep")
+    if summary["skip_connections"] >= 2:
+        tags.append("skip_heavy")
+    if summary["bottleneck_count"] >= 1:
+        tags.append("bottlenecked")
+    if summary["connectivity_ratio"] < 0.4:
+        tags.append("sparse_connectivity")
+    operators = {layer.operator.value for layer in genome.enabled_layers}
+    if {"attention_lite", "transformer_lite"} & operators:
+        tags.append("attention")
+    if len(genome.experts) > 0:
+        tags.append("expert_routed")
+    if not tags:
+        tags.append("dense_baseline")
+    return tags

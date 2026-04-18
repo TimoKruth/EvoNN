@@ -37,12 +37,14 @@ class GenerationState:
     behaviors: list[np.ndarray] = field(default_factory=list)
     benchmark_results: list[dict] = field(default_factory=list)
     benchmark_timings: list[dict] = field(default_factory=list)
+    benchmark_families: dict[str, str] = field(default_factory=dict)
     raw_losses: dict[str, list[float]] = field(default_factory=dict)
     phase: str = "explore"
     total_evaluations: int = 0
     cache_reused: int = 0
     cache_trained: int = 0
     cache_failed: int = 0
+    active_benchmark_family: str | None = None
 
 
 class BenchmarkDataCache:
@@ -237,6 +239,12 @@ def evaluate(
         if parallel_eval is not None and parallel_eval.enabled()
         else None
     )
+    benchmark_family = benchmark_family_name(benchmark_spec)
+    family_namespace = (
+        _family_cache_namespace(benchmark_family)
+        if _family_transfer_enabled(config)
+        else None
+    )
 
     for genome_idx, genome in enumerate(state.population):
         plan = _make_evaluation_plan(
@@ -247,6 +255,7 @@ def evaluate(
             task=benchmark_spec.task,
             cache=cache,
             cache_namespace=benchmark_spec.name,
+            family_namespace=family_namespace,
             multi_fidelity_schedule=multi_fidelity_schedule,
             generation=state.generation,
             evaluation_memo=evaluation_memo,
@@ -285,6 +294,7 @@ def evaluate(
                     multi_fidelity_schedule=multi_fidelity_schedule,
                     generation=state.generation,
                     evaluation_memo=evaluation_memo,
+                    family_namespace=family_namespace,
                 )
                 fitness = result.native_fitness
                 evaluated_count += 0 if getattr(genome, "_last_eval_reused", False) else 1
@@ -328,6 +338,7 @@ def evaluate(
                 model_bytes=mb,
                 cache=cache,
                 cache_namespace=benchmark_spec.name,
+                family_namespace=family_namespace,
                 weights=completed.weights,
                 evaluation_memo=evaluation_memo,
                 epochs=epochs,
@@ -376,6 +387,7 @@ def evaluate(
     state.behaviors = behaviors
     state.benchmark_results = [_best_record(benchmark_records)]
     state.benchmark_timings = [timing_record]
+    state.benchmark_families = {benchmark_spec.name: benchmark_family}
     state.raw_losses = {benchmark_spec.name: fitnesses}
     state.total_evaluations += evaluated_count
     state.cache_reused = reused_count
@@ -445,6 +457,29 @@ def _resolve_model_output_dim(
     return max(declared, observed_max + 1)
 
 
+def benchmark_family_name(benchmark_spec: BenchmarkSpec) -> str:
+    task = getattr(benchmark_spec, "task", "")
+    source = getattr(benchmark_spec, "source", "")
+    if task == "language_modeling":
+        return "language_modeling"
+    if source == "image":
+        return "image"
+    return "tabular"
+
+
+def _family_cache_namespace(family: str) -> str:
+    return f"family::{family}"
+
+
+def _family_transfer_enabled(config: RunConfig) -> bool:
+    pool_cfg = config.benchmark_pool
+    if pool_cfg is None:
+        return False
+    if isinstance(pool_cfg, dict):
+        return bool(pool_cfg.get("family_transfer", False))
+    return bool(pool_cfg.family_transfer)
+
+
 def _evaluate_single(
     genome: Genome,
     config: RunConfig,
@@ -460,6 +495,7 @@ def _evaluate_single(
     generation: int,
     cache_namespace: str = "",
     evaluation_memo: EvaluationMemo | None = None,
+    family_namespace: str | None = None,
 ) -> tuple[EvaluationResult, int]:
     """Compile, optionally load cached weights, train, return (result, model_bytes)."""
     tc = config.training
@@ -472,6 +508,7 @@ def _evaluate_single(
         task=task,
         cache=cache,
         cache_namespace=cache_namespace,
+        family_namespace=family_namespace,
         multi_fidelity_schedule=multi_fidelity_schedule,
         generation=generation,
         evaluation_memo=evaluation_memo,
@@ -518,6 +555,7 @@ def _evaluate_single(
         model_bytes=mb,
         cache=cache,
         cache_namespace=cache_namespace,
+        family_namespace=family_namespace,
         weights=weights,
         evaluation_memo=evaluation_memo,
         epochs=epochs,
@@ -547,6 +585,7 @@ def evaluate_pool(
     raw_losses: dict[str, list[float]] = {}
     best_records: list[dict] = []
     benchmark_timings: list[dict] = []
+    benchmark_families: dict[str, str] = {}
     evaluated_count = 0
     cache_reused_total = 0
     cache_trained_total = 0
@@ -574,6 +613,13 @@ def evaluate_pool(
         data_cache_hits, data_cache_misses = _consume_data_cache_stats(data_cache, spec.name)
 
         input_dim = spec.input_dim or X_train.shape[1]
+        benchmark_family = benchmark_family_name(spec)
+        benchmark_families[spec.name] = benchmark_family
+        family_namespace = (
+            _family_cache_namespace(benchmark_family)
+            if _family_transfer_enabled(config)
+            else None
+        )
         num_classes = _resolve_model_output_dim(
             benchmark_spec=spec,
             X_train=X_train,
@@ -617,6 +663,7 @@ def evaluate_pool(
                 task=spec.task,
                 cache=cache,
                 cache_namespace=spec.name,
+                family_namespace=family_namespace,
                 multi_fidelity_schedule=config.training.multi_fidelity_schedule,
                 generation=state.generation,
                 evaluation_memo=evaluation_memo,
@@ -662,6 +709,7 @@ def evaluate_pool(
                     task=spec.task,
                     cache=cache,
                     cache_namespace=spec.name,
+                    family_namespace=family_namespace,
                     multi_fidelity_schedule=config.training.multi_fidelity_schedule,
                     generation=state.generation,
                     evaluation_memo=evaluation_memo,
@@ -703,6 +751,7 @@ def evaluate_pool(
                     model_bytes=completed.model_bytes,
                     cache=cache,
                     cache_namespace=spec.name,
+                    family_namespace=family_namespace,
                     weights=completed.weights,
                     evaluation_memo=evaluation_memo,
                     epochs=epochs,
@@ -748,14 +797,20 @@ def evaluate_pool(
         if progress_callback is not None:
             progress_callback("complete", timing_record)
 
-    # Aggregate via percentile fitness
-    state.fitnesses = compute_percentile_fitness(raw_losses)
+    state.fitnesses = _aggregate_pool_fitness(
+        raw_losses=raw_losses,
+        benchmark_families=benchmark_families,
+        aggregation=pool_cfg.aggregation,
+        active_family=state.active_benchmark_family,
+        family_focus_weight=pool_cfg.family_focus_weight,
+    )
     state.model_bytes = [
         estimate_model_bytes(g) for g in state.population
     ]
     state.behaviors = [compute_behavior(g) for g in state.population]
     state.benchmark_results = best_records
     state.benchmark_timings = benchmark_timings
+    state.benchmark_families = benchmark_families
     state.raw_losses = raw_losses
     state.total_evaluations += evaluated_count
     state.cache_reused = cache_reused_total
@@ -785,6 +840,7 @@ def _make_evaluation_plan(
     task: str,
     cache: WeightCache | None,
     cache_namespace: str,
+    family_namespace: str | None,
     multi_fidelity_schedule: list[float] | None,
     generation: int,
     evaluation_memo: EvaluationMemo | None,
@@ -809,6 +865,16 @@ def _make_evaluation_plan(
             if partial is not None:
                 weight_snapshot = partial
                 base_epochs = max(1, int(base_epochs * tc.partial_epoch_ratio))
+        if weight_snapshot is None and family_namespace:
+            exact = cache_lookup(genome, namespace=family_namespace)
+            if exact is not None:
+                weight_snapshot = exact
+                base_epochs = max(1, int(base_epochs * tc.finetune_epoch_ratio))
+            elif callable(cache_lookup_partial):
+                partial = cache_lookup_partial(genome, namespace=family_namespace)
+                if partial is not None:
+                    weight_snapshot = partial
+                    base_epochs = max(1, int(base_epochs * tc.partial_epoch_ratio))
 
     epochs = _apply_epoch_scaling(
         config=config,
@@ -857,6 +923,7 @@ def _apply_completed_result(
     model_bytes: int,
     cache: WeightCache | None,
     cache_namespace: str,
+    family_namespace: str | None,
     weights: dict[str, np.ndarray] | None,
     evaluation_memo: EvaluationMemo | None,
     epochs: int,
@@ -869,6 +936,8 @@ def _apply_completed_result(
     _store_runtime_result(genome, cache_namespace, result, model_bytes)
     if cache is not None and weights is not None and result.native_fitness != float("inf"):
         cache.store(genome, weights, namespace=cache_namespace)
+        if family_namespace:
+            cache.store(genome, weights, namespace=family_namespace)
     if evaluation_memo is not None:
         evaluation_memo.store(
             benchmark_name=cache_namespace,
@@ -953,6 +1022,40 @@ def score(state: GenerationState, config: RunConfig) -> GenerationState:
             genome.fitness = state.fitnesses[i]
 
     return state
+
+
+def _aggregate_pool_fitness(
+    *,
+    raw_losses: dict[str, list[float]],
+    benchmark_families: dict[str, str],
+    aggregation: str,
+    active_family: str | None,
+    family_focus_weight: float,
+) -> list[float]:
+    if aggregation == "percentile" or not raw_losses:
+        return compute_percentile_fitness(raw_losses)
+
+    family_scores: dict[str, list[float]] = {}
+    for family in sorted(set(benchmark_families.get(name, "tabular") for name in raw_losses)):
+        family_losses = {
+            name: losses
+            for name, losses in raw_losses.items()
+            if benchmark_families.get(name, "tabular") == family
+        }
+        family_scores[family] = compute_percentile_fitness(family_losses)
+
+    if not family_scores:
+        return compute_percentile_fitness(raw_losses)
+
+    ordered_families = list(sorted(family_scores))
+    numerators = [0.0] * len(next(iter(family_scores.values())))
+    denominators = [0.0] * len(numerators)
+    for family in ordered_families:
+        weight = family_focus_weight if active_family and family == active_family else 1.0
+        for idx, score in enumerate(family_scores[family]):
+            numerators[idx] += weight * score
+            denominators[idx] += weight
+    return [numerators[idx] / max(denominators[idx], 1e-12) for idx in range(len(numerators))]
 
 
 def _failure_result(task: str, reason: str) -> EvaluationResult:

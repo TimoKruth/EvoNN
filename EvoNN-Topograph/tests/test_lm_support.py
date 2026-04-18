@@ -141,7 +141,10 @@ def test_lm_output_dim_expands_to_observed_token_range():
 
 def test_evaluate_pool_uses_expanded_lm_output_dim():
     cfg = load_config(Path(__file__).resolve().parents[1] / "configs" / "tiny_smoke" / "config.yaml")
-    cfg = cfg.model_copy(update={"benchmark_pool": {"benchmarks": ["tinystories_lm_smoke"], "sample_k": 1}})
+    cfg = cfg.model_validate(
+        cfg.model_dump(mode="json")
+        | {"benchmark_pool": {"benchmarks": ["tinystories_lm_smoke"], "sample_k": 1}}
+    )
     rng = random.Random(42)
     state = GenerationState(
         generation=0,

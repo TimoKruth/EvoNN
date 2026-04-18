@@ -112,12 +112,33 @@ def test_map_elites_and_benchmark_elite_archives_roundtrip():
     assert len(restored) == 1
 
     bench_archive = archive_mod.BenchmarkEliteArchive()
-    assert bench_archive.update("iris", genome_idx=2, fitness=0.4, generation=0) is True
+    assert bench_archive.update(
+        "iris",
+        genome_idx=2,
+        fitness=0.4,
+        generation=0,
+        benchmark_family="tabular",
+        genome=genome,
+        behavior=behavior,
+        architecture_summary="3L/4C",
+    ) is True
     assert bench_archive.update("iris", genome_idx=1, fitness=0.5, generation=1) is False
-    assert bench_archive.update("moons", genome_idx=3, fitness=0.2, generation=1) is True
+    assert bench_archive.update(
+        "moons",
+        genome_idx=3,
+        fitness=0.2,
+        generation=1,
+        benchmark_family="tabular",
+        genome=genome,
+        behavior=behavior,
+        architecture_summary="3L/4C",
+    ) is True
 
     roundtrip = archive_mod.BenchmarkEliteArchive.from_dict(bench_archive.to_dict())
     assert roundtrip.get_elite_indices() == {2, 3}
+    assert roundtrip.get_generation_elite_indices(0) == {2}
+    assert roundtrip.elites["iris"].benchmark_family == "tabular"
+    assert roundtrip.elites["iris"].genome is not None
 
 
 def test_mutation_ops_preserve_copy_and_expected_structure():

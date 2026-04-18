@@ -348,9 +348,15 @@ class MAPElitesArchive:
 @dataclass
 class BenchmarkElite:
     benchmark_name: str
+    benchmark_family: str
     genome_idx: int
     fitness: float
     generation: int
+    genome: dict[str, object] | None = None
+    param_count: int | None = None
+    model_bytes: int | None = None
+    behavior: list[float] | None = None
+    architecture_summary: str | None = None
 
 
 @dataclass
@@ -360,16 +366,35 @@ class BenchmarkEliteArchive:
     elites: dict[str, BenchmarkElite] = field(default_factory=dict)
 
     def update(
-        self, benchmark_name: str, genome_idx: int, fitness: float, generation: int
+        self,
+        benchmark_name: str,
+        genome_idx: int,
+        fitness: float,
+        generation: int,
+        *,
+        benchmark_family: str = "unknown",
+        genome: Genome | None = None,
+        behavior: np.ndarray | None = None,
+        architecture_summary: str | None = None,
     ) -> bool:
         """Update the elite for a benchmark if this genome is better. Returns True if updated."""
         current = self.elites.get(benchmark_name)
         if current is None or fitness < current.fitness:
             self.elites[benchmark_name] = BenchmarkElite(
                 benchmark_name=benchmark_name,
+                benchmark_family=benchmark_family,
                 genome_idx=genome_idx,
                 fitness=fitness,
                 generation=generation,
+                genome=genome_to_dict(genome) if genome is not None else None,
+                param_count=genome.param_count if genome is not None else None,
+                model_bytes=genome.model_bytes if genome is not None else None,
+                behavior=(
+                    np.array(behavior, dtype=np.float32, copy=False).tolist()
+                    if behavior is not None
+                    else None
+                ),
+                architecture_summary=architecture_summary,
             )
             return True
         return False
@@ -378,14 +403,28 @@ class BenchmarkEliteArchive:
         """Return the set of genome indices that are elites for at least one benchmark."""
         return {e.genome_idx for e in self.elites.values()}
 
+    def get_generation_elite_indices(self, generation: int) -> set[int]:
+        """Return elite indices recorded for a specific generation only."""
+        return {
+            elite.genome_idx
+            for elite in self.elites.values()
+            if elite.generation == generation
+        }
+
     def to_dict(self) -> dict[str, object]:
         return {
             "elites": {
                 name: {
                     "benchmark_name": elite.benchmark_name,
+                    "benchmark_family": elite.benchmark_family,
                     "genome_idx": elite.genome_idx,
                     "fitness": elite.fitness,
                     "generation": elite.generation,
+                    "genome": copy.deepcopy(elite.genome),
+                    "param_count": elite.param_count,
+                    "model_bytes": elite.model_bytes,
+                    "behavior": copy.deepcopy(elite.behavior),
+                    "architecture_summary": elite.architecture_summary,
                 }
                 for name, elite in self.elites.items()
             }
@@ -399,8 +438,24 @@ class BenchmarkEliteArchive:
                 continue
             archive.elites[name] = BenchmarkElite(
                 benchmark_name=str(raw.get("benchmark_name", name)),
+                benchmark_family=str(raw.get("benchmark_family", "unknown")),
                 genome_idx=int(raw.get("genome_idx", 0)),
                 fitness=float(raw.get("fitness", float("inf"))),
                 generation=int(raw.get("generation", 0)),
+                genome=copy.deepcopy(raw.get("genome")) if isinstance(raw.get("genome"), dict) else None,
+                param_count=(
+                    int(raw.get("param_count")) if raw.get("param_count") is not None else None
+                ),
+                model_bytes=(
+                    int(raw.get("model_bytes")) if raw.get("model_bytes") is not None else None
+                ),
+                behavior=(
+                    list(raw.get("behavior")) if isinstance(raw.get("behavior"), list) else None
+                ),
+                architecture_summary=(
+                    str(raw.get("architecture_summary"))
+                    if raw.get("architecture_summary") is not None
+                    else None
+                ),
             )
         return archive

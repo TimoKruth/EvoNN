@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
 import math
 import os
 import random
 import time
 from dataclasses import asdict
+from pathlib import Path
 
 from topograph.benchmarks.parity import get_benchmark, resolve_benchmark_pool_names
 from topograph.benchmarks.spec import BenchmarkSpec
@@ -22,11 +24,13 @@ from topograph.pipeline.archive import (
     BenchmarkEliteArchive,
     MAPElitesArchive,
     NoveltyArchive,
+    compute_behavior,
 )
 from topograph.pipeline.evaluate import (
     BenchmarkDataCache,
     EvaluationMemo,
     GenerationState,
+    benchmark_family_name,
     evaluate,
     evaluate_pool,
     score,
@@ -89,8 +93,10 @@ def run_evolution(
     pending_outcomes: list[PendingMutationOutcome] = []
     pool_state = {
         "current_sample": [],
+        "current_family": None,
         "rotation_counter": 0,
         "benchmark_best_fitness": {},
+        "family_stage_history": [],
     }
     elapsed_before_resume = 0.0
     novelty_score_sum = 0.0
@@ -122,6 +128,8 @@ def run_evolution(
             novelty_score_max = float(snapshot.get("novelty_score_max", 0.0))
             map_elites_insertions = int(snapshot.get("map_elites_insertions", 0))
             pool_state = snapshot.get("pool_state", pool_state)
+            pool_state.setdefault("family_stage_history", [])
+            pool_state.setdefault("current_family", None)
             scheduler.load_dict(snapshot.get("scheduler"))
             pending_outcomes = [
                 PendingMutationOutcome(
@@ -188,7 +196,26 @@ def run_evolution(
 
             sampled_specs = benchmark_specs
             if benchmark_specs is not None and config.benchmark_pool is not None:
-                sampled_specs = _sample_benchmark_specs(config, benchmark_specs, rng, pool_state)
+                state.active_benchmark_family = _active_benchmark_family(
+                    config,
+                    benchmark_specs,
+                    gen,
+                )
+                sampled_specs = _sample_benchmark_specs(
+                    config,
+                    benchmark_specs,
+                    rng,
+                    pool_state,
+                    generation=gen,
+                )
+                if state.active_benchmark_family is not None:
+                    pool_state["family_stage_history"].append(
+                        {
+                            "generation": gen,
+                            "active_family": state.active_benchmark_family,
+                            "sampled_benchmarks": [spec.name for spec in sampled_specs],
+                        }
+                    )
                 eval_pool_kwargs = {
                     "state": state,
                     "config": config,
@@ -251,6 +278,9 @@ def run_evolution(
                     benchmark_elite_archive,
                     generation=gen,
                     raw_losses=state.raw_losses,
+                    population=state.population,
+                    behaviors=state.behaviors,
+                    benchmark_families=state.benchmark_families,
                 )
 
             if state.fitnesses:
@@ -295,7 +325,7 @@ def run_evolution(
 
             if gen < config.evolution.num_generations - 1:
                 protected = (
-                    benchmark_elite_archive.get_elite_indices()
+                    benchmark_elite_archive.get_generation_elite_indices(gen)
                     if benchmark_elite_archive is not None
                     else set()
                 )
@@ -359,7 +389,15 @@ def run_evolution(
                 benchmark_elite_archive=benchmark_elite_archive,
                 scheduler=scheduler,
                 parallel_eval=parallel_eval,
+                pool_state=pool_state,
             )
+            if run_dir is not None:
+                _write_archive_artifacts(
+                    run_dir=run_dir,
+                    benchmark_elite_archive=benchmark_elite_archive,
+                    map_elites_archive=map_elites_archive,
+                    pool_state=pool_state,
+                )
             _save_resume_snapshot(
                 store=store,
                 run_id=run_id,
@@ -470,14 +508,25 @@ def _sample_benchmark_specs(
     benchmark_specs: list[BenchmarkSpec],
     rng: random.Random,
     pool_state: dict[str, object],
+    *,
+    generation: int,
 ) -> list[BenchmarkSpec]:
     pool_cfg = config.benchmark_pool
     if pool_cfg is None or not benchmark_specs:
         return benchmark_specs
+    active_family = _active_benchmark_family(config, benchmark_specs, generation)
 
     current_names = list(pool_state.get("current_sample", []))
+    current_family = pool_state.get("current_family")
+    if current_family is None and current_names:
+        current_family = active_family
     rotation_counter = int(pool_state.get("rotation_counter", 0))
-    if pool_cfg.rotation_interval and current_names and rotation_counter < pool_cfg.rotation_interval:
+    if (
+        pool_cfg.rotation_interval
+        and current_names
+        and current_family == active_family
+        and rotation_counter < pool_cfg.rotation_interval
+    ):
         pool_state["rotation_counter"] = rotation_counter + 1
         by_name = {spec.name: spec for spec in benchmark_specs}
         return [by_name[name] for name in current_names if name in by_name]
@@ -497,6 +546,17 @@ def _sample_benchmark_specs(
 
     available = list(benchmark_specs)
     sample: list[BenchmarkSpec] = []
+    if active_family is not None:
+        family_specs = [spec for spec in available if benchmark_family_name(spec) == active_family]
+        target_focus = min(
+            len(family_specs),
+            max(1, int(math.ceil(k * pool_cfg.family_focus_ratio))),
+        )
+        while family_specs and len(sample) < target_focus:
+            chosen = rng.choice(family_specs)
+            sample.append(chosen)
+            available.remove(chosen)
+            family_specs.remove(chosen)
     while available and len(sample) < k:
         undercovered_available = [spec for spec in available if spec.name in undercovered]
         if (
@@ -511,8 +571,33 @@ def _sample_benchmark_specs(
         available.remove(chosen)
 
     pool_state["current_sample"] = [spec.name for spec in sample]
+    pool_state["current_family"] = active_family
     pool_state["rotation_counter"] = 1
     return sample
+
+
+def _active_benchmark_family(
+    config: RunConfig,
+    benchmark_specs: list[BenchmarkSpec],
+    generation: int,
+) -> str | None:
+    pool_cfg = config.benchmark_pool
+    if pool_cfg is None or not benchmark_specs:
+        return None
+    present_families = {
+        benchmark_family_name(spec)
+        for spec in benchmark_specs
+    }
+    ordered = [
+        family for family in pool_cfg.family_sequence
+        if family in present_families
+    ]
+    if not ordered:
+        ordered = sorted(present_families)
+    if not ordered:
+        return None
+    stage_idx = generation // pool_cfg.family_stage_generations
+    return ordered[stage_idx % len(ordered)]
 
 
 def _update_pool_fitness_history(
@@ -559,12 +644,32 @@ def _update_benchmark_elites(
     *,
     generation: int,
     raw_losses: dict[str, list[float]],
+    population: list[Genome],
+    behaviors: list[object],
+    benchmark_families: dict[str, str],
 ) -> None:
     for benchmark_name, losses in raw_losses.items():
         for genome_idx, loss in enumerate(losses):
             if not math.isfinite(loss):
                 continue
-            archive.update(benchmark_name, genome_idx, float(loss), generation)
+            genome = population[genome_idx] if genome_idx < len(population) else None
+            behavior = behaviors[genome_idx] if genome_idx < len(behaviors) else None
+            archive.update(
+                benchmark_name,
+                genome_idx,
+                float(loss),
+                generation,
+                benchmark_family=benchmark_families.get(benchmark_name, "unknown"),
+                genome=genome,
+                behavior=behavior,
+                architecture_summary=_architecture_summary(genome),
+            )
+
+
+def _architecture_summary(genome: Genome | None) -> str | None:
+    if genome is None:
+        return None
+    return f"{len(genome.enabled_layers)}L/{len(genome.enabled_connections)}C"
 
 
 def _record_pending_outcomes(
@@ -704,6 +809,7 @@ def _save_budget_metadata(
     benchmark_elite_archive: BenchmarkEliteArchive | None,
     scheduler: MutationScheduler,
     parallel_eval: ParallelEvaluator | None = None,
+    pool_state: dict[str, object] | None = None,
 ) -> None:
     timing_rows = store.load_benchmark_timings(run_id)
     benchmark_results = store.load_benchmark_results(run_id)
@@ -770,6 +876,9 @@ def _save_budget_metadata(
             timing_rows
         ),
         "worst_benchmark_trend": _worst_benchmark_trend(benchmark_results),
+        "family_stage_history": list((pool_state or {}).get("family_stage_history", [])),
+        "benchmark_elite_families": _benchmark_elite_family_counts(benchmark_elite_archive),
+        "topology_atlas_motif_counts": _topology_atlas_motif_counts(benchmark_elite_archive),
         "operator_stats": scheduler.stats_summary(),
     }
     store.save_budget_metadata(run_id, metadata)
@@ -828,6 +937,89 @@ def _worst_benchmark_trend(
             }
         )
     return trend
+
+
+def _benchmark_elite_family_counts(
+    benchmark_elite_archive: BenchmarkEliteArchive | None,
+) -> dict[str, int]:
+    if benchmark_elite_archive is None:
+        return {}
+    counts = Counter(
+        elite.benchmark_family
+        for elite in benchmark_elite_archive.elites.values()
+    )
+    return dict(sorted(counts.items()))
+
+
+def _topology_atlas_motif_counts(
+    benchmark_elite_archive: BenchmarkEliteArchive | None,
+) -> dict[str, int]:
+    if benchmark_elite_archive is None:
+        return {}
+    counts: Counter[str] = Counter()
+    for elite in benchmark_elite_archive.elites.values():
+        if elite.genome is None:
+            continue
+        genome = dict_to_genome(elite.genome)
+        for tag in _motif_tags(genome):
+            counts[tag] += 1
+    return dict(sorted(counts.items()))
+
+
+def _motif_tags(genome: Genome) -> list[str]:
+    behavior = compute_behavior(genome)
+    tags: list[str] = []
+    if behavior[0] >= 4:
+        tags.append("deep")
+    if behavior[2] >= 2:
+        tags.append("skip_heavy")
+    if behavior[3] >= 1:
+        tags.append("bottlenecked")
+    if behavior[6] < 0.4:
+        tags.append("sparse_connectivity")
+    operators = {layer.operator.value for layer in genome.enabled_layers}
+    if {"attention_lite", "transformer_lite"} & operators:
+        tags.append("attention")
+    if len(genome.experts) > 0:
+        tags.append("expert_routed")
+    if not tags:
+        tags.append("dense_baseline")
+    return tags
+
+
+def _write_archive_artifacts(
+    *,
+    run_dir: str | os.PathLike[str],
+    benchmark_elite_archive: BenchmarkEliteArchive | None,
+    map_elites_archive: MAPElitesArchive | None,
+    pool_state: dict[str, object],
+) -> None:
+    out_dir = Path(run_dir)
+    if benchmark_elite_archive is not None:
+        elite_payload = benchmark_elite_archive.to_dict()
+        (out_dir / "benchmark_elites.json").write_text(
+            json.dumps(elite_payload, indent=2),
+            encoding="utf-8",
+        )
+        topology_atlas = {
+            "benchmark_elite_families": _benchmark_elite_family_counts(benchmark_elite_archive),
+            "motif_counts": _topology_atlas_motif_counts(benchmark_elite_archive),
+            "family_stage_history": list(pool_state.get("family_stage_history", [])),
+            "elite_benchmarks": sorted(benchmark_elite_archive.elites),
+        }
+        (out_dir / "topology_atlas_summary.json").write_text(
+            json.dumps(topology_atlas, indent=2),
+            encoding="utf-8",
+        )
+    if map_elites_archive is not None:
+        map_payload = {
+            "occupied_niches": len(map_elites_archive),
+            **map_elites_archive.to_dict(),
+        }
+        (out_dir / "map_elites_archive.json").write_text(
+            json.dumps(map_payload, indent=2),
+            encoding="utf-8",
+        )
 
 
 def _archive_fill_ratio(archive: MAPElitesArchive | None) -> float | None:

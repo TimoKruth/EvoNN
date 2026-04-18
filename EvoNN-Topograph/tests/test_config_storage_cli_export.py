@@ -69,6 +69,8 @@ def test_load_config_reads_yaml_and_validates_rotation_interval(tmp_path: Path):
         RunConfig.model_validate({"training": {"parallel_cpu_fraction_limit": 0.0}})
     with pytest.raises(ValueError):
         RunConfig.model_validate({"benchmark_pool": {"benchmarks": [], "suite": None}})
+    with pytest.raises(ValueError):
+        RunConfig.model_validate({"benchmark_pool": {"benchmarks": ["moons"], "family_stage_generations": 0}})
 
 
 def test_run_store_roundtrip_and_benchmark_best_selection(tmp_path: Path):
@@ -187,7 +189,7 @@ def test_is_better_handles_min_and_max_metrics():
 def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path, monkeypatch):
     cfg = RunConfig(benchmark_pool={"suite": "smoke", "benchmarks": ["moons", "iris"], "sample_k": 2})
     budget = sym._budget_manifest(cfg, {"wall_clock_seconds": 1.5}, latest_gen=2, population_size=4)
-    assert budget["evaluation_count"] == 60
+    assert budget["evaluation_count"] == 24
     assert budget["population_size"] == cfg.evolution.population_size
     assert budget["budget_policy_name"] == "prototype_equal_budget"
 
@@ -214,9 +216,11 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
         fitness=0.3,
     )
     monkeypatch.setattr(sym, "_genome_summary", lambda genome: {"status": "ok"})
-    artifacts = sym._build_artifacts_section(rep, ["moons"], cfg, "tier1_core")
+    (tmp_path / "benchmark_elites.json").write_text("{}", encoding="utf-8")
+    artifacts = sym._build_artifacts_section(rep, ["moons"], cfg, "tier1_core", tmp_path)
     assert artifacts["pack_name"] == "tier1_core"
     assert artifacts["canonical_benchmarks"]
+    assert "archive_artifacts" in artifacts
 
     monkeypatch.setattr(sym.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(sym.platform, "machine", lambda: "arm64")

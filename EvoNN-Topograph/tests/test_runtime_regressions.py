@@ -13,7 +13,7 @@ from topograph.config import RunConfig
 from topograph.genome.codec import genome_to_dict
 from topograph.genome.genome import Genome, InnovationCounter
 from topograph.pipeline import coordinator as coordinator_mod
-from topograph.pipeline.evaluate import GenerationState
+from topograph.pipeline.evaluate import GenerationState, _aggregate_pool_fitness, _make_evaluation_plan
 from topograph.pipeline.reproduce import reproduce
 from topograph.pipeline.schedule import MutationScheduler
 from topograph.storage import RunStore
@@ -36,7 +36,7 @@ def test_run_evolution_interrupt_saves_resume_snapshot(tmp_path: Path, monkeypat
                 "sample_k": 2,
                 "rotation_interval": 3,
             },
-            "benchmark_elite_archive": False,
+            "benchmark_elite_archive": True,
         }
     )
     run_dir = tmp_path / "interrupt-run"
@@ -46,7 +46,9 @@ def test_run_evolution_interrupt_saves_resume_snapshot(tmp_path: Path, monkeypat
     monkeypatch.setattr(
         coordinator_mod,
         "get_benchmark",
-        lambda name: SimpleNamespace(name=name, task="classification", input_dim=2, num_classes=2),
+        lambda name: SimpleNamespace(
+            name=name, task="classification", source="sklearn", input_dim=2, num_classes=2
+        ),
     )
 
     def fake_evaluate_pool(**kwargs):
@@ -66,6 +68,7 @@ def test_run_evolution_interrupt_saves_resume_snapshot(tmp_path: Path, monkeypat
     assert snapshot["completed"] is False
     assert snapshot["pool_state"]["current_sample"] == observed[0]
     assert snapshot["pool_state"]["rotation_counter"] == 1
+    assert snapshot["pool_state"]["family_stage_history"][0]["active_family"] == "tabular"
 
 
 def test_run_evolution_resume_preserves_pool_rotation_state(tmp_path: Path, monkeypatch):
@@ -78,7 +81,7 @@ def test_run_evolution_resume_preserves_pool_rotation_state(tmp_path: Path, monk
                 "sample_k": 2,
                 "rotation_interval": 3,
             },
-            "benchmark_elite_archive": False,
+            "benchmark_elite_archive": True,
         }
     )
     genome = _seed_genome(7)
@@ -116,7 +119,9 @@ def test_run_evolution_resume_preserves_pool_rotation_state(tmp_path: Path, monk
     monkeypatch.setattr(
         coordinator_mod,
         "get_benchmark",
-        lambda name: SimpleNamespace(name=name, task="classification", input_dim=2, num_classes=2),
+        lambda name: SimpleNamespace(
+            name=name, task="classification", source="sklearn", input_dim=2, num_classes=2
+        ),
     )
 
     def fake_evaluate_pool(**kwargs):
@@ -164,6 +169,8 @@ def test_run_evolution_resume_preserves_pool_rotation_state(tmp_path: Path, monk
     assert snapshot["completed"] is True
     assert snapshot["pool_state"]["current_sample"] == ["bench_b", "bench_c"]
     assert snapshot["pool_state"]["rotation_counter"] == 2
+    assert (run_dir / "benchmark_elites.json").exists()
+    assert (run_dir / "topology_atlas_summary.json").exists()
 
 
 def test_weight_cache_partial_lookup_and_fifo_eviction():
@@ -240,3 +247,60 @@ def test_reproduce_keeps_protected_survivor_and_resets_metrics():
     assert next_state.fitnesses == []
     assert next_state.model_bytes == []
     assert all(outcome.genome_idx >= 2 for outcome in pending)
+
+
+def test_family_percentile_aggregation_balances_families():
+    raw_losses = {
+        "tab_a": [0.1, 0.9],
+        "tab_b": [0.2, 0.8],
+        "lm_a": [0.9, 0.1],
+    }
+    benchmark_families = {
+        "tab_a": "tabular",
+        "tab_b": "tabular",
+        "lm_a": "language_modeling",
+    }
+
+    scores = _aggregate_pool_fitness(
+        raw_losses=raw_losses,
+        benchmark_families=benchmark_families,
+        aggregation="family_percentile",
+        active_family=None,
+        family_focus_weight=2.0,
+    )
+
+    assert scores == [0.5, 0.5]
+
+
+def test_family_transfer_uses_family_namespace_cache():
+    genome = _seed_genome(17)
+    cache = WeightCache()
+    cached_weights = {"w": np.ones(1, dtype=np.float32)}
+    cache.store(genome, cached_weights, namespace="family::tabular")
+
+    plan = _make_evaluation_plan(
+        genome=genome,
+            config=RunConfig.model_validate(
+                {
+                    "benchmark_pool": {"benchmarks": ["demo"], "sample_k": 1, "family_transfer": True},
+                    "training": {
+                        "epochs": 10,
+                        "finetune_epoch_ratio": 0.5,
+                        "multi_fidelity": False,
+                    },
+                }
+            ),
+        input_dim=2,
+        num_classes=2,
+        task="classification",
+        cache=cache,
+        cache_namespace="demo_benchmark",
+        family_namespace="family::tabular",
+        multi_fidelity_schedule=None,
+        generation=0,
+        evaluation_memo=None,
+    )
+
+    assert plan["reused"] is False
+    assert plan["weight_snapshot"] is not None
+    assert int(plan["epochs"]) == 5

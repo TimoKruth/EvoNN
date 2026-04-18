@@ -173,7 +173,7 @@ def export_symbiosis_contract(
         },
         "config_snapshot": config.model_dump(mode="json"),
         "artifacts": _build_artifacts_section(
-            representative, benchmark_names, config, pack_name,
+            representative, benchmark_names, config, pack_name, run_dir,
         ),
         "search_telemetry": _search_telemetry(config, budget_meta),
         "fairness": _fairness_manifest(
@@ -260,13 +260,17 @@ def _budget_manifest(
 ) -> dict[str, Any]:
     """Budget section of the manifest."""
     generations = latest_gen + 1
-    benchmark_count = (
-        len(resolve_benchmark_pool_names(config.benchmark_pool))
-        if config.benchmark_pool is not None
-        else 1
-    )
+    evaluation_count = budget_meta.get("evaluation_count")
+    if evaluation_count is None:
+        benchmark_count = 1
+        if config.benchmark_pool is not None:
+            benchmark_count = min(
+                config.benchmark_pool.sample_k,
+                len(resolve_benchmark_pool_names(config.benchmark_pool)),
+            )
+        evaluation_count = int(population_size * generations * benchmark_count)
     return {
-        "evaluation_count": int(population_size * generations * benchmark_count),
+        "evaluation_count": int(evaluation_count),
         "epochs_per_candidate": config.training.epochs,
         "effective_training_epochs": budget_meta.get("effective_training_epochs"),
         "wall_clock_seconds": budget_meta.get("wall_clock_seconds"),
@@ -284,8 +288,9 @@ def _search_telemetry(
     """Search telemetry section of the manifest."""
     qd_enabled = config.novelty_weight > 0 or config.map_elites
     multi_fidelity = config.training.multi_fidelity
+    family_search = config.benchmark_pool is not None
 
-    if not qd_enabled and not multi_fidelity:
+    if not qd_enabled and not multi_fidelity and not family_search:
         return None
 
     occupied = budget_meta.get("map_elites_occupied_niches")
@@ -314,6 +319,22 @@ def _search_telemetry(
         "map_elites_insertions": budget_meta.get("map_elites_insertions"),
         "benchmark_elite_archive": config.benchmark_elite_archive,
         "benchmark_elites": budget_meta.get("benchmark_elites"),
+        "benchmark_pool_aggregation": (
+            config.benchmark_pool.aggregation if config.benchmark_pool is not None else None
+        ),
+        "benchmark_pool_family_stage_generations": (
+            config.benchmark_pool.family_stage_generations
+            if config.benchmark_pool is not None
+            else None
+        ),
+        "benchmark_pool_family_transfer": (
+            config.benchmark_pool.family_transfer
+            if config.benchmark_pool is not None
+            else None
+        ),
+        "family_stage_history": budget_meta.get("family_stage_history"),
+        "benchmark_elite_families": budget_meta.get("benchmark_elite_families"),
+        "topology_atlas_motif_counts": budget_meta.get("topology_atlas_motif_counts"),
     }
 
 
@@ -530,16 +551,26 @@ def _build_artifacts_section(
     benchmark_names: list[str],
     config: RunConfig,
     pack_name: str,
+    run_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Artifacts metadata for the manifest."""
     genome_summary = _genome_summary(representative) if representative else {"status": "missing"}
-    return {
+    payload = {
         "genome_summary": genome_summary,
         "dataset_manifest_hash": _compute_dataset_hash(benchmark_names),
         "pack_name": pack_name,
         "benchmarks": benchmark_names,
         "canonical_benchmarks": [get_canonical_id(n) for n in benchmark_names],
     }
+    if run_dir is not None:
+        archive_files = {}
+        for name in ["benchmark_elites.json", "topology_atlas_summary.json", "map_elites_archive.json"]:
+            path = run_dir / name
+            if path.exists():
+                archive_files[name.removesuffix(".json")] = str(path)
+        if archive_files:
+            payload["archive_artifacts"] = archive_files
+    return payload
 
 
 def _write_report_md(output_dir: Path, run_dir: Path) -> None:

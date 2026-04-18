@@ -107,9 +107,16 @@ class BenchmarkPoolConfig(BaseModel):
     benchmarks: list[str] = Field(default_factory=list)
     suite: str | None = None
     sample_k: int = 3
-    aggregation: Literal["percentile"] = "percentile"
+    aggregation: Literal["percentile", "family_percentile"] = "family_percentile"
     rotation_interval: int | None = None
     undercovered_benchmark_bias: float = 0.55
+    family_stage_generations: int = 2
+    family_focus_weight: float = 2.0
+    family_focus_ratio: float = 0.67
+    family_transfer: bool = True
+    family_sequence: list[str] = Field(
+        default_factory=lambda: ["tabular", "image", "language_modeling"]
+    )
 
     @field_validator("rotation_interval")
     @classmethod
@@ -117,6 +124,22 @@ class BenchmarkPoolConfig(BaseModel):
         if v is not None and v < 1:
             raise ValueError("rotation_interval must be >= 1 or None")
         return v
+
+    @field_validator("family_stage_generations")
+    @classmethod
+    def _validate_family_stage_generations(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("family_stage_generations must be >= 1")
+        return v
+
+    @field_validator("family_focus_weight", "family_focus_ratio")
+    @classmethod
+    def _validate_family_focus_params(cls, v: float, info) -> float:
+        if info.field_name == "family_focus_weight" and v < 1.0:
+            raise ValueError("family_focus_weight must be >= 1")
+        if info.field_name == "family_focus_ratio" and not (0.0 < v <= 1.0):
+            raise ValueError("family_focus_ratio must be > 0 and <= 1")
+        return float(v)
 
     @model_validator(mode="after")
     def _validate_sources(self) -> "BenchmarkPoolConfig":
