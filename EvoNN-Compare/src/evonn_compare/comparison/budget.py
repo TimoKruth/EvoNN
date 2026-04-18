@@ -36,6 +36,18 @@ class BudgetComparator:
             reasons.append("benchmark coverage does not match the parity pack")
             return BudgetComparison(status="incomparable", reasons=reasons)
 
+        left_pack_id = left.fairness.benchmark_pack_id if left.fairness is not None else left.pack_name
+        right_pack_id = right.fairness.benchmark_pack_id if right.fairness is not None else right.pack_name
+        if left_pack_id != pack.name or right_pack_id != pack.name or left_pack_id != right_pack_id:
+            reasons.append("benchmark pack ID mismatch")
+            return BudgetComparison(status="incomparable", reasons=reasons)
+
+        left_data_signature = left.fairness.data_signature if left.fairness is not None else None
+        right_data_signature = right.fairness.data_signature if right.fairness is not None else None
+        if left_data_signature != right_data_signature:
+            reasons.append("data signature mismatch")
+            return BudgetComparison(status="incomparable", reasons=reasons)
+
         eval_diff = _relative_diff(
             left.budget.evaluation_count,
             right.budget.evaluation_count,
@@ -56,8 +68,12 @@ class BudgetComparator:
             reasons.append("evaluation_count mismatch exceeds pack tolerance")
         if epoch_diff > tolerance:
             reasons.append("epochs_per_candidate mismatch exceeds pack tolerance")
-        left_policy = _normalize_budget_policy(left.budget.budget_policy_name)
-        right_policy = _normalize_budget_policy(right.budget.budget_policy_name)
+        left_policy = _normalize_budget_policy(
+            left.fairness.budget_policy_name if left.fairness is not None else left.budget.budget_policy_name
+        )
+        right_policy = _normalize_budget_policy(
+            right.fairness.budget_policy_name if right.fairness is not None else right.budget.budget_policy_name
+        )
         if left_policy != right_policy:
             if {left_policy, right_policy} <= {None, "prototype_equal_budget"}:
                 pass

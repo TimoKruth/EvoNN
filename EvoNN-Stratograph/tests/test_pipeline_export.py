@@ -33,6 +33,8 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert len(manifest["benchmarks"]) == 38
     assert len(exported_results) == 38
     assert manifest["artifacts"]["config_snapshot"] == "config.yaml"
+    assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
+    assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
 
 
 def test_build_execution_ladder(tmp_path) -> None:

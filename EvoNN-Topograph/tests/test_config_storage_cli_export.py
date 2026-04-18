@@ -179,6 +179,7 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     budget = sym._budget_manifest(cfg, {"wall_clock_seconds": 1.5}, latest_gen=2, population_size=4)
     assert budget["evaluation_count"] == 60
     assert budget["population_size"] == cfg.evolution.population_size
+    assert budget["budget_policy_name"] == "prototype_equal_budget"
 
     telemetry_none = sym._search_telemetry(RunConfig(training={"multi_fidelity": False}), {})
     assert telemetry_none is None

@@ -7,6 +7,11 @@ from evonn_compare.orchestration.config_gen import (
     generate_prism_config,
     generate_topograph_config,
 )
+from evonn_compare.orchestration.fair_matrix import (
+    generate_contender_config,
+    generate_stratograph_config,
+    prepare_fair_matrix_cases,
+)
 
 
 def test_generate_budget_pack_sets_campaign_budget(tmp_path: Path) -> None:
@@ -189,3 +194,58 @@ def test_generate_prism_config_rejects_impossible_mixed_lm_budget(tmp_path: Path
         assert "too small for prism pack coverage" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_generate_stratograph_and_contender_configs_match_budget(tmp_path: Path) -> None:
+    base_pack = Path(__file__).resolve().parents[1] / "parity_packs" / "tier1_core.yaml"
+    pack_path = generate_budget_pack(base_pack_path=base_pack, budget=64, output_dir=tmp_path / "packs")
+
+    stratograph_path = generate_stratograph_config(
+        output_path=tmp_path / "configs" / "stratograph.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=64,
+    )
+    contender_path = generate_contender_config(
+        output_path=tmp_path / "configs" / "contenders.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=64,
+        run_name="demo",
+    )
+
+    stratograph_payload = yaml.safe_load(stratograph_path.read_text(encoding="utf-8"))
+    contender_payload = yaml.safe_load(contender_path.read_text(encoding="utf-8"))
+
+    assert stratograph_payload["benchmark_pool"]["benchmarks"][0] == "iris"
+    assert (
+        stratograph_payload["evolution"]["population_size"]
+        * stratograph_payload["evolution"]["generations"]
+        * len(stratograph_payload["benchmark_pool"]["benchmarks"])
+        == 64
+    )
+    assert contender_payload["baseline"]["mode"] == "budget_matched"
+    assert contender_payload["baseline"]["target_evaluation_count"] == 64
+
+
+def test_prepare_fair_matrix_cases_writes_all_system_configs(tmp_path: Path) -> None:
+    base_pack = Path(__file__).resolve().parents[1] / "parity_packs" / "tier1_core.yaml"
+    paths, cases = prepare_fair_matrix_cases(
+        pack_name="tier1_core",
+        base_pack_path=base_pack,
+        seeds=[42],
+        budgets=[64],
+        workspace=tmp_path / "matrix",
+        prism_root=tmp_path / "Prism",
+        topograph_root=tmp_path / "Topograph",
+        stratograph_root=tmp_path / "Stratograph",
+        contenders_root=tmp_path / "Contenders",
+    )
+
+    assert paths.manifest_path.exists()
+    assert len(cases) == 1
+    case = cases[0]
+    assert case.prism_config_path.exists()
+    assert case.topograph_config_path.exists()
+    assert case.stratograph_config_path.exists()
+    assert case.contender_config_path.exists()

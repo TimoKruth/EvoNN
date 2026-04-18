@@ -6,6 +6,13 @@ from evonn_compare.comparison.engine import (
     ComparisonResult,
     ComparisonSummary,
 )
+from evonn_compare.comparison.fair_matrix import (
+    FairMatrixSummary,
+    MatrixBudgetRow,
+    PairParityRow,
+    build_matrix_summary,
+    summarize_matrix_case,
+)
 from evonn_compare.comparison.leaderboard import (
     CampaignLeaderboard,
     CampaignRecord,
@@ -19,5 +26,10 @@ __all__ = [
     "ComparisonMatchup",
     "ComparisonResult",
     "ComparisonSummary",
+    "FairMatrixSummary",
+    "MatrixBudgetRow",
+    "PairParityRow",
+    "build_matrix_summary",
     "build_campaign_leaderboard",
+    "summarize_matrix_case",
 ]

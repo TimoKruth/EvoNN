@@ -86,6 +86,19 @@ class SearchTelemetry(BaseModel):
     map_elites_parent_samples: int | None = None
 
 
+class FairnessEnvelope(BaseModel):
+    """Explicit fairness metadata carried across run exports."""
+
+    model_config = ConfigDict(frozen=True)
+
+    benchmark_pack_id: str
+    seed: int
+    evaluation_count: int
+    budget_policy_name: str | None = None
+    data_signature: str | None = None
+    code_version: str | None = None
+
+
 class RunManifest(BaseModel):
     """Top-level run export metadata."""
 
@@ -103,6 +116,7 @@ class RunManifest(BaseModel):
     device: DeviceInfo
     artifacts: ArtifactPaths
     search_telemetry: SearchTelemetry | None = None
+    fairness: FairnessEnvelope | None = None
 
     @model_validator(mode="after")
     def validate_unique_benchmarks(self) -> "RunManifest":

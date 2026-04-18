@@ -26,6 +26,12 @@ def test_campaign_help() -> None:
     assert "--workspace" in result.stdout
 
 
+def test_fair_matrix_help() -> None:
+    result = runner.invoke(app, ["fair-matrix", "--help"])
+    assert result.exit_code == 0
+    assert "--contenders-root" in result.stdout
+
+
 def test_hybrid_help() -> None:
     result = runner.invoke(app, ["hybrid", "run", "--help"])
     assert result.exit_code == 0

@@ -41,6 +41,8 @@ selection:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     results = json.loads(results_path.read_text(encoding="utf-8"))
     assert manifest["system"] == "contenders"
+    assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
+    assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
     benchmark_ids = {record["benchmark_id"] for record in results}
     assert "iris_classification" in benchmark_ids
     assert "tiny_lm_synthetic" in benchmark_ids

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -96,6 +97,15 @@ def _normalize_manifest(payload: dict, run_dir: Path) -> dict:
     payload.setdefault("created_at", "2026-04-01T00:00:00Z")
     payload.setdefault("search_telemetry", None)
 
+    fairness = dict(payload.get("fairness", {}))
+    fairness.setdefault("benchmark_pack_id", payload.get("pack_name"))
+    fairness.setdefault("seed", payload.get("seed"))
+    fairness.setdefault("evaluation_count", budget.get("evaluation_count"))
+    fairness.setdefault("budget_policy_name", budget.get("budget_policy_name"))
+    fairness.setdefault("data_signature", _default_data_signature(payload))
+    fairness.setdefault("code_version", None)
+    payload["fairness"] = fairness
+
     normalized_benchmarks = []
     for entry in payload.get("benchmarks", []):
         row = dict(entry)
@@ -120,3 +130,28 @@ def _default_artifact(run_dir: Path, *candidates: str) -> str:
         if (run_dir / candidate).exists():
             return candidate
     return candidates[0]
+
+
+def _default_data_signature(payload: dict) -> str:
+    artifacts = payload.get("artifacts", {}) or {}
+    dataset_hash = artifacts.get("dataset_manifest_hash")
+    if dataset_hash:
+        return str(dataset_hash)
+    benchmark_rows = [
+        {
+            "benchmark_id": entry.get("benchmark_id"),
+            "metric_name": entry.get("metric_name"),
+            "metric_direction": entry.get("metric_direction"),
+            "task_kind": entry.get("task_kind"),
+        }
+        for entry in payload.get("benchmarks", [])
+    ]
+    raw = json.dumps(
+        {
+            "pack_name": payload.get("pack_name"),
+            "benchmarks": benchmark_rows,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]

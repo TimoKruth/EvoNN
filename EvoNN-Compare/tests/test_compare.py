@@ -25,6 +25,8 @@ def _write_run(
     evaluation_count: int = 64,
     score_shift: float = 0.0,
     budget_policy_name: str | None = None,
+    pack_name_override: str | None = None,
+    data_signature: str | None = "shared-signature",
 ) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "config_snapshot.json").write_text("{}", encoding="utf-8")
@@ -37,7 +39,7 @@ def _write_run(
         run_id=f"{system}-run",
         run_name=f"{system}-run",
         created_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
-        pack_name=pack.name,
+        pack_name=pack_name_override or pack.name,
         seed=42,
         benchmarks=[
             BenchmarkEntry(
@@ -59,6 +61,14 @@ def _write_run(
             config_snapshot="config_snapshot.json",
             report_markdown="report.md",
         ),
+        fairness={
+            "benchmark_pack_id": pack_name_override or pack.name,
+            "seed": 42,
+            "evaluation_count": evaluation_count,
+            "budget_policy_name": budget_policy_name,
+            "data_signature": data_signature,
+            "code_version": "deadbeefcafebabe",
+        },
     )
     results = []
     for index, entry in enumerate(pack.benchmarks):
@@ -166,3 +176,45 @@ def test_compare_treats_budget_matched_missing_policy_as_fair(tmp_path: Path) ->
     )
 
     assert result.parity_status == "fair"
+
+
+def test_compare_marks_data_signature_mismatch_as_incomparable(tmp_path: Path) -> None:
+    left_dir = tmp_path / "prism"
+    right_dir = tmp_path / "topograph"
+    _write_run(left_dir, system="prism", data_signature="sig-a")
+    _write_run(right_dir, system="topograph", data_signature="sig-b")
+
+    pack = load_parity_pack(PACK_PATH)
+    left = SystemIngestor(left_dir)
+    right = SystemIngestor(right_dir)
+    result = ComparisonEngine().compare(
+        left_manifest=left.load_manifest(),
+        left_results=left.load_results(),
+        right_manifest=right.load_manifest(),
+        right_results=right.load_results(),
+        pack=pack,
+    )
+
+    assert result.parity_status == "incomparable"
+    assert result.reasons == ["data signature mismatch"]
+
+
+def test_compare_marks_pack_id_mismatch_as_incomparable(tmp_path: Path) -> None:
+    left_dir = tmp_path / "prism"
+    right_dir = tmp_path / "topograph"
+    _write_run(left_dir, system="prism", pack_name_override="wrong-pack")
+    _write_run(right_dir, system="topograph")
+
+    pack = load_parity_pack(PACK_PATH)
+    left = SystemIngestor(left_dir)
+    right = SystemIngestor(right_dir)
+    result = ComparisonEngine().compare(
+        left_manifest=left.load_manifest(),
+        left_results=left.load_results(),
+        right_manifest=right.load_manifest(),
+        right_results=right.load_results(),
+        pack=pack,
+    )
+
+    assert result.parity_status == "incomparable"
+    assert result.reasons == ["benchmark pack ID mismatch"]

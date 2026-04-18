@@ -21,8 +21,8 @@ def render_comparison_markdown(result: ComparisonResult) -> str:
             "",
             "## Run Telemetry",
             "",
-            "| System | Run ID | Evals | Eff Epochs | QD | Novelty w | Novelty mean | Niches | Fill | Archive Parents |",
-            "|---|---|---:|---:|---|---:|---:|---:|---:|---:|",
+            "| System | Run ID | Evals | Policy | Data Sig | Code | Eff Epochs | QD | Novelty w | Novelty mean | Niches | Fill | Archive Parents |",
+            "|---|---|---:|---|---|---|---:|---|---:|---:|---:|---:|---:|",
             _telemetry_row(result.left_manifest),
             _telemetry_row(result.right_manifest),
         ]
@@ -75,7 +75,11 @@ def render_comparison_markdown(result: ComparisonResult) -> str:
 
 def _telemetry_row(manifest) -> str:
     telemetry = manifest.search_telemetry
+    fairness = manifest.fairness
     effective_epochs = manifest.budget.effective_training_epochs
+    budget_policy = manifest.budget.budget_policy_name or "---"
+    data_signature = fairness.data_signature if fairness is not None else "---"
+    code_version = fairness.code_version[:12] if fairness is not None and fairness.code_version else "---"
     qd_enabled = "---"
     novelty_weight = "---"
     novelty_mean = "---"
@@ -93,7 +97,8 @@ def _telemetry_row(manifest) -> str:
         archive_parents = _int_cell(telemetry.map_elites_parent_samples)
     return (
         f"| {manifest.system} | {manifest.run_id} | {manifest.budget.evaluation_count} | "
-        f"{_int_cell(effective_epochs)} | {qd_enabled} | {novelty_weight} | {novelty_mean} | "
+        f"{budget_policy} | {data_signature} | {code_version} | {_int_cell(effective_epochs)} | "
+        f"{qd_enabled} | {novelty_weight} | {novelty_mean} | "
         f"{niches} | {fill_ratio} | {archive_parents} |"
     )
 

@@ -11,6 +11,7 @@ import json
 import math
 import platform
 import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median as stat_median
@@ -152,6 +153,7 @@ def export_symbiosis_contract(
     # 8. Build manifest
     pack_name = Path(pack_path).stem
 
+    budget_manifest = _budget_manifest(config, budget_meta, latest_gen, len(population))
     manifest = {
         "schema_version": "1.0",
         "system": "topograph",
@@ -162,7 +164,7 @@ def export_symbiosis_contract(
         "pack_name": pack_name,
         "seed": config.seed,
         "benchmarks": benchmark_entries,
-        "budget": _budget_manifest(config, budget_meta, latest_gen, len(population)),
+        "budget": budget_manifest,
         "device": {
             "device_name": _detect_device(),
             "precision_mode": budget_meta.get("precision_mode", "unknown"),
@@ -174,6 +176,14 @@ def export_symbiosis_contract(
             representative, benchmark_names, config, pack_name,
         ),
         "search_telemetry": _search_telemetry(config, budget_meta),
+        "fairness": _fairness_manifest(
+            pack_name=pack_name,
+            seed=config.seed,
+            evaluation_count=int(budget_manifest["evaluation_count"]),
+            budget_policy_name="prototype_equal_budget",
+            benchmark_entries=benchmark_entries,
+            data_signature=_compute_dataset_hash(benchmark_names),
+        ),
     }
 
     # 9. Write manifest.json and results.json
@@ -264,7 +274,7 @@ def _budget_manifest(
         "population_size": int(
             budget_meta.get("population_size", config.evolution.population_size)
         ),
-        "budget_policy_name": None,
+        "budget_policy_name": "prototype_equal_budget",
     }
 
 
@@ -471,6 +481,48 @@ def _resolve_run_id(store: RunStore) -> str:
 def _compute_dataset_hash(benchmark_names: list[str]) -> str:
     key = "|".join(sorted(benchmark_names))
     return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def _fairness_manifest(
+    *,
+    pack_name: str,
+    seed: int,
+    evaluation_count: int,
+    budget_policy_name: str,
+    benchmark_entries: list[dict[str, Any]],
+    data_signature: str,
+) -> dict[str, Any]:
+    return {
+        "benchmark_pack_id": pack_name,
+        "seed": seed,
+        "evaluation_count": evaluation_count,
+        "budget_policy_name": budget_policy_name,
+        "data_signature": data_signature or _benchmark_signature(pack_name, benchmark_entries),
+        "code_version": _code_version(),
+    }
+
+
+def _benchmark_signature(pack_name: str, benchmark_entries: list[dict[str, Any]]) -> str:
+    payload = json.dumps(
+        {
+            "pack_name": pack_name,
+            "benchmarks": benchmark_entries,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _code_version() -> str | None:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).resolve().parents[3],
+            text=True,
+        ).strip()
+    except Exception:
+        return None
 
 
 def _build_artifacts_section(

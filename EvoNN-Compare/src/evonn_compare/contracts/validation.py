@@ -51,6 +51,67 @@ def validate_contract(
             )
         )
 
+    if manifest.fairness is not None:
+        if manifest.fairness.benchmark_pack_id != pack.name:
+            issues.append(
+                ValidationIssue(
+                    level="error",
+                    code="fairness_pack_mismatch",
+                    message=(
+                        "fairness benchmark_pack_id mismatch: "
+                        f"{manifest.fairness.benchmark_pack_id} vs {pack.name}"
+                    ),
+                )
+            )
+        if manifest.fairness.seed != manifest.seed:
+            issues.append(
+                ValidationIssue(
+                    level="error",
+                    code="fairness_seed_mismatch",
+                    message=f"fairness seed {manifest.fairness.seed} does not match manifest seed {manifest.seed}",
+                )
+            )
+        if manifest.fairness.evaluation_count != manifest.budget.evaluation_count:
+            issues.append(
+                ValidationIssue(
+                    level="error",
+                    code="fairness_eval_mismatch",
+                    message=(
+                        "fairness evaluation_count does not match manifest budget: "
+                        f"{manifest.fairness.evaluation_count} vs {manifest.budget.evaluation_count}"
+                    ),
+                )
+            )
+        manifest_policy = _normalize_budget_policy(manifest.budget.budget_policy_name)
+        fairness_policy = _normalize_budget_policy(manifest.fairness.budget_policy_name)
+        if manifest_policy != fairness_policy:
+            issues.append(
+                ValidationIssue(
+                    level="error",
+                    code="fairness_policy_mismatch",
+                    message=(
+                        "fairness budget_policy_name does not match manifest budget policy: "
+                        f"{manifest.fairness.budget_policy_name} vs {manifest.budget.budget_policy_name}"
+                    ),
+                )
+            )
+        if manifest.fairness.data_signature is None:
+            issues.append(
+                ValidationIssue(
+                    level="warning",
+                    code="fairness_data_signature_missing",
+                    message="fairness data_signature is missing",
+                )
+            )
+        if manifest.fairness.code_version is None:
+            issues.append(
+                ValidationIssue(
+                    level="warning",
+                    code="fairness_code_version_missing",
+                    message="fairness code_version is missing",
+                )
+            )
+
     pack_benchmarks = {entry.benchmark_id: entry for entry in pack.benchmarks}
     manifest_benchmarks = {entry.benchmark_id: entry for entry in manifest.benchmarks}
 
@@ -199,3 +260,13 @@ def _artifact_exists(run_dir: Path, artifact_path: str) -> bool:
     if not path.is_absolute():
         path = run_dir / path
     return path.exists()
+
+
+def _normalize_budget_policy(name: str | None) -> str | None:
+    if not name:
+        return None
+    if name == "budget_matched_contender_pool":
+        return "prototype_equal_budget"
+    if name == "fixed_contender_pool":
+        return "fixed_reference_contender_pool"
+    return name

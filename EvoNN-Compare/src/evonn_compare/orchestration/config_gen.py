@@ -246,12 +246,7 @@ def _prism_budget_patch(*, budget: int, benchmark_count: int, required_family_co
             f"budget {budget} too small for prism pack coverage: need at least "
             f"{benchmark_count * required_family_count} evaluations"
         )
-    if units <= 8:
-        population_size = units
-        generations = 1
-    else:
-        population_size = 8
-        generations = max(1, units // population_size)
+    population_size, generations = _exact_factorization(units, preferred_population_cap=8)
     return {
         "evolution": {
             "population_size": population_size,
@@ -265,13 +260,8 @@ def _topograph_budget_patch(*, budget: int, benchmark_count: int) -> dict[str, A
     if budget % benchmark_count != 0:
         raise ValueError(f"budget {budget} not divisible by benchmark_count {benchmark_count}")
     units = budget // benchmark_count
-    population_size = 4 if units <= 16 else 8
-    generations = max(1, units // population_size)
-    if population_size * generations != units:
-        generations = 2
-        while generations > 1 and units % generations != 0:
-            generations -= 1
-        population_size = units // generations
+    preferred_cap = 4 if units <= 16 else 8
+    population_size, generations = _exact_factorization(units, preferred_population_cap=preferred_cap)
     return {
         "evolution": {
             "population_size": population_size,
@@ -279,6 +269,15 @@ def _topograph_budget_patch(*, budget: int, benchmark_count: int) -> dict[str, A
             "elite_count": max(1, population_size // 4),
         }
     }
+
+
+def _exact_factorization(units: int, *, preferred_population_cap: int) -> tuple[int, int]:
+    if units <= 0:
+        raise ValueError(f"units must be positive, got {units}")
+    for population_size in range(min(preferred_population_cap, units), 0, -1):
+        if units % population_size == 0:
+            return population_size, units // population_size
+    return units, 1
 
 
 def _deep_update(target: dict[str, Any], patch: dict[str, Any]) -> None:
