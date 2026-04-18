@@ -232,6 +232,9 @@ def _checkpoint(run_dir: str, generation: int, state: GenerationState) -> None:
             for genome_id, benchmark_results in state.results.items()
         },
         "total_evaluations": state.total_evaluations,
+        "benchmark_history": state.benchmark_history,
+        "benchmark_failures": state.benchmark_failures,
+        "benchmark_evaluations": state.benchmark_evaluations,
     }
     path = os.path.join(run_dir, "checkpoints", f"gen_{generation:04d}.json")
     Path(path).write_text(json.dumps(checkpoint, indent=2), encoding="utf-8")
@@ -268,6 +271,18 @@ def _try_resume(run_dir: str) -> tuple[GenerationState | None, int]:
         population=population,
         results=results,
         total_evaluations=data.get("total_evaluations", 0),
+        benchmark_history={
+            benchmark_id: [float(value) for value in values]
+            for benchmark_id, values in data.get("benchmark_history", {}).items()
+        },
+        benchmark_failures={
+            benchmark_id: int(value)
+            for benchmark_id, value in data.get("benchmark_failures", {}).items()
+        },
+        benchmark_evaluations={
+            benchmark_id: int(value)
+            for benchmark_id, value in data.get("benchmark_evaluations", {}).items()
+        },
         parent_ids={
             genome_id: list(parent_ids)
             for genome_id, parent_ids in data.get("parent_ids", {}).items()

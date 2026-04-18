@@ -201,6 +201,24 @@ def inspect(
         console.print(bench_table)
 
 
+@app.command("analyze-compare")
+def analyze_compare(
+    summaries: list[str] = typer.Argument(..., help="Paths to four_way_summary.md files"),
+    output: Optional[str] = typer.Option(None, "--output", help="Optional markdown output path"),
+) -> None:
+    """Aggregate compare summary markdown files into one Prism-oriented analysis."""
+    from prism.analysis.compare import render_compare_analysis
+
+    text = render_compare_analysis(summaries)
+    console.print(text)
+
+    if output:
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(text, encoding="utf-8")
+        console.print(f"\n[green]Analysis saved to {output_path}[/green]")
+
+
 # ===========================================================================
 # Symbiosis subcommand group
 # ===========================================================================

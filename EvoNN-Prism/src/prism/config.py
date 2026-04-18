@@ -22,6 +22,8 @@ class TrainingConfig(BaseModel):
     weight_inheritance: bool = True
     multi_fidelity: bool = True
     multi_fidelity_schedule: list[float] = Field(default_factory=lambda: [0.35, 0.65, 1.0])
+    benchmark_epoch_min_scale: float = 0.75
+    benchmark_epoch_max_scale: float = 1.25
 
 
 class EvolutionConfig(BaseModel):
@@ -45,6 +47,7 @@ class EvolutionConfig(BaseModel):
     family_stale_penalty: float = 0.15
     novelty_parent_bias: float = 0.1
     family_offspring_floor: int = 1
+    benchmark_specialist_offspring: int = 2
     undercovered_focus_top_k: int = 3
 
 

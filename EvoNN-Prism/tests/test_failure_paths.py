@@ -14,10 +14,16 @@ from prism.benchmarks.parity import resolve_pack_path
 from prism.benchmarks.preprocess import Preprocessor
 from prism.benchmarks.spec import BenchmarkSpec
 from prism.config import RunConfig
-from prism.genome import ModelGenome
+from prism.genome import ModelGenome, apply_random_mutation
 from prism.pipeline import evaluate as evaluate_mod
 from prism.pipeline import reproduce as reproduce_mod
-from prism.pipeline.evaluate import GenerationState, _evaluate_single, _resolve_output_dim
+from prism.pipeline.evaluate import (
+    GenerationState,
+    _benchmark_epoch_multiplier,
+    _benchmark_priority_scores,
+    _evaluate_single,
+    _resolve_output_dim,
+)
 from prism.runtime.training import EvaluationResult, train_and_evaluate
 
 
@@ -137,6 +143,28 @@ def test_evaluate_skips_existing_results(monkeypatch):
     assert updated.results[genome.genome_id]["moons"] is existing
 
 
+def test_evaluate_updates_history_for_multiple_genomes(monkeypatch):
+    genomes = [_sample_genome("mlp"), _sample_genome("attention")]
+    state = GenerationState(
+        generation=0,
+        population=genomes,
+        parent_ids={genome.genome_id: [] for genome in genomes},
+    )
+    results = iter([
+        EvaluationResult("accuracy", 0.8, 0.8, 10, 0.1),
+        EvaluationResult("accuracy", 0.7, 0.7, 12, 0.1, failure_reason="compile_error:ValueError"),
+    ])
+    monkeypatch.setattr(evaluate_mod, "_evaluate_single", lambda *args, **kwargs: next(results))
+
+    updated = evaluate_mod.evaluate(state, RunConfig(), [SimpleNamespace(id="moons")])
+
+    assert updated.total_evaluations == 2
+    assert len(updated.results) == 2
+    assert updated.benchmark_history["moons"] == [0.8]
+    assert updated.benchmark_failures["moons"] == 1
+    assert updated.benchmark_evaluations["moons"] == 2
+
+
 def test_evaluate_single_uses_parent_inheritance_and_stores_success(monkeypatch):
     genome = _sample_genome()
     model = object()
@@ -182,6 +210,24 @@ def test_evaluate_single_uses_parent_inheritance_and_stores_success(monkeypatch)
     assert stored_ids == [genome.genome_id]
     assert result.failure_reason is None
     assert result.metric_value == 0.95
+    assert result.inherited_from == "parent-b"
+
+
+def test_benchmark_priority_scores_and_epoch_multiplier():
+    state = GenerationState(
+        generation=1,
+        population=[_sample_genome("mlp")],
+        benchmark_history={"easy": [0.95, 0.96], "hard": [0.4, 0.6], "flaky": [0.3]},
+        benchmark_failures={"easy": 0, "hard": 0, "flaky": 2},
+        benchmark_evaluations={"easy": 4, "hard": 2, "flaky": 3},
+    )
+    specs = [SimpleNamespace(id="easy"), SimpleNamespace(id="hard"), SimpleNamespace(id="flaky")]
+
+    scores = _benchmark_priority_scores(state, specs)
+
+    assert scores["flaky"] > scores["easy"]
+    assert _benchmark_epoch_multiplier("flaky", scores, 0.75, 1.25) > 1.0
+    assert _benchmark_epoch_multiplier("easy", scores, 0.75, 1.25) < 1.0
 
 
 def test_reproduce_records_crossover_lineage(monkeypatch):
@@ -209,6 +255,7 @@ def test_reproduce_records_crossover_lineage(monkeypatch):
                 "tournament_size": 2,
                 "allowed_families": ["mlp", "sparse_mlp"],
                 "family_offspring_floor": 0,
+                "benchmark_specialist_offspring": 0,
             }
         }
     )
@@ -302,6 +349,50 @@ def test_family_floor_targets_include_each_family_once():
     scores = {parent_a.genome_id: 0.9, parent_b.genome_id: 0.7}
 
     assert reproduce_mod._family_floor_targets([parent_a, parent_b], scores, 1) == ["mlp", "attention"]
+
+
+def test_benchmark_specialist_targets_focus_on_weakest_benchmarks():
+    strong = _sample_genome("mlp")
+    specialist = _sample_genome("attention")
+    state = SimpleNamespace(
+        results={
+            strong.genome_id: {
+                "easy": EvaluationResult("accuracy", 0.9, 0.9, 10, 0.1),
+                "hard": EvaluationResult("accuracy", 0.3, 0.3, 10, 0.1),
+            },
+            specialist.genome_id: {
+                "easy": EvaluationResult("accuracy", 0.85, 0.85, 10, 0.1),
+                "hard": EvaluationResult("accuracy", 0.75, 0.75, 10, 0.1),
+            },
+        },
+    )
+
+    targets = reproduce_mod._benchmark_specialist_targets(state, {}, 1)
+
+    assert targets == [{"benchmark_id": "hard", "genome_ids": [specialist.genome_id, strong.genome_id]}]
+
+
+def test_apply_random_mutation_uses_family_specific_pool():
+    class FakeRng:
+        def choice(self, seq):
+            if seq and isinstance(seq[0], tuple):
+                for item in seq:
+                    if item[1] == "embedding_dim":
+                        return item
+            return seq[-1]
+
+    genome = ModelGenome(
+        family="attention",
+        hidden_layers=[16, 16],
+        activation="relu",
+        dropout=0.0,
+        embedding_dim=64,
+        num_heads=4,
+    )
+    child, label = apply_random_mutation(genome, RunConfig().evolution, FakeRng())
+
+    assert label == "embedding_dim"
+    assert child.embedding_dim != genome.embedding_dim
 
 
 def test_get_benchmark_missing_catalog_gives_explicit_error(tmp_path):

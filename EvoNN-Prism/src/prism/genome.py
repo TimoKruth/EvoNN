@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 NORM_CHOICES = ["none", "layer", "rms", "batch"]
 KERNEL_CHOICES = [3, 5]
 HEAD_CHOICES = [1, 2, 4, 8]
+EMBEDDING_CHOICES = [32, 64, 128, 256]
 WEIGHT_DECAY_CHOICES = [0.0, 1e-5, 1e-4, 1e-3, 1e-2]
 SPARSITY_CHOICES = [0.1, 0.25, 0.5, 0.75]
 EXPERT_CHOICES = [0, 2, 4, 8]
@@ -164,10 +165,23 @@ def mutate_num_heads(genome: ModelGenome, rng: Random) -> ModelGenome:
     })
 
 
+def mutate_embedding_dim(genome: ModelGenome, rng: Random) -> ModelGenome:
+    return genome.model_copy(update={
+        "embedding_dim": _pick_other(genome.embedding_dim, EMBEDDING_CHOICES, rng),
+    })
+
+
 def mutate_experts(genome: ModelGenome, rng: Random) -> ModelGenome:
     new_experts = _pick_other(genome.num_experts, EXPERT_CHOICES, rng)
     top_k = min(genome.moe_top_k, max(1, new_experts)) if new_experts > 0 else genome.moe_top_k
     return genome.model_copy(update={"num_experts": new_experts, "moe_top_k": top_k})
+
+
+def mutate_moe_top_k(genome: ModelGenome, rng: Random) -> ModelGenome:
+    if genome.num_experts <= 0:
+        return genome
+    allowed = [choice for choice in MOE_TOP_K_CHOICES if choice <= genome.num_experts]
+    return genome.model_copy(update={"moe_top_k": _pick_other(genome.moe_top_k, allowed, rng)})
 
 
 _OPERATORS: list[tuple[str, str]] = [
@@ -184,8 +198,24 @@ _OPERATORS: list[tuple[str, str]] = [
     ("kernel_size", "kernel_size"),
     ("sparsity", "sparsity"),
     ("num_heads", "num_heads"),
+    ("embedding_dim", "embedding_dim"),
     ("experts", "experts"),
+    ("moe_top_k", "moe_top_k"),
 ]
+
+_FAMILY_OPERATORS: dict[str, list[str]] = {
+    "mlp": ["width", "depth_add", "depth_remove", "activation", "dropout", "residual", "lr", "norm_type", "weight_decay"],
+    "sparse_mlp": ["width", "depth_add", "depth_remove", "activation", "dropout", "residual", "lr", "norm_type", "sparsity", "weight_decay"],
+    "moe_mlp": ["width", "depth_add", "activation", "dropout", "lr", "norm_type", "experts", "moe_top_k", "weight_decay"],
+    "conv2d": ["width", "depth_add", "depth_remove", "activation", "dropout", "kernel_size", "norm_type", "lr"],
+    "lite_conv2d": ["width", "depth_add", "activation", "dropout", "kernel_size", "norm_type", "lr"],
+    "conv1d": ["width", "depth_add", "depth_remove", "activation", "dropout", "kernel_size", "norm_type", "lr"],
+    "lite_conv1d": ["width", "depth_add", "activation", "dropout", "kernel_size", "norm_type", "lr"],
+    "gru": ["width", "depth_add", "depth_remove", "activation", "dropout", "residual", "lr", "norm_type"],
+    "embedding": ["width", "depth_add", "dropout", "lr", "embedding_dim", "norm_type"],
+    "attention": ["width", "depth_add", "depth_remove", "dropout", "lr", "embedding_dim", "num_heads", "norm_type"],
+    "sparse_attention": ["width", "depth_add", "depth_remove", "dropout", "lr", "embedding_dim", "num_heads", "norm_type", "sparsity"],
+}
 
 
 def apply_random_mutation(
@@ -194,7 +224,11 @@ def apply_random_mutation(
     rng: Random,
 ) -> tuple[ModelGenome, str]:
     """Apply a single random mutation, returning (child, operator_name)."""
-    op_name, label = rng.choice(_OPERATORS)
+    family_ops = _FAMILY_OPERATORS.get(genome.family)
+    operator_pool = [item for item in _OPERATORS if family_ops is None or item[1] in family_ops]
+    if not operator_pool:
+        operator_pool = _OPERATORS
+    op_name, label = rng.choice(operator_pool)
     allowed_families = config.allowed_families or ["mlp", "conv2d", "attention"]
 
     match op_name:
@@ -224,8 +258,12 @@ def apply_random_mutation(
             child = mutate_sparsity(genome, rng)
         case "num_heads":
             child = mutate_num_heads(genome, rng)
+        case "embedding_dim":
+            child = mutate_embedding_dim(genome, rng)
         case "experts":
             child = mutate_experts(genome, rng)
+        case "moe_top_k":
+            child = mutate_moe_top_k(genome, rng)
         case _:
             child = genome
 
@@ -252,6 +290,7 @@ def crossover(parent_a: ModelGenome, parent_b: ModelGenome, rng: Random) -> Mode
     """Produce a child from two parents. 50% uniform, 50% splice."""
     a, b = parent_a.model_dump(), parent_b.model_dump()
     pick = rng.choice
+    child_family = pick([parent_a.family, parent_b.family]) if parent_a.family != parent_b.family else parent_a.family
 
     if rng.random() < 0.5:
         # Uniform crossover: each gene independently from either parent
@@ -264,8 +303,28 @@ def crossover(parent_a: ModelGenome, parent_b: ModelGenome, rng: Random) -> Mode
 
     # Blended learning rate for both modes
     child["learning_rate"] = _blend_lr(a["learning_rate"], b["learning_rate"], rng)
+    child["family"] = child_family
+    return ModelGenome.model_validate(_sanitize_for_family(child))
 
-    return ModelGenome.model_validate(child)
+
+def _sanitize_for_family(payload: dict) -> dict:
+    family = payload["family"]
+    if family not in {"attention", "sparse_attention", "embedding"}:
+        payload["embedding_dim"] = 64
+    if family not in {"attention", "sparse_attention"}:
+        payload["num_heads"] = 4
+    if family not in {"conv2d", "lite_conv2d", "conv1d", "lite_conv1d"}:
+        payload["kernel_size"] = 3
+    if family not in {"sparse_mlp", "sparse_attention"}:
+        payload["activation_sparsity"] = 0.0
+    if family != "moe_mlp":
+        payload["num_experts"] = 0
+        payload["moe_top_k"] = 2
+    elif payload["num_experts"] > 0:
+        payload["moe_top_k"] = min(payload["moe_top_k"], payload["num_experts"])
+    if not payload.get("hidden_layers"):
+        payload["hidden_layers"] = [64]
+    return payload
 
 
 # ---------------------------------------------------------------------------

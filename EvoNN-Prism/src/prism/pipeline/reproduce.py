@@ -52,18 +52,25 @@ def reproduce(
     seen_offspring_ids: set[str] = set()
     parent_pool_ids = {genome.genome_id for genome in parent_pool}
     family_floor_targets = _family_floor_targets(parent_pool, quality_map, evolution.family_offspring_floor)
+    specialist_targets = _benchmark_specialist_targets(
+        state,
+        quality_map,
+        evolution.benchmark_specialist_offspring,
+    )
 
     for slot in range(evolution.offspring_per_generation):
         child = None
         record = None
         for _attempt in range(MAX_OFFSPRING_ATTEMPTS):
             family_target = family_floor_targets[slot] if slot < len(family_floor_targets) else None
+            specialist_target = specialist_targets[slot] if slot < len(specialist_targets) else None
             candidate, candidate_record = _make_offspring(
                 parent_pool,
                 quality_map,
                 evolution,
                 rng,
                 family_target=family_target,
+                specialist_target=specialist_target,
             )
             child = candidate
             record = candidate_record
@@ -91,7 +98,21 @@ def _make_offspring(
     evolution,
     rng: Random,
     family_target: str | None = None,
+    specialist_target: dict | None = None,
 ) -> tuple[ModelGenome, dict]:
+    if specialist_target is not None:
+        benchmark_id = specialist_target["benchmark_id"]
+        candidate_ids = specialist_target["genome_ids"]
+        specialist_pool = [genome for genome in parent_pool if genome.genome_id in candidate_ids]
+        if specialist_pool:
+            parent = max(specialist_pool, key=lambda genome: quality_map.get(genome.genome_id, float("-inf")))
+            child, op_name = apply_random_mutation(parent, evolution, rng)
+            return child, {
+                "genome_id": child.genome_id,
+                "parent_ids": [parent.genome_id],
+                "operator": f"specialist:{benchmark_id}:mutation:{op_name}",
+            }
+
     if family_target is not None:
         parent = _best_in_family(parent_pool, quality_map, family_target)
         child, op_name = apply_random_mutation(parent, evolution, rng)
@@ -307,3 +328,39 @@ def _family_floor_targets(
         reverse=True,
     )
     return [family for family in families for _ in range(per_family_floor)]
+
+
+def _benchmark_specialist_targets(
+    state,
+    quality_map: dict[str, float],
+    specialist_slots: int,
+) -> list[dict]:
+    if specialist_slots <= 0:
+        return []
+
+    benchmark_scores: dict[str, list[tuple[str, float]]] = {}
+    for genome_id, benchmark_results in state.results.items():
+        for benchmark_id, result in benchmark_results.items():
+            if result.failure_reason is None:
+                benchmark_scores.setdefault(benchmark_id, []).append((genome_id, result.quality))
+
+    if not benchmark_scores:
+        return []
+
+    ranked_benchmarks = sorted(
+        benchmark_scores,
+        key=lambda benchmark_id: sum(score for _, score in benchmark_scores[benchmark_id]) / len(benchmark_scores[benchmark_id]),
+    )
+
+    targets: list[dict] = []
+    for benchmark_id in ranked_benchmarks[:specialist_slots]:
+        specialists = sorted(
+            benchmark_scores[benchmark_id],
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        targets.append({
+            "benchmark_id": benchmark_id,
+            "genome_ids": [genome_id for genome_id, _ in specialists[:2]],
+        })
+    return targets

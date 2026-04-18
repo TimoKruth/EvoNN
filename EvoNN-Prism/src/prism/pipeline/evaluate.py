@@ -25,6 +25,9 @@ class GenerationState:
     archives: dict = field(default_factory=dict)
     total_evaluations: int = 0
     parent_ids: dict[str, list[str]] = field(default_factory=dict)
+    benchmark_history: dict[str, list[float]] = field(default_factory=dict)
+    benchmark_failures: dict[str, int] = field(default_factory=dict)
+    benchmark_evaluations: dict[str, int] = field(default_factory=dict)
 
 
 def evaluate(
@@ -66,31 +69,40 @@ def evaluate(
         schedule=training.multi_fidelity_schedule if training.multi_fidelity else None,
     )
 
+    priority_scores = _benchmark_priority_scores(state, benchmark_specs)
+
     for genome in state.population:
         genome_results = state.results.get(genome.genome_id, {})
         parent_ids = state.parent_ids.get(genome.genome_id, [])
 
-    if store is not None and run_id is not None:
-        store.save_genome(run_id, genome)
+        if store is not None and run_id is not None:
+            store.save_genome(run_id, genome)
 
         for spec in benchmark_specs:
             benchmark_id = spec.id if hasattr(spec, "id") else spec.name
 
-            # Skip if already evaluated
             if benchmark_id in genome_results:
                 continue
+
+            benchmark_scale = _benchmark_epoch_multiplier(
+                benchmark_id,
+                priority_scores,
+                training.benchmark_epoch_min_scale,
+                training.benchmark_epoch_max_scale,
+            )
 
             result = _evaluate_single(
                 genome=genome,
                 spec=spec,
                 training=training,
-                epoch_scale=epoch_scale,
+                epoch_scale=epoch_scale * benchmark_scale,
                 cache=cache,
                 parent_ids=parent_ids,
             )
 
             genome_results[benchmark_id] = result
             state.total_evaluations += 1
+            _record_benchmark_result(state, benchmark_id, result)
 
             if store is not None and run_id is not None:
                 store.save_evaluation(
@@ -126,41 +138,20 @@ def select_benchmarks(
     if not all_benchmarks:
         return []
 
-    # Always evaluate all benchmarks if pool is small
+    # Keep evaluation count stable for fair-budget runs; change order, not set size.
     if len(all_benchmarks) <= 4:
         return list(all_benchmarks)
 
-    # Find undercovered benchmarks from existing results
-    if not state.results:
-        # First generation: evaluate all
+    if not state.benchmark_evaluations:
         return list(all_benchmarks)
 
-    benchmark_scores: dict[str, list[float]] = {}
-    for genome_results in state.results.values():
-        for bid, result in genome_results.items():
-            if result.failure_reason is None:
-                benchmark_scores.setdefault(bid, []).append(result.quality)
-
-    # Rank benchmarks by average quality (ascending = weakest first)
-    scored_benchmarks = []
-    for spec in all_benchmarks:
-        bid = spec.id if hasattr(spec, "id") else spec.name
-        scores = benchmark_scores.get(bid, [])
-        avg = sum(scores) / len(scores) if scores else float("-inf")
-        scored_benchmarks.append((avg, spec))
-
-    scored_benchmarks.sort(key=lambda x: x[0])
-
-    # Always include undercovered (bottom K) + random sample of the rest
-    focus_k = min(config.evolution.undercovered_focus_top_k, len(scored_benchmarks))
-    selected = [spec for _, spec in scored_benchmarks[:focus_k]]
-
-    remaining = [spec for _, spec in scored_benchmarks[focus_k:]]
-    if remaining:
-        extra = min(len(remaining), max(1, len(all_benchmarks) // 2))
-        selected.extend(rng.sample(remaining, extra))
-
-    return selected
+    priority_scores = _benchmark_priority_scores(state, all_benchmarks)
+    ranked = sorted(
+        all_benchmarks,
+        key=lambda spec: priority_scores.get(spec.id if hasattr(spec, "id") else spec.name, 0.0),
+        reverse=True,
+    )
+    return ranked
 
 
 def _evaluate_single(
@@ -281,3 +272,56 @@ def _load_data(spec, seed: int = 42):
 
     # Fallback: assume spec has data attributes
     return spec.x_train, spec.y_train, spec.x_val, spec.y_val
+
+
+def _record_benchmark_result(
+    state: GenerationState,
+    benchmark_id: str,
+    result: EvaluationResult,
+) -> None:
+    state.benchmark_evaluations[benchmark_id] = state.benchmark_evaluations.get(benchmark_id, 0) + 1
+    if result.failure_reason is None:
+        state.benchmark_history.setdefault(benchmark_id, []).append(float(result.quality))
+    else:
+        state.benchmark_failures[benchmark_id] = state.benchmark_failures.get(benchmark_id, 0) + 1
+
+
+def _benchmark_priority_scores(state: GenerationState, benchmark_specs: list) -> dict[str, float]:
+    scores: dict[str, float] = {}
+    if not benchmark_specs:
+        return scores
+
+    all_ids = [spec.id if hasattr(spec, "id") else spec.name for spec in benchmark_specs]
+    max_evals = max((state.benchmark_evaluations.get(bid, 0) for bid in all_ids), default=0)
+    spreads = {}
+    for bid in all_ids:
+        history = state.benchmark_history.get(bid, [])
+        spreads[bid] = float(np.std(history)) if len(history) >= 2 else 0.0
+    max_spread = max(spreads.values(), default=0.0)
+
+    for benchmark_id in all_ids:
+        evals = state.benchmark_evaluations.get(benchmark_id, 0)
+        failures = state.benchmark_failures.get(benchmark_id, 0)
+        failure_rate = failures / evals if evals else 0.0
+        coverage_gap = 1.0 - (evals / max_evals) if max_evals else 1.0
+        spread_score = (spreads[benchmark_id] / max_spread) if max_spread > 1e-9 else 0.0
+        scores[benchmark_id] = (coverage_gap * 1.25) + (failure_rate * 1.5) + (spread_score * 0.75)
+
+    return scores
+
+
+def _benchmark_epoch_multiplier(
+    benchmark_id: str,
+    priority_scores: dict[str, float],
+    min_scale: float,
+    max_scale: float,
+) -> float:
+    if not priority_scores:
+        return 1.0
+    score = priority_scores.get(benchmark_id, 0.0)
+    max_score = max(priority_scores.values(), default=0.0)
+    min_score = min(priority_scores.values(), default=0.0)
+    if max_score <= min_score + 1e-9:
+        return 1.0
+    normalized = (score - min_score) / (max_score - min_score)
+    return min_scale + normalized * (max_scale - min_scale)

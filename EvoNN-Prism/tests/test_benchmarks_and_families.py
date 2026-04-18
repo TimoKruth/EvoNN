@@ -11,7 +11,7 @@ from prism.benchmarks.datasets import load_image, load_openml, load_sklearn
 from prism.benchmarks.spec import BenchmarkSpec
 from prism.cli import app
 from prism.families.compiler import compile_genome
-from prism.genome import ModelGenome
+from prism.genome import ModelGenome, _sanitize_for_family
 
 
 runner = CliRunner()
@@ -172,3 +172,28 @@ def test_cli_suite_info_missing(monkeypatch):
     result = runner.invoke(app, ["suite", "info", "ghost"])
     assert result.exit_code == 1
     assert "not found" in result.stdout.lower()
+
+
+def test_sanitize_for_family_resets_irrelevant_fields():
+    payload = {
+        "family": "mlp",
+        "hidden_layers": [16, 8],
+        "activation": "relu",
+        "dropout": 0.0,
+        "residual": False,
+        "activation_sparsity": 0.5,
+        "learning_rate": 1e-3,
+        "kernel_size": 5,
+        "embedding_dim": 256,
+        "num_heads": 8,
+        "norm_type": "none",
+        "weight_decay": 0.0,
+        "num_experts": 4,
+        "moe_top_k": 2,
+    }
+    sanitized = _sanitize_for_family(payload)
+    assert sanitized["embedding_dim"] == 64
+    assert sanitized["num_heads"] == 4
+    assert sanitized["kernel_size"] == 3
+    assert sanitized["activation_sparsity"] == 0.0
+    assert sanitized["num_experts"] == 0
