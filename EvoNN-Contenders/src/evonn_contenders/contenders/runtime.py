@@ -22,6 +22,9 @@ from sklearn.svm import LinearSVC, SVC
 from evonn_contenders.contenders.registry import ContenderSpec
 
 
+_TORCH_RUNTIME_TUNED = False
+
+
 class LanguageModel(Protocol):
     """Minimal LM contender protocol."""
 
@@ -339,6 +342,7 @@ def _run_cnn_classifier(
     config: Any | None,
 ) -> tuple[float, int]:
     torch = _import_torch()
+    _configure_torch_runtime(torch)
     from torch.utils.data import DataLoader, TensorDataset
 
     from evonn_contenders.contenders.torch_models import build_cnn
@@ -397,6 +401,7 @@ def _run_transformer_language_model(
     config: Any | None,
 ) -> tuple[float, int]:
     torch = _import_torch()
+    _configure_torch_runtime(torch)
     from torch.utils.data import DataLoader, TensorDataset
 
     from evonn_contenders.contenders.torch_models import build_transformer_lm
@@ -604,6 +609,21 @@ def _import_torch():
     except ModuleNotFoundError as exc:
         raise OptionalDependencyError("Optional dependency missing for torch contender: torch") from exc
     return torch
+
+
+def _configure_torch_runtime(torch) -> None:
+    global _TORCH_RUNTIME_TUNED
+    if _TORCH_RUNTIME_TUNED:
+        return
+    # Torch CPU kernels plus multiple libomp copies on macOS can wedge in
+    # parallel sections during contender runs. Keep the contender runtime
+    # single-threaded to trade a little speed for stability.
+    torch.set_num_threads(1)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        pass
+    _TORCH_RUNTIME_TUNED = True
 
 
 def _torch_device(config: Any | None):

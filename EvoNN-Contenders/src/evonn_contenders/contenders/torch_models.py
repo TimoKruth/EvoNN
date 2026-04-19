@@ -16,10 +16,9 @@ def build_cnn(contender_name: str, *, channels: int, num_classes: int):
         dropout = 0.25
 
     layers: list[nn.Module] = [
-        nn.Conv2d(channels, 16, kernel_size=3, padding=1),
+        nn.Conv2d(channels, 16, kernel_size=3, stride=2, padding=1),
         nn.ReLU(),
-        nn.MaxPool2d(2),
-        nn.Conv2d(16, 32, kernel_size=3, padding=1),
+        nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
         nn.ReLU(),
         nn.AdaptiveAvgPool2d((2, 2)),
         nn.Flatten(),

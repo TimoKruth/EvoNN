@@ -5,6 +5,7 @@ import pytest
 from evonn_contenders.benchmarks import get_benchmark
 from evonn_contenders.config import RunConfig
 from evonn_contenders.contender_pool import evaluate_contender, resolve_contenders
+from evonn_contenders.contenders.torch_models import build_cnn
 
 
 def _smoke_config() -> RunConfig:
@@ -85,6 +86,14 @@ def test_cnn_trains_on_digits() -> None:
     record = _evaluate("digits", "image", "cnn_small")
     assert record["status"] == "ok"
     assert 0.0 <= float(record["metric_value"]) <= 1.0
+
+
+@pytest.mark.skipif(importlib.util.find_spec("torch") is None, reason="torch not installed")
+def test_cnn_avoids_maxpool_deadlock_path() -> None:
+    import torch.nn as nn
+
+    model = build_cnn("cnn_small", channels=1, num_classes=10)
+    assert not any(isinstance(layer, nn.MaxPool2d) for layer in model)
 
 
 @pytest.mark.skipif(importlib.util.find_spec("torch") is None, reason="torch not installed")
