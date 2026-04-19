@@ -1,6 +1,9 @@
 [tool.uv.workspace]
 members = [
     "EvoNN-Compare",
-    "EvoNN-Topograph",
+    "EvoNN-Contenders",
+    "EvoNN-Primordia",
     "EvoNN-Prism",
+    "EvoNN-Stratograph",
+    "EvoNN-Topograph",
 ]

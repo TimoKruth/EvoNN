@@ -4,16 +4,17 @@
 
 EvoNN exists to answer one broad question:
 
-how should neural architectures be discovered, compared, and improved when we
-care about real search abstractions, real benchmark breadth, real budget
-discipline, and real local iteration?
+how should neural architectures be discovered, compared, improved, and carried
+forward when we care about real search abstractions, real benchmark breadth,
+real budget discipline, and real local iteration?
 
 The whole Evo Neural Nets idea is bigger than any one package in this
-directory.
+repository.
 
 It is an umbrella research program that combines:
 
 - distinct architecture-search systems
+- a primitive-first search layer beneath architecture-scale systems
 - strong fixed baselines
 - shared benchmark contracts
 - common export and comparison formats
@@ -21,13 +22,17 @@ It is an umbrella research program that combines:
 - evidence loops that decide which ideas deserve to survive
 
 So EvoNN is not just one search engine and not just one leaderboard effort. It
-is a coordinated system with two foundation layers:
+is a coordinated research stack with three base layers and four search bets.
 
+Foundation layers:
+
+- `shared-benchmarks`: common benchmark identities, packs, and task metadata
 - `Compare`: the protocol-first comparison layer that makes results from distinct systems fair, reproducible, and inspectable
 - `Contenders`: the strong fixed-baseline layer that prevents evolutionary systems from winning by default against weak references
 
-On top of that foundation sit three distinct search bets:
+Search layers:
 
+- `Primordia`: primitive-first search over low-level computational motifs
 - `Prism`: family-first search
 - `Topograph`: flat-topology-first search
 - `Stratograph`: hierarchy-first search
@@ -46,23 +51,30 @@ EvoNN is organized around a few simple claims:
 2. Different search abstractions should stay genuinely distinct long enough to
    teach us something real.
 3. Baselines must be strong enough that evolutionary wins mean something.
-4. Exports, manifests, reports, and budget accounting matter as much as raw
-   scores.
+4. Exports, manifests, reports, telemetry, and budget accounting matter as much
+   as raw scores.
 5. Local and bounded experimentation is strategically valuable because it makes
    iteration, reproduction, and comparison practical.
+6. Structure discovered at lower levels should be allowed to seed higher levels
+   rather than being discarded between experiments.
+7. Hard benchmarks are an important north star, but EvoNN is not restricted to
+   language models or coding tasks; the real target is any benchmark surface
+   where neural systems might still discover surprising, competitive solutions.
 
 Put differently:
 
 EvoNN is trying to turn architecture search from a collection of isolated model
-hunts into a comparative discipline.
+hunts into a comparative discipline with memory.
 
 That means the project should tell us not only what scored highest, but also:
 
 - what kind of search abstraction produced the result
 - what budget it consumed
 - what benchmarks it really covered
-- what evidence survives outside the repo that produced it
+- what telemetry and artifacts survive outside the source run
 - whether the result still matters against strong non-evolutionary baselines
+- whether the result can seed stronger future searches instead of dying as an
+  isolated checkpoint
 
 ## Shared Substrate
 
@@ -80,6 +92,7 @@ parallel repos talking past each other.
 
 See:
 - [shared-benchmarks/README.md](./shared-benchmarks/README.md)
+- [BENCHMARK_LADDER.md](./BENCHMARK_LADDER.md)
 
 ### Local-First Research Loops
 
@@ -87,24 +100,28 @@ EvoNN consistently leans toward local, bounded, iteration-friendly research
 loops rather than assuming cluster-first experimentation.
 
 That bias shows up strongly in Prism and Topograph's Apple Silicon / MLX
-orientation, and it also appears in adjacent experiments like
-`autoresearch-mlx`, which explore fixed-budget autonomous search loops on local
-hardware.
+orientation, and it should shape the rest of the umbrella as well. The point is
+not only to search more. The point is to learn faster under constraints, with
+evidence that can be rerun and compared.
 
-This matters because the umbrella idea is not only "search more." It is "learn
-faster under constraints, with evidence that can be rerun and compared."
+### Budget And Telemetry Discipline
+
+A fair umbrella project needs normalized budget semantics and a common telemetry
+surface. Runs should declare their constraints and report them in comparable
+ways.
 
 See:
-- [autoresearch-mlx/README.md](./autoresearch-mlx/README.md)
+- [BUDGET_CONTRACT.md](./BUDGET_CONTRACT.md)
+- [TELEMETRY_SPEC.md](./TELEMETRY_SPEC.md)
 
 ## The Foundation: Compare
 
 `EvoNN-Compare` is the trust layer of the project.
 
-Its job is to ingest exports from Prism, Topograph, Stratograph, Hybrid, and
-fixed contenders, then turn them into fair side-by-side comparisons using
-shared packs, shared benchmark identities, shared budget semantics, and common
-reporting artifacts.
+Its job is to ingest exports from Primordia, Prism, Topograph, Stratograph,
+future merged systems, and fixed contenders, then turn them into fair
+side-by-side comparisons using shared packs, shared benchmark identities,
+shared budget semantics, and common reporting artifacts.
 
 In practice, Compare should become the place where EvoNN answers questions like:
 
@@ -112,9 +129,10 @@ In practice, Compare should become the place where EvoNN answers questions like:
 - how broad was that win across task types?
 - what evidence survives outside the source repo of the system that produced it?
 - which results are robust enough to trust, reproduce, and challenge?
+- what lower-level priors actually improved later systems enough to matter?
 
 Without Compare, EvoNN is just a collection of interesting codebases. With
-Compare, it becomes a comparative research program with a memory.
+Compare, it becomes a comparative research program with memory.
 
 See:
 - [EvoNN-Compare/README.md](./EvoNN-Compare/README.md)
@@ -135,6 +153,8 @@ Contenders should grow into a broad but controlled benchmark opponent set:
 - boosted-tree baselines
 - image baselines
 - lightweight language-model baselines
+- sequence baselines
+- future task-specific baselines for harder benchmark classes
 - eventually adapters that let sibling EvoNN systems participate as normalized
   contender-style references under fixed mini-budgets
 
@@ -146,7 +166,24 @@ See:
 - [EvoNN-Contenders/README.md](./EvoNN-Contenders/README.md)
 - [CONTENDER_EXPANSION_PLAN.md](./CONTENDER_EXPANSION_PLAN.md)
 
-## The Three Search Bets
+## The Four Search Bets
+
+### Primordia
+
+`Primordia` is the primitive-first system.
+
+It asks: which low-level computational motifs deserve to exist before they are
+assembled into families, topologies, or hierarchical cell systems? Primordia is
+the bridge between single-neuron or tiny-circuit evolution and the larger
+search systems above it.
+
+Its job is not to become a giant end-to-end benchmark monster immediately. Its
+job is to discover reusable low-level structure cheaply enough that the rest of
+EvoNN can benefit from it.
+
+Read more:
+- [EvoNN-Primordia/README.md](./EvoNN-Primordia/README.md)
+- [EvoNN-Primordia/VISION.md](./EvoNN-Primordia/VISION.md)
 
 ### Prism
 
@@ -204,22 +241,79 @@ The intended stack looks like this:
 
 1. `shared-benchmarks` defines common benchmark identities and packs.
 2. `Contenders` establishes strong fixed baselines.
-3. `Prism`, `Topograph`, and `Stratograph` run distinct search programs.
-4. Each system exports comparable artifacts.
-5. `Compare` evaluates them under shared packs and fair budget contracts.
-6. The project learns which ideas deserve to survive into later merged systems.
+3. `Primordia` discovers cheap low-level motifs and primitive priors.
+4. `Prism`, `Topograph`, and `Stratograph` run distinct architecture-scale
+   search programs.
+5. Each system exports comparable artifacts.
+6. `Compare` evaluates them under shared packs and fair budget contracts.
+7. The project learns which ideas deserve to survive into later merged systems.
 
 That means the umbrella project is not centered on one repo. It is centered on
 an evaluation loop:
 
 - define a fair benchmark surface
+- define a bounded budget contract
 - propose a search abstraction
 - run it on shared packs
 - export reproducible evidence
 - compare it against strong peers and contenders
 - keep what survives honest comparison
+- carry reusable structure upward when the evidence justifies it
 
 That loop is the whole EvoNN idea in operational form.
+
+## Horizon Structure
+
+EvoNN should grow in ordered horizons rather than by uncontrolled sprawl.
+
+### Horizon 1: Trustworthy umbrella
+
+Goal:
+make the comparative substrate trustworthy on local hardware.
+
+Focus:
+- shared benchmark ladder
+- normalized budget contracts
+- common telemetry/reporting surface
+- workspace coherence across umbrella packages
+- stronger documentation of roles and boundaries
+
+### Horizon 2: Primitive-first search
+
+Goal:
+add the missing bottom-up search layer beneath architecture-scale systems.
+
+Focus:
+- primitive and microcircuit evolution
+- cheap benchmark packs for motif discovery
+- motif export formats that can seed later systems
+- explicit boundary between low-level discovery and higher-level search
+
+### Horizon 3: Transfer and cumulative search
+
+Goal:
+stop starting from near-zero every time.
+
+Focus:
+- motif memory
+- archive reuse
+- benchmark-family priors
+- transfer-aware seeding across systems
+
+### Horizon 4: Harder benchmark classes
+
+Goal:
+move toward increasingly difficult and surprising benchmark families without
+sacrificing fairness or local survivability.
+
+Focus:
+- stronger multi-domain packs
+- harder sequence and code-like tasks
+- system-level evaluation surfaces
+- eventually frontier-style tasks under reduced or staged evaluation budgets
+
+See:
+- [ROADMAP.md](./ROADMAP.md)
 
 ## Strategic Direction
 
@@ -228,8 +322,8 @@ Long run, EvoNN should become:
 - a local-first architecture-discovery program, not a pile of disconnected
   experiments
 - a benchmark-disciplined ecosystem for architecture search research
-- a place where family, topology, and hierarchy are tested as separate
-  explanatory axes
+- a place where primitive structure, family choice, topology, and hierarchy are
+  tested as separate explanatory axes
 - a source of reproducible artifacts rather than isolated claims
 - a bridge between evolutionary systems and strong non-evolutionary baselines
 - a foundation for future merged systems that inherit only proven advantages
@@ -239,11 +333,14 @@ The merged future matters, but only later.
 First, the current systems need to stay distinct enough to answer real
 questions:
 
+- when do primitive motifs matter?
 - when does family choice dominate?
 - when does flat topology dominate?
 - when does hierarchy dominate?
 - what survives comparison against strong contenders?
 - what remains true under shared benchmark packs and normalized budgets?
+- what discovered structure transfers across tasks instead of overfitting one
+  run?
 
 ## What Success Looks Like
 
@@ -251,11 +348,12 @@ EvoNN succeeds if it produces:
 
 - fair comparisons that people can actually trust
 - strong baseline coverage that rules out easy self-deception
-- clear evidence about the strengths and limits of Prism, Topograph, and
-  Stratograph
-- reusable exports, reports, and benchmark contracts
+- clear evidence about the strengths and limits of Primordia, Prism,
+  Topograph, and Stratograph
+- reusable exports, reports, benchmark contracts, and telemetry surfaces
 - a path toward a later combined system built from proven wins instead of
   intuition alone
+- evidence that lower-level search can produce structure worth carrying upward
 
 ## Final Statement
 
@@ -266,6 +364,7 @@ It is a full research idea:
 - shared benchmarks to define the playing field
 - contenders to keep the field honest
 - compare to make claims testable
+- Primordia to test primitive-first search
 - Prism to test family-first search
 - Topograph to test flat-topology-first search
 - Stratograph to test hierarchy-first search
