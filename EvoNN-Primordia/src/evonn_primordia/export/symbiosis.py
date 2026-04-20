@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from evonn_contenders.benchmarks import get_benchmark
-from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_pack
+from evonn_primordia.benchmarks import get_benchmark
+from evonn_primordia.benchmarks.parity import fallback_native_id, load_parity_pack
 
 from evonn_primordia.config import load_config
 from evonn_primordia.export.report import write_report

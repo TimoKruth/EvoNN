@@ -11,7 +11,7 @@ from evonn_primordia.export import export_symbiosis_contract, write_report
 from evonn_primordia.pipeline import run_search
 
 app = typer.Typer(help="Primitive-first evolutionary search for EvoNN.", no_args_is_help=False)
-symbiosis_app = typer.Typer(help="Export Primordia runs for EvoNN-Compare.", no_args_is_help=True)
+symbiosis_app = typer.Typer(help="Export Primordia runs for compare tooling.", no_args_is_help=True)
 app.add_typer(symbiosis_app, name="symbiosis")
 console = Console()
 

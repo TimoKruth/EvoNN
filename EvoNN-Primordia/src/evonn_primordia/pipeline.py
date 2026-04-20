@@ -207,15 +207,14 @@ def run_search(
 
 def _load_runtime_bindings() -> RuntimeBindings:
     try:
-        from evonn_contenders.benchmarks import get_benchmark
-        from evonn_contenders.contenders import benchmark_group
-        from prism.config import EvolutionConfig
-        from prism.families.compiler import compile_genome, compatible_families
-        from prism.genome import apply_random_mutation, create_seed_genome
-        from prism.runtime.training import train_and_evaluate
+        from evonn_primordia.benchmarks import benchmark_group, get_benchmark
+        from evonn_primordia.config import EvolutionConfig
+        from evonn_primordia.families.compiler import compile_genome, compatible_families
+        from evonn_primordia.genome import apply_random_mutation, create_seed_genome
+        from evonn_primordia.runtime.training import train_and_evaluate
     except Exception as exc:
         raise RuntimeError(
-            "Primordia MLX runtime requires local Prism+MLX dependencies. Run this on your Apple Silicon workspace with `uv sync`."
+            "Primordia MLX runtime requires local MLX dependencies and Primordia's own benchmark/model modules. Run this on your Apple Silicon workspace with `uv sync --package evonn-primordia`."
         ) from exc
 
     def _seed_genome(family: str, width: int, depth: int):

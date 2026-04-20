@@ -43,6 +43,20 @@ class SearchConfig(BaseModel):
     max_hidden_layers: int = 6
 
 
+class EvolutionConfig(BaseModel):
+    """Internal genome-mutation settings for Primordia MLX search."""
+
+    model_config = ConfigDict(frozen=True)
+
+    seed_hidden_width: int = 64
+    seed_hidden_layers: int = 2
+    max_hidden_width: int = 256
+    max_hidden_layers: int = 6
+    allowed_families: list[str] | None = None
+    activation_choices: list[str] = Field(default_factory=lambda: ["relu", "gelu", "tanh"])
+    dropout_choices: list[float] = Field(default_factory=lambda: [0.0, 0.1, 0.2, 0.3])
+
+
 class TrainingConfig(BaseModel):
     """MLX training parameters for each primitive evaluation."""
 
