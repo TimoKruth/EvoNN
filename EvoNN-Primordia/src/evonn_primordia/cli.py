@@ -23,7 +23,7 @@ def main() -> None:
     table.add_column("Area")
     table.add_column("Status")
     table.add_row("Package scaffold", "ready")
-    table.add_row("Budget-matched primitive lane", "ready")
+    table.add_row("MLX primitive lane", "ready")
     table.add_row("Fair export contract", "ready")
     table.add_row("Motif bank export", "next")
     console.print(table)

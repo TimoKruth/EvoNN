@@ -5,6 +5,7 @@ description = "Primitive-first evolutionary search for EvoNN"
 requires-python = ">=3.13"
 dependencies = [
     "evonn-contenders",
+    "prism",
     "pydantic>=2.10.0",
     "pyyaml>=6.0.2",
     "typer>=0.15.1",
@@ -33,3 +34,4 @@ testpaths = ["tests"]
 
 [tool.uv.sources]
 evonn-contenders = { workspace = true }
+prism = { workspace = true }

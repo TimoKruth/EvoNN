@@ -554,6 +554,7 @@ version = "0.1.0"
 source = { editable = "EvoNN-Primordia" }
 dependencies = [
     { name = "evonn-contenders" },
+    { name = "prism" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "rich" },
@@ -569,6 +570,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "evonn-contenders", editable = "EvoNN-Contenders" },
+    { name = "prism", editable = "EvoNN-Prism" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },

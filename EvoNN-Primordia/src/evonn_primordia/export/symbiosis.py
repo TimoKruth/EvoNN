@@ -100,8 +100,8 @@ def export_symbiosis_contract(
         "benchmarks": manifest_benchmarks,
         "budget": {
             "evaluation_count": evaluation_count,
-            "epochs_per_candidate": config.search.epochs_per_candidate,
-            "effective_training_epochs": config.search.epochs_per_candidate,
+            "epochs_per_candidate": config.training.epochs_per_candidate,
+            "effective_training_epochs": config.training.epochs_per_candidate,
             "generations": 1,
             "population_size": evaluation_count,
             "budget_policy_name": BUDGET_POLICY_NAME,
@@ -109,7 +109,7 @@ def export_symbiosis_contract(
         "device": {
             "device_name": platform.machine(),
             "precision_mode": "float32",
-            "framework": "scikit-learn",
+            "framework": "mlx",
             "framework_version": None,
         },
         "artifacts": {
@@ -121,7 +121,7 @@ def export_symbiosis_contract(
         },
         "search_telemetry": {
             "qd_enabled": False,
-            "effective_training_epochs": config.search.epochs_per_candidate,
+            "effective_training_epochs": config.training.epochs_per_candidate,
         },
         "fairness": _fairness_manifest(
             pack_name=pack.name,

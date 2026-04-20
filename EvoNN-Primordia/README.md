@@ -41,7 +41,8 @@ Primordia now includes a cheap, runnable primitive-search lane aimed at fair
 comparison against the rest of the umbrella.
 
 Current deliverables:
-- budget-matched primitive candidate search
+- MLX-backed primitive candidate search
+- budget-matched per-benchmark evaluation scheduling
 - per-benchmark best primitive selection
 - compare-ready manifest/results export
 - markdown + JSON run artifacts
@@ -62,10 +63,10 @@ uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/ru
 
 ## Fair Comparison Role
 
-Primordia currently acts as a primitive-first search system with an explicitly
-budget-matched evaluation count. That makes it possible to include Primordia in
-fair EvoNN-Compare matrix runs alongside Prism, Topograph, Stratograph, and the
-Contenders baseline.
+Primordia currently acts as a primitive-first search system with MLX as its
+core execution runtime and an explicitly budget-matched evaluation count. That
+makes it possible to include Primordia in fair EvoNN-Compare matrix runs
+alongside Prism, Topograph, Stratograph, and the Contenders baseline.
 
 ## Core Docs
 

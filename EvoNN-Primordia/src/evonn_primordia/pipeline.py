@@ -1,21 +1,31 @@
-"""Cheap primitive-first search runtime for Primordia."""
+"""MLX-backed primitive-first search runtime for Primordia."""
 from __future__ import annotations
 
-import importlib.util
-import json
-import shutil
+from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 from pathlib import Path
+from random import Random
+import shutil
 from time import perf_counter
-from typing import Any
+from typing import Any, Callable
 
-from evonn_contenders.benchmarks import get_benchmark
-from evonn_contenders.contenders import benchmark_group, choose_best, evaluate_contender, resolve_contenders
+import numpy as np
 
 from evonn_primordia.config import RunConfig
 
-
 BUDGET_POLICY_NAME = "prototype_equal_budget"
+
+
+@dataclass(frozen=True)
+class RuntimeBindings:
+    get_benchmark: Callable[[str], Any]
+    benchmark_group: Callable[[Any], str]
+    compatible_families: Callable[[str], list[str]]
+    create_seed_genome: Callable[[str, int, int], Any]
+    mutate_genome: Callable[[Any, int, list[str], RunConfig], Any]
+    compile_genome: Callable[[Any, list[int], int, str, str], Any]
+    train_and_evaluate: Callable[..., Any]
 
 
 def run_search(
@@ -24,8 +34,9 @@ def run_search(
     run_dir: str | Path,
     config_path: str | Path | None = None,
 ) -> Path:
-    """Run a budget-matched primitive search and persist run artifacts."""
+    """Run Primordia search with MLX-backed family evaluation."""
 
+    runtime = _load_runtime_bindings()
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     if config_path is not None:
@@ -47,41 +58,40 @@ def run_search(
     started_clock = perf_counter()
 
     _emit_progress(
-        f"start run_id={run_id} benchmarks={benchmark_total} target_evals={target_evals} mode={config.search.mode}"
+        f"start run_id={run_id} benchmarks={benchmark_total} target_evals={target_evals} mode={config.search.mode} runtime=mlx"
     )
     for benchmark_index, benchmark_name in enumerate(benchmarks, start=1):
-        spec = get_benchmark(benchmark_name)
-        group = benchmark_group(spec)
+        spec = runtime.get_benchmark(benchmark_name)
+        group = runtime.benchmark_group(spec)
         group_counts[group] += 1
-        primitive_names = _primitive_names_for_group(config, group)
-        primitives = _resolve_primitives(group, primitive_names, allow_optional_missing=config.torch.allow_optional_missing)
-        slots = _slots_for_benchmark(config, benchmark_name=benchmark_name, benchmark_total=benchmark_total, primitive_count=len(primitives))
+        modality = _modality_for_group(group)
+        allowed_families = _allowed_families(runtime, config, group, modality)
+        slots = _slots_for_benchmark(
+            config,
+            benchmark_index=benchmark_index - 1,
+            benchmark_total=benchmark_total,
+            primitive_count=len(allowed_families),
+        )
         if slots <= 0:
             raise ValueError(f"No evaluation slots assigned to benchmark '{benchmark_name}'")
 
         _emit_progress(
-            f"[{benchmark_index}/{benchmark_total}] benchmark={benchmark_name} group={group} primitives={len(primitives)} slots={slots}"
+            f"[{benchmark_index}/{benchmark_total}] benchmark={benchmark_name} group={group} families={len(allowed_families)} slots={slots}"
         )
         try:
             x_train, y_train, x_val, y_val = spec.load_data(seed=config.seed)
+            input_shape = _input_shape_for_spec(spec, group)
+            x_train_np, y_train_np, x_val_np, y_val_np = _prepare_arrays(
+                spec=spec,
+                group=group,
+                input_shape=input_shape,
+                x_train=x_train,
+                y_train=y_train,
+                x_val=x_val,
+                y_val=y_val,
+            )
         except Exception as exc:
-            failed = {
-                "benchmark_name": benchmark_name,
-                "primitive_name": "load_failed",
-                "primitive_family": "load_failed",
-                "metric_name": spec.metric_name,
-                "metric_direction": spec.metric_direction,
-                "metric_value": None,
-                "quality": None,
-                "parameter_count": 0,
-                "train_seconds": 0.0,
-                "architecture_summary": "load_failed",
-                "genome_id": f"{benchmark_name}:load_failed",
-                "status": "failed",
-                "failure_reason": str(exc),
-                "seed": config.seed,
-                "slot_index": 0,
-            }
+            failed = _failed_record(spec=spec, benchmark_name=benchmark_name, reason=str(exc))
             executed_records.append(failed)
             best_results.append(dict(failed))
             _emit_progress(f"[{benchmark_index}/{benchmark_total}] load-failed benchmark={benchmark_name} reason={exc}")
@@ -89,61 +99,79 @@ def run_search(
 
         benchmark_records: list[dict[str, Any]] = []
         for slot_index in range(slots):
-            primitive = primitives[slot_index % len(primitives)]
-            repeat_index = slot_index // len(primitives)
-            primitive_label = primitive.name if repeat_index == 0 else f"{primitive.name}@r{repeat_index + 1}"
-            seed = config.seed + benchmark_index * 1009 + slot_index
-            record = evaluate_contender(
-                spec,
-                primitive,
-                seed=seed,
-                contender_label=primitive_label,
-                x_train=x_train,
-                y_train=y_train,
-                x_val=x_val,
-                y_val=y_val,
-                config=config,
+            family = allowed_families[slot_index % len(allowed_families)]
+            repeat_index = slot_index // len(allowed_families)
+            primitive_label = family if repeat_index == 0 else f"{family}@r{repeat_index + 1}"
+            genome = runtime.create_seed_genome(
+                family,
+                config.search.seed_hidden_width,
+                config.search.seed_hidden_layers,
             )
-            record = {
-                "benchmark_name": benchmark_name,
-                "primitive_name": primitive_label,
-                "primitive_family": primitive.family,
-                "metric_name": record["metric_name"],
-                "metric_direction": record["metric_direction"],
-                "metric_value": record["metric_value"],
-                "quality": record["quality"],
-                "parameter_count": record["parameter_count"],
-                "train_seconds": record["train_seconds"],
-                "architecture_summary": record["architecture_summary"],
-                "genome_id": record["contender_id"],
-                "status": record["status"],
-                "failure_reason": record["failure_reason"],
-                "seed": seed,
-                "slot_index": slot_index,
-            }
+            for mutation_round in range(repeat_index):
+                genome = runtime.mutate_genome(genome, mutation_round + 1, allowed_families, config)
+
+            try:
+                compiled = runtime.compile_genome(
+                    genome,
+                    input_shape,
+                    _output_dim_for_spec(spec),
+                    modality,
+                    spec.task,
+                )
+                result = runtime.train_and_evaluate(
+                    compiled.model,
+                    x_train_np,
+                    y_train_np,
+                    x_val_np,
+                    y_val_np,
+                    task=spec.task,
+                    epochs=config.training.epochs_per_candidate,
+                    lr=getattr(genome, "learning_rate", config.training.learning_rate),
+                    batch_size=config.training.batch_size,
+                    parameter_count=compiled.parameter_count,
+                )
+                record = {
+                    "benchmark_name": benchmark_name,
+                    "primitive_name": primitive_label,
+                    "primitive_family": family,
+                    "metric_name": result.metric_name,
+                    "metric_direction": spec.metric_direction,
+                    "metric_value": result.metric_value,
+                    "quality": result.quality,
+                    "parameter_count": result.parameter_count,
+                    "train_seconds": result.train_seconds,
+                    "architecture_summary": _architecture_summary(genome),
+                    "genome_id": getattr(genome, "genome_id", primitive_label),
+                    "status": "ok" if result.failure_reason is None else "failed",
+                    "failure_reason": result.failure_reason,
+                    "seed": config.seed + benchmark_index * 1009 + slot_index,
+                    "slot_index": slot_index,
+                    "runtime": "mlx",
+                }
+            except Exception as exc:
+                record = {
+                    "benchmark_name": benchmark_name,
+                    "primitive_name": primitive_label,
+                    "primitive_family": family,
+                    "metric_name": spec.metric_name,
+                    "metric_direction": spec.metric_direction,
+                    "metric_value": None,
+                    "quality": float("-inf") if spec.metric_direction == "max" else float("inf"),
+                    "parameter_count": getattr(genome, "parameter_estimate", 0),
+                    "train_seconds": 0.0,
+                    "architecture_summary": _architecture_summary(genome),
+                    "genome_id": getattr(genome, "genome_id", primitive_label),
+                    "status": "failed",
+                    "failure_reason": str(exc),
+                    "seed": config.seed + benchmark_index * 1009 + slot_index,
+                    "slot_index": slot_index,
+                    "runtime": "mlx",
+                }
             benchmark_records.append(record)
             executed_records.append(record)
-            primitive_usage[primitive.name] = primitive_usage.get(primitive.name, 0) + 1
-        best = choose_best(spec.metric_direction, benchmark_records)
-        best_results.append(
-            {
-                "benchmark_name": benchmark_name,
-                "primitive_name": best["primitive_name"],
-                "primitive_family": best["primitive_family"],
-                "metric_name": best["metric_name"],
-                "metric_direction": best["metric_direction"],
-                "metric_value": best["metric_value"],
-                "quality": best["quality"],
-                "parameter_count": best["parameter_count"],
-                "train_seconds": best["train_seconds"],
-                "architecture_summary": best["architecture_summary"],
-                "genome_id": best["genome_id"],
-                "status": best["status"],
-                "failure_reason": best["failure_reason"],
-                "seed": best["seed"],
-                "slot_index": best["slot_index"],
-            }
-        )
+            primitive_usage[family] = primitive_usage.get(family, 0) + 1
+        best = _choose_best(spec.metric_direction, benchmark_records)
+        best_results.append(dict(best))
         _emit_progress(
             f"[{benchmark_index}/{benchmark_total}] done benchmark={benchmark_name} best={best['primitive_name']} status={best['status']} metric={best['metric_value']}"
         )
@@ -151,6 +179,7 @@ def run_search(
     wall_clock_seconds = perf_counter() - started_clock
     summary = {
         "system": "primordia",
+        "runtime": "mlx",
         "run_id": run_id,
         "run_name": run_name,
         "status": "complete",
@@ -159,14 +188,13 @@ def run_search(
         "benchmark_count": benchmark_total,
         "evaluation_count": len(executed_records),
         "target_evaluation_count": target_evals,
-        "epochs_per_candidate": config.search.epochs_per_candidate,
+        "epochs_per_candidate": config.training.epochs_per_candidate,
         "budget_policy_name": BUDGET_POLICY_NAME,
         "primitive_usage": dict(sorted(primitive_usage.items(), key=lambda item: (-item[1], item[0]))),
         "group_counts": group_counts,
         "wall_clock_seconds": wall_clock_seconds,
         "best_results": best_results,
     }
-
     (run_dir / "trial_records.json").write_text(json.dumps(executed_records, indent=2), encoding="utf-8")
     (run_dir / "best_results.json").write_text(json.dumps(best_results, indent=2), encoding="utf-8")
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -177,8 +205,113 @@ def run_search(
     return run_dir
 
 
+def _load_runtime_bindings() -> RuntimeBindings:
+    try:
+        from evonn_contenders.benchmarks import get_benchmark
+        from evonn_contenders.contenders import benchmark_group
+        from prism.config import EvolutionConfig
+        from prism.families.compiler import compile_genome, compatible_families
+        from prism.genome import apply_random_mutation, create_seed_genome
+        from prism.runtime.training import train_and_evaluate
+    except Exception as exc:
+        raise RuntimeError(
+            "Primordia MLX runtime requires local Prism+MLX dependencies. Run this on your Apple Silicon workspace with `uv sync`."
+        ) from exc
+
+    def _seed_genome(family: str, width: int, depth: int):
+        evo = EvolutionConfig(
+            seed_hidden_width=width,
+            seed_hidden_layers=depth,
+            allowed_families=[family],
+        )
+        return create_seed_genome(family, evo, Random(0))
+
+    def _mutate(genome, slot_index: int, allowed_families: list[str], config: RunConfig):
+        evo = EvolutionConfig(
+            seed_hidden_width=config.search.seed_hidden_width,
+            seed_hidden_layers=config.search.seed_hidden_layers,
+            max_hidden_width=config.search.max_hidden_width,
+            max_hidden_layers=config.search.max_hidden_layers,
+            allowed_families=allowed_families,
+        )
+        child, _label = apply_random_mutation(genome, evo, Random(slot_index))
+        return child
+
+    def _compile(genome, input_shape: list[int], output_dim: int, modality: str, task: str):
+        return compile_genome(genome, input_shape, output_dim, modality, task=task)
+
+    return RuntimeBindings(
+        get_benchmark=get_benchmark,
+        benchmark_group=benchmark_group,
+        compatible_families=compatible_families,
+        create_seed_genome=_seed_genome,
+        mutate_genome=_mutate,
+        compile_genome=_compile,
+        train_and_evaluate=train_and_evaluate,
+    )
+
+
+def _allowed_families(runtime: RuntimeBindings, config: RunConfig, group: str, modality: str) -> list[str]:
+    configured = _primitive_names_for_group(config, group)
+    compatible = set(runtime.compatible_families(modality))
+    allowed = [family for family in configured if family in compatible]
+    if not allowed:
+        raise ValueError(f"No compatible Primordia families configured for group '{group}' and modality '{modality}'")
+    return allowed
+
+
+def _modality_for_group(group: str) -> str:
+    if group == "image":
+        return "image"
+    if group == "language_modeling":
+        return "text"
+    return "tabular"
+
+
+def _input_shape_for_spec(spec: Any, group: str) -> list[int]:
+    if group == "image":
+        return list(spec.resolved_image_shape)
+    if group == "language_modeling":
+        return [int(spec.model_input_dim)]
+    return [int(spec.model_input_dim)]
+
+
+def _output_dim_for_spec(spec: Any) -> int:
+    return int(spec.model_output_dim)
+
+
+def _prepare_arrays(
+    *,
+    spec: Any,
+    group: str,
+    input_shape: list[int],
+    x_train,
+    y_train,
+    x_val,
+    y_val,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    x_train_np = np.asarray(x_train)
+    y_train_np = np.asarray(y_train)
+    x_val_np = np.asarray(x_val)
+    y_val_np = np.asarray(y_val)
+    if group == "image":
+        x_train_np = x_train_np.reshape((x_train_np.shape[0], *input_shape)).astype(np.float32)
+        x_val_np = x_val_np.reshape((x_val_np.shape[0], *input_shape)).astype(np.float32)
+    elif spec.task == "language_modeling":
+        x_train_np = x_train_np.astype(np.int32)
+        y_train_np = y_train_np.astype(np.int32)
+        x_val_np = x_val_np.astype(np.int32)
+        y_val_np = y_val_np.astype(np.int32)
+    else:
+        x_train_np = x_train_np.astype(np.float32)
+        y_train_np = y_train_np.astype(np.float32 if spec.task == "regression" else np.int32)
+        x_val_np = x_val_np.astype(np.float32)
+        y_val_np = y_val_np.astype(np.float32 if spec.task == "regression" else np.int32)
+    return x_train_np, y_train_np, x_val_np, y_val_np
+
+
 def _target_evaluation_count(config: RunConfig) -> int:
-    primitive_names = sum(
+    family_count = sum(
         len(names)
         for names in (
             config.primitive_pool.tabular,
@@ -187,19 +320,19 @@ def _target_evaluation_count(config: RunConfig) -> int:
             config.primitive_pool.language_modeling,
         )
     )
-    default_budget = max(len(config.benchmark_pool.benchmarks), primitive_names)
+    default_budget = max(len(config.benchmark_pool.benchmarks), family_count)
     return config.search.target_evaluation_count or default_budget
 
 
 def _slots_for_benchmark(
     config: RunConfig,
     *,
-    benchmark_name: str,
+    benchmark_index: int,
     benchmark_total: int,
     primitive_count: int,
 ) -> int:
     if primitive_count <= 0:
-        raise ValueError(f"No primitive candidates configured for benchmark '{benchmark_name}'")
+        raise ValueError("No primitive candidates configured")
     if config.search.mode == "fixed_pool":
         return primitive_count
     target = _target_evaluation_count(config)
@@ -208,7 +341,6 @@ def _slots_for_benchmark(
             "Primordia budget_matched mode requires target_evaluation_count >= benchmark_count "
             f"({target} < {benchmark_total})"
         )
-    benchmark_index = config.benchmark_pool.benchmarks.index(benchmark_name)
     base_slots = target // benchmark_total
     remainder = target % benchmark_total
     return base_slots + (1 if benchmark_index < remainder else 0)
@@ -224,17 +356,39 @@ def _primitive_names_for_group(config: RunConfig, group: str) -> list[str]:
     return config.primitive_pool.tabular
 
 
-def _resolve_primitives(group: str, names: list[str], *, allow_optional_missing: bool) -> list[Any]:
-    resolved = resolve_contenders(group, names)
-    available = []
-    for contender in resolved:
-        dependency = getattr(contender, "optional_dependency", None)
-        if dependency and importlib.util.find_spec(dependency) is None and allow_optional_missing:
-            continue
-        available.append(contender)
-    if not available:
-        raise ValueError(f"No runnable primitives configured for group '{group}'")
-    return available
+def _failed_record(*, spec: Any, benchmark_name: str, reason: str) -> dict[str, Any]:
+    return {
+        "benchmark_name": benchmark_name,
+        "primitive_name": "load_failed",
+        "primitive_family": "load_failed",
+        "metric_name": spec.metric_name,
+        "metric_direction": spec.metric_direction,
+        "metric_value": None,
+        "quality": None,
+        "parameter_count": 0,
+        "train_seconds": 0.0,
+        "architecture_summary": "load_failed",
+        "genome_id": f"{benchmark_name}:load_failed",
+        "status": "failed",
+        "failure_reason": reason,
+        "seed": 0,
+        "slot_index": 0,
+        "runtime": "mlx",
+    }
+
+
+def _choose_best(metric_direction: str, records: list[dict[str, Any]]) -> dict[str, Any]:
+    ok_records = [record for record in records if record["status"] == "ok" and record["metric_value"] is not None]
+    if not ok_records:
+        return records[0]
+    reverse = metric_direction == "max"
+    return sorted(ok_records, key=lambda record: record["metric_value"], reverse=reverse)[0]
+
+
+def _architecture_summary(genome: Any) -> str:
+    hidden_layers = getattr(genome, "hidden_layers", [])
+    widths = "x".join(str(width) for width in hidden_layers) if hidden_layers else "none"
+    return f"{getattr(genome, 'family', 'unknown')}[{widths}]"
 
 
 def _write_report(*, run_dir: Path, summary: dict[str, Any]) -> None:
@@ -242,6 +396,7 @@ def _write_report(*, run_dir: Path, summary: dict[str, Any]) -> None:
         "# Primordia Run Report",
         "",
         f"- Run ID: `{summary['run_id']}`",
+        f"- Runtime: `{summary['runtime']}`",
         f"- Evaluations: `{summary['evaluation_count']}`",
         f"- Benchmarks: `{summary['benchmark_count']}`",
         f"- Budget Policy: `{summary['budget_policy_name']}`",

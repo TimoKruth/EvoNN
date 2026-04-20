@@ -1,10 +1,10 @@
 """Run configuration models and YAML loading for Primordia."""
 from __future__ import annotations
 
-import yaml
 from pathlib import Path
 from typing import Literal
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -22,39 +22,39 @@ class PrimitivePoolConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    tabular: list[str] = Field(default_factory=lambda: ["logistic", "mlp_small", "mlp", "linear_svc"])
-    synthetic: list[str] = Field(default_factory=lambda: ["linear_svc", "mlp", "hist_gb", "rbf_svc_small"])
-    image: list[str] = Field(default_factory=lambda: ["logistic", "mlp_small", "mlp", "mlp_deep"])
+    tabular: list[str] = Field(default_factory=lambda: ["mlp", "sparse_mlp", "moe_mlp"])
+    synthetic: list[str] = Field(default_factory=lambda: ["mlp", "sparse_mlp"])
+    image: list[str] = Field(default_factory=lambda: ["mlp", "conv2d", "lite_conv2d"])
     language_modeling: list[str] = Field(
-        default_factory=lambda: ["unigram_lm", "unigram_lm_a01", "bigram_lm", "bigram_lm_a01"]
+        default_factory=lambda: ["embedding", "attention", "sparse_attention"]
     )
 
 
 class SearchConfig(BaseModel):
-    """Budget and search policy for primitive evaluation."""
+    """Budget and primitive-search policy."""
 
     model_config = ConfigDict(frozen=True)
 
     mode: Literal["budget_matched", "fixed_pool"] = "budget_matched"
     target_evaluation_count: int | None = None
-    epochs_per_candidate: int = 1
+    seed_hidden_width: int = 64
+    seed_hidden_layers: int = 2
+    max_hidden_width: int = 256
+    max_hidden_layers: int = 6
 
 
-class TorchConfig(BaseModel):
-    """Torch fallback options delegated to contender runtimes when used."""
+class TrainingConfig(BaseModel):
+    """MLX training parameters for each primitive evaluation."""
 
     model_config = ConfigDict(frozen=True)
 
-    allow_optional_missing: bool = True
-    device: str = "cpu"
+    epochs_per_candidate: int = 2
     batch_size: int = 32
     learning_rate: float = 1e-3
-    classifier_epochs: int = 2
-    max_batches_per_epoch: int = 16
-    lm_steps: int = 24
-    max_train_samples: int = 512
-    max_val_samples: int = 128
-    context_length_override: int | None = 64
+    lr_schedule: str = "cosine"
+    grad_clip_norm: float = 1.0
+    early_stopping_patience: int = 2
+    weight_decay: float = 0.0
 
 
 class RunConfig(BaseModel):
@@ -67,7 +67,7 @@ class RunConfig(BaseModel):
     benchmark_pool: BenchmarkPoolConfig
     primitive_pool: PrimitivePoolConfig = Field(default_factory=PrimitivePoolConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
-    torch: TorchConfig = Field(default_factory=TorchConfig)
+    training: TrainingConfig = Field(default_factory=TrainingConfig)
 
 
 def load_config(path: str | Path) -> RunConfig:
