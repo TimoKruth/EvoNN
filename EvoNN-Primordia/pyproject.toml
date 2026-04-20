@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Primitive-first evolutionary search for EvoNN"
 requires-python = ">=3.13"
 dependencies = [
+    "evonn-contenders",
     "pydantic>=2.10.0",
     "pyyaml>=6.0.2",
     "typer>=0.15.1",
@@ -29,3 +30,6 @@ line-length = 100
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv.sources]
+evonn-contenders = { workspace = true }

@@ -29,7 +29,7 @@ def test_campaign_help() -> None:
 def test_fair_matrix_help() -> None:
     result = runner.invoke(app, ["fair-matrix", "--help"])
     assert result.exit_code == 0
-    assert "--contenders-root" in result.stdout
+    assert "--primordia-root" in result.stdout
 
 
 def test_hybrid_help() -> None:

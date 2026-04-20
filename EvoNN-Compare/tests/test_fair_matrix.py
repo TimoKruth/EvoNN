@@ -14,6 +14,7 @@ def test_fair_matrix_markdown_splits_fair_and_reference_rows(tmp_path: Path) -> 
         "prism": tmp_path / "prism",
         "topograph": tmp_path / "topograph",
         "stratograph": tmp_path / "stratograph",
+        "primordia": tmp_path / "primordia",
         "contenders": tmp_path / "contenders",
     }
     for system, run_dir in systems.items():
@@ -25,7 +26,7 @@ def test_fair_matrix_markdown_splits_fair_and_reference_rows(tmp_path: Path) -> 
         for system, ingestor in ingestors.items()
     }
     pair_results = {}
-    for left, right in (("prism", "topograph"), ("prism", "stratograph"), ("prism", "contenders")):
+    for left, right in (("prism", "topograph"), ("prism", "stratograph"), ("prism", "primordia"), ("prism", "contenders")):
         result = ComparisonEngine().compare(
             left_manifest=runs[left][0],
             left_results=runs[left][1],
@@ -62,6 +63,7 @@ def test_fair_matrix_reference_row_for_nonfair_pair(tmp_path: Path) -> None:
         "prism": tmp_path / "prism",
         "topograph": tmp_path / "topograph",
         "stratograph": tmp_path / "stratograph",
+        "primordia": tmp_path / "primordia",
         "contenders": tmp_path / "contenders",
     }
     for system, run_dir in systems.items():

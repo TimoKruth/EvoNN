@@ -10,7 +10,7 @@ from evonn_compare.contracts.models import ResultRecord, RunManifest
 from evonn_compare.contracts.parity import ParityPack
 
 
-SYSTEM_ORDER = ("prism", "topograph", "stratograph", "contenders")
+SYSTEM_ORDER = ("prism", "topograph", "stratograph", "primordia", "contenders")
 
 
 @dataclass(frozen=True)

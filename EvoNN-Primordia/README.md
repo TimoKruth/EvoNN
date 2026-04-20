@@ -35,17 +35,20 @@ Long run, Primordia should export:
 - benchmark-conditioned motif reports
 - candidate primitive libraries suitable for later seeding experiments
 
-## Initial State
+## Current State
 
-This package is being introduced as the Horizon 2 umbrella completion step.
-The initial implementation intentionally starts small:
-- package scaffold
-- CLI placeholder
-- explicit vision and implementation plan
+Primordia now includes a cheap, runnable primitive-search lane aimed at fair
+comparison against the rest of the umbrella.
+
+Current deliverables:
+- budget-matched primitive candidate search
+- per-benchmark best primitive selection
+- compare-ready manifest/results export
+- markdown + JSON run artifacts
 - workspace integration
 
-That is enough to give EvoNN a concrete home for primitive-first research
-without prematurely locking in one runtime design.
+This is intentionally still a small primitive lane, not the final motif-bank or
+upstream seeding system.
 
 ## CLI
 
@@ -53,7 +56,16 @@ From monorepo root:
 
 ```bash
 uv run --package evonn-primordia primordia --help
+uv run --package evonn-primordia primordia run --config path/to/config.yaml
+uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/run --pack-path path/to/pack.yaml
 ```
+
+## Fair Comparison Role
+
+Primordia currently acts as a primitive-first search system with an explicitly
+budget-matched evaluation count. That makes it possible to include Primordia in
+fair EvoNN-Compare matrix runs alongside Prism, Topograph, Stratograph, and the
+Contenders baseline.
 
 ## Core Docs
 

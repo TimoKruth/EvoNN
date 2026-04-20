@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 BenchmarkStatus = Literal["ok", "failed", "skipped", "unsupported", "missing"]
 MetricDirection = Literal["max", "min"]
-SystemName = Literal["evonn", "evonn2", "prism", "topograph", "stratograph", "hybrid", "contenders"]
+SystemName = Literal["evonn", "evonn2", "prism", "topograph", "stratograph", "primordia", "hybrid", "contenders"]
 TaskKind = Literal["classification", "regression", "language_modeling"]
 
 

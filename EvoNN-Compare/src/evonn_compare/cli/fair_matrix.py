@@ -22,6 +22,7 @@ def fair_matrix(
     prism_root: str = typer.Option("EvoNN-Prism", "--prism-root"),
     topograph_root: str = typer.Option("EvoNN-Topograph", "--topograph-root"),
     stratograph_root: str = typer.Option("EvoNN-Stratograph", "--stratograph-root"),
+    primordia_root: str = typer.Option("EvoNN-Primordia", "--primordia-root"),
     contenders_root: str = typer.Option("EvoNN-Contenders", "--contenders-root"),
     parallel: bool = typer.Option(True, "--parallel/--serial", help="Run project stages concurrently"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Only generate configs and print cases"),
@@ -38,6 +39,7 @@ def fair_matrix(
         prism_root=Path(prism_root),
         topograph_root=Path(topograph_root),
         stratograph_root=Path(stratograph_root),
+        primordia_root=Path(primordia_root),
         contenders_root=Path(contenders_root),
     )
     if dry_run:
@@ -54,6 +56,7 @@ def fair_matrix(
             prism_root=Path(prism_root),
             topograph_root=Path(topograph_root),
             stratograph_root=Path(stratograph_root),
+            primordia_root=Path(primordia_root),
             contenders_root=Path(contenders_root),
             parallel=parallel,
         )
