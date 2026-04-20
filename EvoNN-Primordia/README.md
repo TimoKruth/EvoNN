@@ -41,6 +41,8 @@ Primordia now includes a cheap, runnable primitive-search lane aimed at fair
 comparison against the rest of the umbrella.
 
 Current deliverables:
+- self-contained Primordia-local MLX runtime
+- Primordia-local benchmark and parity loaders
 - MLX-backed primitive candidate search
 - budget-matched per-benchmark evaluation scheduling
 - per-benchmark best primitive selection
@@ -49,7 +51,8 @@ Current deliverables:
 - workspace integration
 
 This is intentionally still a small primitive lane, not the final motif-bank or
-upstream seeding system.
+upstream seeding system. It is also intentionally implemented as a self-contained
+package rather than a thin import wrapper around sibling EvoNN projects.
 
 ## CLI
 
