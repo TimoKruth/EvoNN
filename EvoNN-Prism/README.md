@@ -61,6 +61,11 @@ Symbiosis export writes:
 - `results.json`
 - `summary.json`
 
+## Project docs
+
+- `VISION.md`
+- `ARCHITECTURE_RULES.md`
+
 ## Quality
 
 Package checks:
