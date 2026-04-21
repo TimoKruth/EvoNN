@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from evonn_primordia.benchmarks import get_benchmark
 from evonn_primordia.config import load_config
 from evonn_primordia.export.report import write_report
 from evonn_primordia.export.symbiosis import export_symbiosis_contract
@@ -420,6 +421,19 @@ primitive_pool:
     assert len(trials) == 6
     assert {record["benchmark_name"] for record in trials} == {"iris", "circles"}
     assert any(record["primitive_name"].endswith("@r2") for record in trials)
+
+
+def test_real_benchmark_specs_keep_runtime_compatibility_aliases() -> None:
+    iris = get_benchmark("iris")
+    digits = get_benchmark("digits")
+    tiny_lm = get_benchmark("tiny_lm_synthetic")
+
+    assert iris.model_input_dim == 4
+    assert iris.model_output_dim == 3
+    assert digits.model_input_dim == 64
+    assert digits.resolved_image_shape == (8, 8, 1)
+    assert tiny_lm.model_input_dim == 128
+    assert tiny_lm.model_output_dim == 256
 
 
 def test_run_search_requires_runtime_bindings(monkeypatch, tmp_path: Path) -> None:

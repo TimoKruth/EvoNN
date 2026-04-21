@@ -135,3 +135,20 @@ def compatible_families(modality: str) -> list[str]:
         Sorted list of compatible family name strings.
     """
     return sorted(f for f, modalities in FAMILY_MODALITY.items() if modality in modalities)
+
+
+def is_genome_compatible(
+    genome: ModelGenome,
+    modality: str,
+    task: str = "classification",
+) -> bool:
+    """Return whether a genome family is compatible with the requested workload."""
+
+    family = genome.family
+    if family not in FAMILY_CLASSES:
+        return False
+    if modality not in FAMILY_MODALITY.get(family, []):
+        return False
+    if task == "language_modeling":
+        return family in {"embedding", "attention", "sparse_attention"}
+    return True

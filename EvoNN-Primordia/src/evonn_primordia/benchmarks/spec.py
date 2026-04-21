@@ -47,6 +47,40 @@ class BenchmarkSpec(BaseModel):
     max_test_samples: int | None = None
     domain: str | None = None
 
+    @property
+    def model_input_dim(self) -> int:
+        """Compatibility alias used by the Primordia runtime pipeline."""
+        if self.input_shape:
+            return int(self.input_shape[0])
+        if self.input_dim is not None:
+            return int(self.input_dim)
+        return 8
+
+    @property
+    def model_output_dim(self) -> int:
+        """Compatibility alias used by the Primordia runtime pipeline."""
+        if self.task == "language_modeling":
+            return int(self.num_classes or self.output_dim or 256)
+        if self.num_classes is not None:
+            return int(self.num_classes)
+        return int(self.output_dim)
+
+    @property
+    def resolved_image_shape(self) -> tuple[int, int, int]:
+        """Best-effort canonical image shape for flattened image datasets."""
+        if len(self.input_shape) >= 3:
+            height, width, channels = self.input_shape[:3]
+            return (int(height), int(width), int(channels))
+        if len(self.input_shape) == 2:
+            height, width = self.input_shape
+            return (int(height), int(width), 1)
+
+        flat_dim = self.model_input_dim
+        side = int(round(flat_dim ** 0.5))
+        if side * side == flat_dim:
+            return (side, side, 1)
+        return (flat_dim, 1, 1)
+
     def model_post_init(self, __context) -> None:
         """Reconcile aliases so id, input_shape, output_dim are always set."""
         if self.name and not self.id:

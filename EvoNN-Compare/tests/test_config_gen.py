@@ -9,6 +9,7 @@ from evonn_compare.orchestration.config_gen import (
 )
 from evonn_compare.orchestration.fair_matrix import (
     generate_contender_config,
+    generate_primordia_config,
     generate_stratograph_config,
     prepare_fair_matrix_cases,
 )
@@ -226,6 +227,26 @@ def test_generate_stratograph_and_contender_configs_match_budget(tmp_path: Path)
     )
     assert contender_payload["baseline"]["mode"] == "budget_matched"
     assert contender_payload["baseline"]["target_evaluation_count"] == 64
+
+
+def test_generate_primordia_config_sets_training_epochs_from_pack_budget(tmp_path: Path) -> None:
+    base_pack = Path(__file__).resolve().parents[1] / "parity_packs" / "tier1_core.yaml"
+    pack_path = generate_budget_pack(base_pack_path=base_pack, budget=64, output_dir=tmp_path / "packs")
+    pack_payload = yaml.safe_load(pack_path.read_text(encoding="utf-8"))
+
+    primordia_path = generate_primordia_config(
+        output_path=tmp_path / "configs" / "primordia.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=64,
+        run_name="demo",
+    )
+
+    primordia_payload = yaml.safe_load(primordia_path.read_text(encoding="utf-8"))
+
+    assert primordia_payload["search"]["mode"] == "budget_matched"
+    assert primordia_payload["search"]["target_evaluation_count"] == 64
+    assert primordia_payload["training"]["epochs_per_candidate"] == pack_payload["budget_policy"]["epochs_per_candidate"]
 
 
 def test_prepare_fair_matrix_cases_writes_all_system_configs(tmp_path: Path) -> None:

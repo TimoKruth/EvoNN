@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 from prism.benchmarks.datasets import load_image, load_openml, load_sklearn
 from prism.benchmarks.spec import BenchmarkSpec
 from prism.cli import app
-from prism.families.compiler import compile_genome
+from prism.families.compiler import compile_genome, is_genome_compatible
 from prism.genome import ModelGenome, _sanitize_for_family
 
 
@@ -143,6 +143,17 @@ def test_compile_genome_covers_more_families(genome, input_shape, output_dim, mo
     compiled = compile_genome(genome, input_shape, output_dim, modality, task=task)
     assert compiled.family == genome.family
     assert compiled.parameter_count > 0
+
+
+def test_is_genome_compatible_respects_modality_and_lm_constraints():
+    image_genome = _genome("conv2d", [8, 8])
+    lm_genome = _genome("attention", [16, 16], embedding_dim=16)
+    tabular_genome = _genome("mlp", [16, 16])
+
+    assert is_genome_compatible(image_genome, "image", "classification") is True
+    assert is_genome_compatible(image_genome, "tabular", "classification") is False
+    assert is_genome_compatible(lm_genome, "text", "language_modeling") is True
+    assert is_genome_compatible(tabular_genome, "text", "language_modeling") is False
 
 
 def test_cli_suite_list_and_info(monkeypatch):

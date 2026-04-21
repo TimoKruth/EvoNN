@@ -290,6 +290,8 @@ def generate_primordia_config(
         "search": {
             "mode": "budget_matched",
             "target_evaluation_count": budget,
+        },
+        "training": {
             "epochs_per_candidate": pack.budget_policy.epochs_per_candidate,
         },
     }
