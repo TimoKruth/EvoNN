@@ -131,7 +131,13 @@ def run_search(
                 compiled = runtime.compile_genome(
                     genome,
                     input_shape,
-                    _output_dim_for_spec(spec),
+                    _resolved_output_dim_for_spec(
+                        spec,
+                        x_train=x_train_np,
+                        y_train=y_train_np,
+                        x_val=x_val_np,
+                        y_val=y_val_np,
+                    ),
                     modality,
                     spec.task,
                 )
@@ -301,6 +307,27 @@ def _input_shape_for_spec(spec: Any, group: str) -> list[int]:
 
 def _output_dim_for_spec(spec: Any) -> int:
     return int(spec.model_output_dim)
+
+
+def _resolved_output_dim_for_spec(
+    spec: Any,
+    *,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_val: np.ndarray,
+    y_val: np.ndarray,
+) -> int:
+    output_dim = _output_dim_for_spec(spec)
+    if spec.task != "language_modeling":
+        return output_dim
+
+    max_token_id = max(
+        int(np.max(x_train)),
+        int(np.max(y_train)),
+        int(np.max(x_val)),
+        int(np.max(y_val)),
+    )
+    return max(output_dim, max_token_id + 1)
 
 
 def _prepare_arrays(

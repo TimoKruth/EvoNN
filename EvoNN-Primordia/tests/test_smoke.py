@@ -80,6 +80,17 @@ class FakeBenchmarkSpec:
         )
 
 
+class EdgeLMBenchmarkSpec(FakeBenchmarkSpec):
+    def load_data(self, seed: int = 42):
+        del seed
+        return (
+            [[6, 7, 7], [7, 7, 7]],
+            [[7, 8, 8], [8, 8, 8]],
+            [[7, 7, 7]],
+            [[8, 8, 8]],
+        )
+
+
 class FakeRuntimeBindings:
     def __init__(self, *, runtime_backend: str = "mlx", runtime_version: str | None = "fake-mlx") -> None:
         self.runtime_backend = runtime_backend
@@ -600,6 +611,58 @@ def test_real_benchmark_specs_keep_runtime_compatibility_aliases() -> None:
     assert digits.resolved_image_shape == (8, 8, 1)
     assert tiny_lm.model_input_dim == 128
     assert tiny_lm.model_output_dim == 256
+
+
+def test_language_modeling_output_dim_expands_to_fit_max_token_id(tmp_path: Path, monkeypatch) -> None:
+    runtime = FakeRuntimeBindings()
+    runtime.benchmarks["edge_lm_vocab"] = EdgeLMBenchmarkSpec(
+        "edge_lm_vocab",
+        "language_modeling",
+        "perplexity",
+        "min",
+        3,
+        8,
+    )
+    captured_output_dims: list[int] = []
+    base_compile = runtime.compile_genome
+
+    def compile_and_capture(genome, input_shape, output_dim, modality, task):
+        captured_output_dims.append(output_dim)
+        return base_compile(genome, input_shape, output_dim, modality, task)
+
+    runtime.compile_genome = compile_and_capture
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda: runtime)
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: edge_lm_vocab
+benchmark_pool:
+  name: smoke_pack
+  benchmarks: [edge_lm_vocab]
+search:
+  mode: budget_matched
+  target_evaluation_count: 1
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+    run_dir = tmp_path / "run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    results = json.loads((run_dir / "trial_records.json").read_text(encoding="utf-8"))
+    assert captured_output_dims == [9]
+    assert results[0]["status"] == "ok"
 
 
 def test_run_search_requires_runtime_bindings(monkeypatch, tmp_path: Path) -> None:
