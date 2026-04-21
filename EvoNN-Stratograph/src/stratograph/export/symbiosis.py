@@ -1,4 +1,4 @@
-"""Symbiosis-style export contract for Stratograph prototype runs."""
+"""Symbiosis-style export contract for Stratograph MLX runs."""
 
 from __future__ import annotations
 
@@ -9,6 +9,15 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+try:
+    import mlx
+    _MLX_VERSION = getattr(mlx, "__version__", None)
+    _EXPORT_FRAMEWORK = "mlx"
+except ImportError:
+    mlx = None
+    _MLX_VERSION = None
+    _EXPORT_FRAMEWORK = "numpy-fallback"
 
 import stratograph
 from stratograph.benchmarks import get_benchmark
@@ -114,8 +123,8 @@ def export_symbiosis_contract(
         "device": {
             "device_name": platform.machine(),
             "precision_mode": "float32",
-            "framework": "numpy",
-            "framework_version": None,
+            "framework": budget_meta.get("runtime_backend", _EXPORT_FRAMEWORK),
+            "framework_version": _MLX_VERSION if budget_meta.get("runtime_backend", _EXPORT_FRAMEWORK) == "mlx" else None,
         },
         "artifacts": {
             "config_snapshot": "config.yaml",

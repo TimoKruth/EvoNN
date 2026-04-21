@@ -11,18 +11,20 @@ Current state:
 - Fresh project scaffold implemented
 - Hierarchical genome + codec implemented
 - Hierarchical mutation/crossover search loop implemented
-- Fast evaluator implemented for tabular, image, and LM packs
+- MLX-backed hierarchical compiler implemented
+- MLX-backed evaluator implemented for tabular, image, and LM packs
 - Lightweight runtime maturity added: stronger heads, LM bucket/trigram scorer, SGD inheritance
 - Ablation runner implemented to test flat vs unshared vs shared hierarchy
 - Motif mining implemented for repeated winning sub-cell structures
 - Runtime maturity improved with resume, checkpoint, status, and best-genome artifacts
 - Compare-compatible export and startup formats implemented
 - Benchmark loading + parity/export boundary implemented
-- Full long-horizon trainer optimization still pending
+- Full long-horizon hierarchy-specialized trainer optimization still pending
 
 Core docs:
 - `VISION.md`
 - `IMPLEMENTATION_PLAN.md`
+- `ARCHITECTURE_RULES.md`
 - `RESEARCH_NOTES.md`
 
 CLI:

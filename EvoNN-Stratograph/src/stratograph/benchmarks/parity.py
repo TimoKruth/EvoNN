@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import yaml
@@ -55,13 +56,12 @@ CANONICAL_BENCHMARK_IDS: dict[str, str] = {
 _REVERSE_IDS = {canonical: native for native, canonical in CANONICAL_BENCHMARK_IDS.items()}
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _PACKAGE_DIR.parent.parent.parent
-_PACK_SEARCH_DIRS = [
+_SUPERPROJECT_ROOT = _PROJECT_ROOT.parent
+_PACK_ENV_VAR = "STRATOGRAPH_PARITY_PACK_DIRS"
+_SHARED_ROOT_ENV_VAR = "EVONN_SHARED_BENCHMARKS_DIR"
+_DEFAULT_PACK_SEARCH_DIRS = [
     _PROJECT_ROOT / "parity_packs",
     _PROJECT_ROOT / "parity_packs" / "generated",
-    _PROJECT_ROOT.parent / "EvoNN-Compare" / "parity_packs",
-    _PROJECT_ROOT.parent / "EvoNN-Compare" / "parity_packs" / "generated",
-    _PROJECT_ROOT.parent / "EvoNN-Compare" / "manual_compare_runs" / "20260417_budget608_seed42_broad_w2_retry" / "packs",
-    _PROJECT_ROOT.parent / "EvoNN-Compare" / "manual_compare_runs" / "20260416_budget38_seed42_smoke_valid" / "packs",
 ]
 
 
@@ -107,6 +107,32 @@ class ParityPack(BaseModel):
     seed_policy: SeedPolicy | None = None
 
 
+def _shared_pack_dirs() -> list[Path]:
+    shared_root = os.environ.get(_SHARED_ROOT_ENV_VAR)
+    root = Path(shared_root).expanduser() if shared_root else _SUPERPROJECT_ROOT / "shared-benchmarks"
+    return [
+        root / "suites" / "parity",
+        root / "suites",
+    ]
+
+
+def _pack_search_dirs() -> list[Path]:
+    search_dirs = list(_DEFAULT_PACK_SEARCH_DIRS) + _shared_pack_dirs()
+    env_value = os.environ.get(_PACK_ENV_VAR, "")
+    if env_value:
+        for raw_path in env_value.split(os.pathsep):
+            if raw_path:
+                search_dirs.append(Path(raw_path).expanduser())
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for path in search_dirs:
+        if path in seen:
+            continue
+        seen.add(path)
+        unique.append(path)
+    return unique
+
+
 def get_canonical_id(native_name: str) -> str:
     """Map native benchmark id to canonical compare id."""
     return CANONICAL_BENCHMARK_IDS.get(native_name, native_name)
@@ -127,12 +153,17 @@ def resolve_pack_path(pack_ref: str | Path) -> Path:
     if path.suffix not in {".yaml", ".yml"}:
         candidates.extend([Path(f"{path}.yaml"), Path(f"{path}.yml")])
 
-    for root in _PACK_SEARCH_DIRS:
+    search_dirs = _pack_search_dirs()
+    for root in search_dirs:
         for candidate in candidates:
             resolved = root / candidate
             if resolved.exists():
                 return resolved
-    raise FileNotFoundError(f"Parity pack not found: {pack_ref}")
+    searched = ", ".join(str(directory) for directory in search_dirs)
+    raise FileNotFoundError(
+        f"Parity pack not found: {pack_ref}. Checked: {searched}. "
+        f"Set {_PACK_ENV_VAR} to add external pack directories."
+    )
 
 
 def fallback_native_id(entry: ParityBenchmark, system: str = "stratograph") -> str:
@@ -174,7 +205,7 @@ def load_parity_pack(pack_path: str | Path) -> ParityPack:
                 )
             )
         return ParityPack(
-            name=payload["name"],
+            name=payload.get("name", resolved.stem),
             benchmarks=benchmarks,
             budget_policy=BudgetPolicy(
                 evaluation_count=len(entries),
