@@ -100,7 +100,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
         bank_table.add_column("Benchmark Wins", style="green")
         bank_table.add_column("Won Benchmarks", style="white")
         for row in bank_rows[:8]:
-            won = row.get("won_benchmarks") or []
+            won = row.get("benchmarks_won") or row.get("won_benchmarks") or []
             bank_table.add_row(
                 str(row.get("family", "unknown")),
                 str(row.get("evaluation_count", 0)),
