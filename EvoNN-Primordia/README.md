@@ -75,3 +75,4 @@ alongside Prism, Topograph, Stratograph, and the Contenders baseline.
 
 - `VISION.md`
 - `IMPLEMENTATION_PLAN.md`
+- `ARCHITECTURE_RULES.md`
