@@ -47,6 +47,7 @@ Current deliverables:
 - runtime metadata carried through run/export artifacts
 - primitive usage, benchmark-group coverage, and failure telemetry carried through reports/exports
 - primitive bank summary artifact exported for later seeding-style analysis
+- richer CLI inspection that summarizes runtime, usage, wins, and best benchmark outcomes from run artifacts
 - budget-matched per-benchmark evaluation scheduling
 - per-benchmark best primitive selection
 - compare-ready manifest/results export

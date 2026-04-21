@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import typer
@@ -17,15 +18,17 @@ console = Console()
 
 
 @app.callback(invoke_without_command=True)
-def main() -> None:
+def main(ctx: typer.Context) -> None:
     """Show a compact overview when called without a subcommand."""
+    if ctx.invoked_subcommand is not None:
+        return
     table = Table(title="Primordia")
     table.add_column("Area")
     table.add_column("Status")
     table.add_row("Package scaffold", "ready")
     table.add_row("MLX primitive lane", "ready")
     table.add_row("Fair export contract", "ready")
-    table.add_row("Motif bank export", "next")
+    table.add_row("Primitive bank export", "ready")
     console.print(table)
     console.print("Run `primordia run --config ...` or inspect the roadmap in VISION.md / IMPLEMENTATION_PLAN.md.")
 
@@ -57,7 +60,74 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     summary_path = run_dir / "summary.json"
     if not summary_path.exists():
         raise typer.Exit(code=1)
-    typer.echo(summary_path.read_text(encoding="utf-8"))
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    primitive_bank_path = run_dir / "primitive_bank_summary.json"
+    primitive_bank = (
+        json.loads(primitive_bank_path.read_text(encoding="utf-8"))
+        if primitive_bank_path.exists()
+        else {"primitive_families": []}
+    )
+
+    overview = Table(title=f"Run: {summary.get('run_name') or summary.get('run_id') or run_dir.name}")
+    overview.add_column("Metric", style="cyan")
+    overview.add_column("Value", style="green")
+    overview.add_row("Runtime", str(summary.get("runtime", "unknown")))
+    overview.add_row("Runtime Version", str(summary.get("runtime_version") or "n/a"))
+    overview.add_row("Evaluation Count", str(summary.get("evaluation_count", 0)))
+    overview.add_row("Target Evaluations", str(summary.get("target_evaluation_count", "n/a")))
+    overview.add_row("Benchmarks", str(summary.get("benchmark_count", 0)))
+    overview.add_row("Failure Count", str(summary.get("failure_count", 0)))
+    wall_clock = summary.get("wall_clock_seconds")
+    if wall_clock is not None:
+        overview.add_row("Wall Clock", f"{float(wall_clock):.1f}s")
+    console.print(overview)
+
+    usage = summary.get("primitive_usage") or {}
+    if usage:
+        usage_table = Table(title="Primitive Usage")
+        usage_table.add_column("Family", style="cyan")
+        usage_table.add_column("Evaluations", style="green")
+        for family, count in usage.items():
+            usage_table.add_row(str(family), str(count))
+        console.print(usage_table)
+
+    bank_rows = primitive_bank.get("primitive_families") or []
+    if bank_rows:
+        bank_table = Table(title="Primitive Bank")
+        bank_table.add_column("Family", style="cyan")
+        bank_table.add_column("Evaluations", style="green")
+        bank_table.add_column("Benchmark Wins", style="green")
+        bank_table.add_column("Won Benchmarks", style="white")
+        for row in bank_rows[:8]:
+            won = row.get("won_benchmarks") or []
+            bank_table.add_row(
+                str(row.get("family", "unknown")),
+                str(row.get("evaluation_count", 0)),
+                str(row.get("benchmark_wins", 0)),
+                ", ".join(map(str, won)) if won else "—",
+            )
+        console.print(bank_table)
+
+    best_results = summary.get("best_results") or []
+    if best_results:
+        best_table = Table(title="Best Benchmarks")
+        best_table.add_column("Benchmark", style="cyan")
+        best_table.add_column("Primitive", style="green")
+        best_table.add_column("Metric", style="white")
+        best_table.add_column("Value", style="green")
+        best_table.add_column("Status", style="white")
+        for row in best_results[:8]:
+            value = row.get("metric_value")
+            rendered_value = "---" if value is None else f"{float(value):.6f}"
+            best_table.add_row(
+                str(row.get("benchmark_name", "unknown")),
+                str(row.get("primitive_name", "unknown")),
+                str(row.get("metric_name", "metric")),
+                rendered_value,
+                str(row.get("status", "unknown")),
+            )
+        console.print(best_table)
 
 
 @symbiosis_app.command("export")

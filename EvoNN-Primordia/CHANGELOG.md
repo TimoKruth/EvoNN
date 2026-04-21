@@ -11,3 +11,8 @@
 - add `primitive_bank_summary.json` so primitive-family winners can be reused in
   later transfer/seeding analysis
 - add regression coverage for runtime metadata propagation across run artifacts
+- improve Primordia CLI parity with richer `inspect` output for runtime, usage,
+  primitive-bank wins, and best benchmark summaries
+- suppress the default overview banner when invoking Primordia subcommands
+- update the landing overview to reflect that primitive-bank export is already
+  available
