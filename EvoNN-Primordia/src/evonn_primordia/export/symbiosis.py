@@ -14,7 +14,7 @@ from evonn_primordia.benchmarks.parity import fallback_native_id, load_parity_pa
 from evonn_primordia import __version__ as PRIMORDIA_VERSION
 
 from evonn_primordia.config import load_config
-from evonn_primordia.export.report import write_report
+from evonn_primordia.export.report import build_primitive_bank_summary, write_report
 
 BUDGET_POLICY_NAME = "prototype_equal_budget"
 
@@ -87,7 +87,7 @@ def export_symbiosis_contract(
     _write_summary_json(output_dir / "primitive_trials.json", trial_records)
     _write_summary_json(output_dir / "primitive_summary.json", summary)
     _write_summary_json(output_dir / "dataset_manifest.json", dataset_manifest)
-    primitive_bank_summary = _build_primitive_bank_summary(
+    primitive_bank_summary = build_primitive_bank_summary(
         summary=summary,
         best_results=best_results,
         trial_records=trial_records,
@@ -155,64 +155,6 @@ def export_symbiosis_contract(
 
 def _write_summary_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
-def _build_primitive_bank_summary(
-    *,
-    summary: dict[str, Any],
-    best_results: list[dict[str, Any]],
-    trial_records: list[dict[str, Any]],
-) -> dict[str, Any]:
-    by_family: dict[str, list[dict[str, Any]]] = {}
-    for record in trial_records:
-        family = str(record.get("primitive_family") or "unknown")
-        by_family.setdefault(family, []).append(record)
-
-    best_by_family: dict[str, dict[str, Any]] = {}
-    for family, records in by_family.items():
-        ok_records = [record for record in records if record.get("status") == "ok"]
-        source = ok_records or records
-        best_by_family[family] = max(
-            source,
-            key=lambda record: float(record.get("quality")) if record.get("quality") is not None else float("-inf"),
-        )
-
-    wins: dict[str, list[str]] = {}
-    for record in best_results:
-        if record.get("status") != "ok":
-            continue
-        family = str(record.get("primitive_family") or "unknown")
-        benchmark_name = str(record.get("benchmark_name") or "")
-        if benchmark_name:
-            wins.setdefault(family, []).append(benchmark_name)
-
-    usage = summary.get("primitive_usage", {})
-    families = sorted(set(usage) | set(best_by_family) | set(wins))
-    primitive_families = []
-    for family in families:
-        representative = best_by_family.get(family, {})
-        won = sorted(wins.get(family, []))
-        primitive_families.append(
-            {
-                "family": family,
-                "evaluation_count": int(usage.get(family, 0)),
-                "benchmark_wins": len(won),
-                "benchmarks_won": won,
-                "best_metric_name": representative.get("metric_name"),
-                "best_metric_value": representative.get("metric_value"),
-                "representative_genome_id": representative.get("genome_id"),
-                "representative_architecture_summary": representative.get("architecture_summary"),
-            }
-        )
-
-    return {
-        "system": "primordia",
-        "run_id": summary.get("run_id"),
-        "run_name": summary.get("run_name"),
-        "runtime": summary.get("runtime"),
-        "runtime_version": summary.get("runtime_version"),
-        "primitive_families": primitive_families,
-    }
 
 
 def _fairness_manifest(

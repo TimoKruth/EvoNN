@@ -20,6 +20,7 @@ except ImportError:
     _MLX_VERSION = None
 
 from evonn_primordia.config import RunConfig
+from evonn_primordia.export.report import build_primitive_bank_summary, write_report
 
 BUDGET_POLICY_NAME = "prototype_equal_budget"
 
@@ -223,10 +224,16 @@ def run_search(
         "wall_clock_seconds": wall_clock_seconds,
         "best_results": best_results,
     }
+    primitive_bank_summary = build_primitive_bank_summary(
+        summary=summary,
+        best_results=best_results,
+        trial_records=executed_records,
+    )
     (run_dir / "trial_records.json").write_text(json.dumps(executed_records, indent=2), encoding="utf-8")
     (run_dir / "best_results.json").write_text(json.dumps(best_results, indent=2), encoding="utf-8")
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    _write_report(run_dir=run_dir, summary=summary)
+    (run_dir / "primitive_bank_summary.json").write_text(json.dumps(primitive_bank_summary, indent=2), encoding="utf-8")
+    write_report(run_dir)
     _emit_progress(
         f"finished run_id={run_id} evaluation_count={len(executed_records)} wall_clock_seconds={wall_clock_seconds:.3f}"
     )
@@ -449,59 +456,6 @@ def _architecture_summary(genome: Any) -> str:
     return f"{getattr(genome, 'family', 'unknown')}[{widths}]"
 
 
-def _write_report(*, run_dir: Path, summary: dict[str, Any]) -> None:
-    lines = [
-        "# Primordia Run Report",
-        "",
-        f"- Run ID: `{summary['run_id']}`",
-        f"- Runtime: `{summary['runtime']}`",
-        f"- Runtime Version: `{summary.get('runtime_version') or 'unknown'}`",
-        f"- Evaluations: `{summary['evaluation_count']}`",
-        f"- Benchmarks: `{summary['benchmark_count']}`",
-        f"- Budget Policy: `{summary['budget_policy_name']}`",
-        f"- Wall Clock Seconds: `{float(summary.get('wall_clock_seconds', 0.0)):.3f}`",
-        "",
-        "## Primitive Usage",
-        "",
-        "| Primitive Family | Evaluations |",
-        "|---|---:|",
-    ]
-    primitive_usage = summary.get("primitive_usage", {})
-    if primitive_usage:
-        for family, count in primitive_usage.items():
-            lines.append(f"| {family} | {count} |")
-    else:
-        lines.append("| none | 0 |")
-    lines.extend([
-        "",
-        "## Benchmark Group Coverage",
-        "",
-        "| Group | Benchmarks |",
-        "|---|---:|",
-    ])
-    group_counts = summary.get("group_counts", {})
-    if group_counts:
-        for group, count in group_counts.items():
-            lines.append(f"| {group} | {count} |")
-    else:
-        lines.append("| none | 0 |")
-    lines.extend([
-        "",
-        "## Failure Summary",
-        "",
-        f"- Failure Count: `{summary.get('failure_count', 0)}`",
-        "",
-        "## Best Primitive Per Benchmark",
-        "",
-        "| Benchmark | Primitive | Metric | Value | Status |",
-        "|---|---|---|---:|---|",
-    ])
-    for record in summary["best_results"]:
-        value = "---" if record["metric_value"] is None else f"{float(record['metric_value']):.6f}"
-        lines.append(
-            f"| {record['benchmark_name']} | {record['primitive_name']} | {record['metric_name']} | {value} | {record['status']} |"
-        )
-    (run_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _emit_progress(message: str) -> None:

@@ -10,6 +10,8 @@
   telemetry through Primordia reports and compare exports
 - add `primitive_bank_summary.json` so primitive-family winners can be reused in
   later transfer/seeding analysis
+- emit `primitive_bank_summary.json` during Primordia runs (not only compare
+  export) and include primitive-bank winners in regenerated markdown reports
 - add regression coverage for runtime metadata propagation across run artifacts
 - improve Primordia CLI parity with richer `inspect` output for runtime, usage,
   primitive-bank wins, and best benchmark summaries

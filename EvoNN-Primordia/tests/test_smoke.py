@@ -547,16 +547,32 @@ primitive_pool:
     run_dir = tmp_path / "regenerated_run"
     run_search(config, run_dir=run_dir, config_path=config_path)
 
+    primitive_bank_summary = json.loads((run_dir / "primitive_bank_summary.json").read_text(encoding="utf-8"))
     report_path = run_dir / "report.md"
     report_path.unlink()
     regenerated_path = write_report(run_dir)
     regenerated = regenerated_path.read_text(encoding="utf-8")
 
+    assert primitive_bank_summary["runtime"] == "mlx"
+    assert primitive_bank_summary["primitive_families"] == [
+        {
+            "family": "mlp",
+            "evaluation_count": 1,
+            "benchmark_wins": 1,
+            "benchmarks_won": ["iris"],
+            "best_metric_name": "accuracy",
+            "best_metric_value": 0.78,
+            "representative_genome_id": "mlp-64x64",
+            "representative_architecture_summary": "mlp[64x64]",
+        }
+    ]
     assert regenerated_path == report_path
     assert "- Runtime: `mlx`" in regenerated
     assert "- Wall Clock Seconds: `" in regenerated
     assert "## Primitive Usage" in regenerated
     assert "| mlp | 1 |" in regenerated
+    assert "## Primitive Bank Summary" in regenerated
+    assert "| mlp | 1 | 1 | iris | accuracy | 0.780000 | mlp-64x64 |" in regenerated
     assert "## Benchmark Group Coverage" in regenerated
     assert "| tabular | 1 |" in regenerated
     assert "## Failure Summary" in regenerated
