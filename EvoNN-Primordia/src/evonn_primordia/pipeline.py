@@ -12,6 +12,13 @@ from typing import Any, Callable
 
 import numpy as np
 
+try:
+    import mlx
+    _MLX_VERSION = getattr(mlx, "__version__", None)
+except ImportError:
+    mlx = None
+    _MLX_VERSION = None
+
 from evonn_primordia.config import RunConfig
 
 BUDGET_POLICY_NAME = "prototype_equal_budget"
@@ -180,6 +187,7 @@ def run_search(
     summary = {
         "system": "primordia",
         "runtime": "mlx",
+        "runtime_version": _MLX_VERSION,
         "run_id": run_id,
         "run_name": run_name,
         "status": "complete",

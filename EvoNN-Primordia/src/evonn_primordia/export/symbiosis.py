@@ -11,6 +11,7 @@ from typing import Any
 
 from evonn_primordia.benchmarks import get_benchmark
 from evonn_primordia.benchmarks.parity import fallback_native_id, load_parity_pack
+from evonn_primordia import __version__ as PRIMORDIA_VERSION
 
 from evonn_primordia.config import load_config
 from evonn_primordia.export.report import write_report
@@ -88,10 +89,12 @@ def export_symbiosis_contract(
     _write_summary_json(output_dir / "dataset_manifest.json", dataset_manifest)
 
     evaluation_count = int(summary.get("evaluation_count", len(trial_records)))
+    runtime_backend = summary.get("runtime", "mlx")
+    runtime_version = summary.get("runtime_version")
     manifest = {
         "schema_version": "1.0",
         "system": "primordia",
-        "version": "0.1.0",
+        "version": PRIMORDIA_VERSION,
         "run_id": summary["run_id"],
         "run_name": summary["run_name"],
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -109,8 +112,8 @@ def export_symbiosis_contract(
         "device": {
             "device_name": platform.machine(),
             "precision_mode": "float32",
-            "framework": "mlx",
-            "framework_version": None,
+            "framework": runtime_backend,
+            "framework_version": runtime_version,
         },
         "artifacts": {
             "config_snapshot": "config.yaml",

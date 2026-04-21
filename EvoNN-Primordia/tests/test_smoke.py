@@ -185,6 +185,7 @@ primitive_pool:
     assert summary["system"] == "primordia"
     assert summary["budget_policy_name"] == "prototype_equal_budget"
     assert summary["runtime"] == "mlx"
+    assert "runtime_version" in summary
     assert {row["benchmark_name"] for row in summary["best_results"]} == {"iris", "tiny_lm_synthetic"}
 
     pack_path = tmp_path / "pack.yaml"
@@ -217,11 +218,74 @@ seed_policy:
     manifest_path, results_path = export_symbiosis_contract(run_dir, pack_path, run_dir)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     results = json.loads(results_path.read_text(encoding="utf-8"))
-
     assert manifest["system"] == "primordia"
     assert manifest["device"]["framework"] == "mlx"
+    assert manifest["device"]["framework_version"] == summary["runtime_version"]
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert {record["benchmark_id"] for record in results} == {"iris_classification", "tiny_lm_synthetic"}
+
+
+
+def test_export_uses_recorded_runtime_metadata(tmp_path: Path, fake_runtime) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: runtime_metadata
+benchmark_pool:
+  name: smoke_pack
+  benchmarks: [iris]
+search:
+  mode: budget_matched
+  target_evaluation_count: 1
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "runtime_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    summary_path = run_dir / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["runtime"] = "numpy-fallback"
+    summary["runtime_version"] = "fallback-1.2.3"
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    pack_path = tmp_path / "pack.yaml"
+    pack_path.write_text(
+        """
+name: runtime_pack
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      primordia: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+budget_policy:
+  evaluation_count: 1
+  epochs_per_candidate: 1
+seed_policy:
+  mode: campaign
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    manifest_path, _results_path = export_symbiosis_contract(run_dir, pack_path, run_dir)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["device"]["framework"] == "numpy-fallback"
+    assert manifest["device"]["framework_version"] == "fallback-1.2.3"
 
 
 def test_budget_matched_mode_hits_exact_target_evaluation_count(tmp_path: Path, fake_runtime) -> None:
