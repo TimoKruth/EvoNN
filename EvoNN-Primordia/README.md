@@ -46,6 +46,7 @@ Current deliverables:
 - MLX-backed primitive candidate search
 - runtime metadata carried through run/export artifacts
 - primitive usage, benchmark-group coverage, and failure telemetry carried through reports/exports
+- primitive bank summary artifact exported for later seeding-style analysis
 - budget-matched per-benchmark evaluation scheduling
 - per-benchmark best primitive selection
 - compare-ready manifest/results export

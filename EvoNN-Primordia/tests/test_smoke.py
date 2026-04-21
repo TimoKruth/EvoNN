@@ -222,13 +222,25 @@ seed_policy:
     manifest_path, results_path = export_symbiosis_contract(run_dir, pack_path, run_dir)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     results = json.loads(results_path.read_text(encoding="utf-8"))
+    primitive_bank = json.loads((run_dir / "primitive_bank_summary.json").read_text(encoding="utf-8"))
     assert manifest["system"] == "primordia"
     assert manifest["device"]["framework"] == "mlx"
     assert manifest["device"]["framework_version"] == summary["runtime_version"]
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
+    assert manifest["artifacts"]["primitive_bank_summary_json"] == "primitive_bank_summary.json"
     assert manifest["search_telemetry"]["primitive_usage"] == summary["primitive_usage"]
     assert manifest["search_telemetry"]["group_counts"] == summary["group_counts"]
     assert manifest["search_telemetry"]["failure_count"] == 0
+    assert primitive_bank["system"] == "primordia"
+    assert primitive_bank["run_id"] == summary["run_id"]
+    assert primitive_bank["runtime"] == summary["runtime"]
+    assert {entry["family"] for entry in primitive_bank["primitive_families"]} == {"attention", "embedding", "mlp", "sparse_mlp"}
+    sparse = next(entry for entry in primitive_bank["primitive_families"] if entry["family"] == "sparse_mlp")
+    assert sparse["evaluation_count"] == 1
+    assert sparse["benchmark_wins"] == 1
+    assert sparse["benchmarks_won"] == ["iris"]
+    assert sparse["best_metric_name"] == "accuracy"
+    assert sparse["best_metric_value"] == 0.81
     assert {record["benchmark_id"] for record in results} == {"iris_classification", "tiny_lm_synthetic"}
 
 
@@ -293,6 +305,160 @@ seed_policy:
 
     assert manifest["device"]["framework"] == "numpy-fallback"
     assert manifest["device"]["framework_version"] == "fallback-1.2.3"
+
+
+def test_primitive_bank_summary_ignores_failed_records_for_wins_and_representatives(tmp_path: Path) -> None:
+    run_dir = tmp_path / "failed_bank"
+    run_dir.mkdir()
+    (run_dir / "config.yaml").write_text(
+        """
+seed: 42
+run_name: failed_bank
+benchmark_pool:
+  name: smoke_pack
+  benchmarks: [tiny_lm_synthetic]
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding, attention]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "system": "primordia",
+                "runtime": "mlx",
+                "runtime_version": "fake-mlx",
+                "run_id": "failed_bank",
+                "run_name": "failed_bank",
+                "evaluation_count": 2,
+                "benchmark_count": 1,
+                "budget_policy_name": "prototype_equal_budget",
+                "primitive_usage": {"embedding": 1, "attention": 1},
+                "group_counts": {"tabular": 0, "synthetic": 0, "image": 0, "language_modeling": 1},
+                "failure_count": 1,
+                "wall_clock_seconds": 0.1,
+                "best_results": [
+                    {
+                        "benchmark_name": "tiny_lm_synthetic",
+                        "primitive_name": "embedding",
+                        "primitive_family": "embedding",
+                        "metric_name": "perplexity",
+                        "metric_direction": "min",
+                        "metric_value": None,
+                        "quality": float("inf"),
+                        "parameter_count": 16,
+                        "train_seconds": 0.0,
+                        "architecture_summary": "embedding[16]",
+                        "genome_id": "embedding-16",
+                        "status": "failed",
+                        "failure_reason": "boom",
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "best_results.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "tiny_lm_synthetic",
+                    "primitive_name": "embedding",
+                    "primitive_family": "embedding",
+                    "metric_name": "perplexity",
+                    "metric_direction": "min",
+                    "metric_value": None,
+                    "quality": float("inf"),
+                    "parameter_count": 16,
+                    "train_seconds": 0.0,
+                    "architecture_summary": "embedding[16]",
+                    "genome_id": "embedding-16",
+                    "status": "failed",
+                    "failure_reason": "boom",
+                }
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "trial_records.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "tiny_lm_synthetic",
+                    "primitive_name": "embedding",
+                    "primitive_family": "embedding",
+                    "metric_name": "perplexity",
+                    "metric_direction": "min",
+                    "metric_value": None,
+                    "quality": float("inf"),
+                    "parameter_count": 16,
+                    "train_seconds": 0.0,
+                    "architecture_summary": "embedding[16]",
+                    "genome_id": "embedding-16",
+                    "status": "failed",
+                    "failure_reason": "boom",
+                },
+                {
+                    "benchmark_name": "tiny_lm_synthetic",
+                    "primitive_name": "attention",
+                    "primitive_family": "attention",
+                    "metric_name": "perplexity",
+                    "metric_direction": "min",
+                    "metric_value": 3.2,
+                    "quality": -3.2,
+                    "parameter_count": 32,
+                    "train_seconds": 0.01,
+                    "architecture_summary": "attention[16]",
+                    "genome_id": "attention-16",
+                    "status": "ok",
+                    "failure_reason": None,
+                }
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    pack_path = tmp_path / "failed_pack.yaml"
+    pack_path.write_text(
+        """
+name: failed_pack
+benchmarks:
+  - benchmark_id: tiny_lm_synthetic
+    native_ids:
+      primordia: tiny_lm_synthetic
+    task_kind: language_modeling
+    metric_name: perplexity
+    metric_direction: min
+budget_policy:
+  evaluation_count: 2
+  epochs_per_candidate: 1
+seed_policy:
+  mode: campaign
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    export_symbiosis_contract(run_dir, pack_path, run_dir)
+    primitive_bank = json.loads((run_dir / "primitive_bank_summary.json").read_text(encoding="utf-8"))
+
+    embedding = next(entry for entry in primitive_bank["primitive_families"] if entry["family"] == "embedding")
+    attention = next(entry for entry in primitive_bank["primitive_families"] if entry["family"] == "attention")
+    assert embedding["benchmark_wins"] == 0
+    assert embedding["benchmarks_won"] == []
+    assert embedding["best_metric_value"] is None
+    assert attention["benchmark_wins"] == 0
+    assert attention["best_metric_value"] == 3.2
+    assert attention["representative_genome_id"] == "attention-16"
 
 
 def test_runtime_metadata_propagates_to_trials_summary_and_report(tmp_path: Path, monkeypatch) -> None:
