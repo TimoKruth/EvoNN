@@ -7,6 +7,7 @@ EvoNN, EvoNN-2, and Topograph via the EvoNN-Symbiosis layer.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import platform
 import subprocess
@@ -14,6 +15,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median as stat_median
 from typing import Any
+
+try:
+    _MLX_VERSION = importlib.metadata.version("mlx")
+except importlib.metadata.PackageNotFoundError:
+    try:
+        import mlx
+
+        _MLX_VERSION = getattr(mlx, "__version__", None)
+    except ImportError:
+        mlx = None
+        _MLX_VERSION = None
 
 import prism
 from prism.benchmarks.parity import get_canonical_id, load_parity_pack
@@ -166,7 +178,7 @@ def export_symbiosis_contract(
             "device_name": _detect_device(),
             "precision_mode": "fp32",
             "framework": "mlx",
-            "framework_version": None,
+            "framework_version": _MLX_VERSION,
         },
         "config_snapshot": config.model_dump(mode="json"),
         "artifacts": {

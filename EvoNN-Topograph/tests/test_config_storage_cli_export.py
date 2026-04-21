@@ -308,10 +308,14 @@ def test_symbiosis_export_preserves_failed_benchmarks(tmp_path: Path, monkeypatc
 
     _, results_path = sym.export_symbiosis_contract(run_dir=run_dir, pack_path=pack_path)
     rows = json.loads(results_path.read_text(encoding="utf-8"))
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
 
+    assert sym._MLX_VERSION is not None
     assert rows[0]["status"] == "failed"
     assert rows[0]["metric_value"] is None
     assert rows[0]["failure_reason"] == "lm backend blew up"
+    assert manifest["device"]["framework"] == "mlx"
+    assert manifest["device"]["framework_version"] == sym._MLX_VERSION
 
 
 def test_cli_benchmarks_and_symbiosis_export(monkeypatch, tmp_path: Path):

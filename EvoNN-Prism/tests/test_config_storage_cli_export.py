@@ -371,9 +371,12 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
     results = json.loads(results_path.read_text(encoding="utf-8"))
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
 
+    assert sym._MLX_VERSION is not None
     assert manifest["fairness"]["code_version"] == "deadbeef"
     assert manifest["fairness"]["benchmark_pack_id"] == "demo_pack"
     assert manifest["artifacts"]["canonical_benchmarks"] == ["canon::moons", "canon::iris"]
+    assert manifest["device"]["framework"] == "mlx"
+    assert manifest["device"]["framework_version"] == sym._MLX_VERSION
     assert len(results) == 2
     assert summary["operator_mix"]["crossover"] == 1
     assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
