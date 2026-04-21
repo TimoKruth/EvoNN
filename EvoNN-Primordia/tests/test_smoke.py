@@ -7,6 +7,7 @@ import json
 import pytest
 
 from evonn_primordia.config import load_config
+from evonn_primordia.export.report import write_report
 from evonn_primordia.export.symbiosis import export_symbiosis_contract
 from evonn_primordia.pipeline import run_search
 
@@ -224,6 +225,9 @@ seed_policy:
     assert manifest["device"]["framework"] == "mlx"
     assert manifest["device"]["framework_version"] == summary["runtime_version"]
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
+    assert manifest["search_telemetry"]["primitive_usage"] == summary["primitive_usage"]
+    assert manifest["search_telemetry"]["group_counts"] == summary["group_counts"]
+    assert manifest["search_telemetry"]["failure_count"] == 0
     assert {record["benchmark_id"] for record in results} == {"iris_classification", "tiny_lm_synthetic"}
 
 
@@ -329,6 +333,56 @@ primitive_pool:
     assert all(record["runtime_version"] == "fallback-0.9" for record in trials)
     assert "- Runtime: `numpy-fallback`" in report
     assert "- Runtime Version: `fallback-0.9`" in report
+    assert "- Wall Clock Seconds: `" in report
+    assert "## Primitive Usage" in report
+    assert "| mlp | 1 |" in report
+    assert "## Benchmark Group Coverage" in report
+    assert "| tabular | 1 |" in report
+    assert "## Failure Summary" in report
+    assert "- Failure Count: `0`" in report
+
+
+def test_report_regeneration_uses_summary_telemetry(tmp_path: Path, fake_runtime) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: regenerated_report
+benchmark_pool:
+  name: smoke_pack
+  benchmarks: [iris]
+search:
+  mode: budget_matched
+  target_evaluation_count: 1
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "regenerated_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    report_path = run_dir / "report.md"
+    report_path.unlink()
+    regenerated_path = write_report(run_dir)
+    regenerated = regenerated_path.read_text(encoding="utf-8")
+
+    assert regenerated_path == report_path
+    assert "- Runtime: `mlx`" in regenerated
+    assert "- Wall Clock Seconds: `" in regenerated
+    assert "## Primitive Usage" in regenerated
+    assert "| mlp | 1 |" in regenerated
+    assert "## Benchmark Group Coverage" in regenerated
+    assert "| tabular | 1 |" in regenerated
+    assert "## Failure Summary" in regenerated
+    assert "- Failure Count: `0`" in regenerated
 
 
 def test_budget_matched_mode_hits_exact_target_evaluation_count(tmp_path: Path, fake_runtime) -> None:

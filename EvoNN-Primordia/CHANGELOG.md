@@ -6,4 +6,6 @@
   as a platform-specific dependency
 - carry runtime backend/version metadata through run summaries, trial records,
   reports, and compare exports instead of hardcoding `mlx`
+- carry primitive usage, benchmark-group coverage, failure count, and wall-clock
+  telemetry through Primordia reports and compare exports
 - add regression coverage for runtime metadata propagation across run artifacts

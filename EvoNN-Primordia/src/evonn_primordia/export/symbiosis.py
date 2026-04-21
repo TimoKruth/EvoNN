@@ -125,6 +125,10 @@ def export_symbiosis_contract(
         "search_telemetry": {
             "qd_enabled": False,
             "effective_training_epochs": config.training.epochs_per_candidate,
+            "primitive_usage": summary.get("primitive_usage", {}),
+            "group_counts": summary.get("group_counts", {}),
+            "failure_count": int(summary.get("failure_count", 0)),
+            "wall_clock_seconds": summary.get("wall_clock_seconds"),
         },
         "fairness": _fairness_manifest(
             pack_name=pack.name,

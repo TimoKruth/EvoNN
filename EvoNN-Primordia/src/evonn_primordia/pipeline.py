@@ -196,6 +196,7 @@ def run_search(
         )
 
     wall_clock_seconds = perf_counter() - started_clock
+    failure_count = sum(1 for record in executed_records if record.get("status") != "ok")
     summary = {
         "system": "primordia",
         "runtime": runtime_backend,
@@ -212,6 +213,7 @@ def run_search(
         "budget_policy_name": BUDGET_POLICY_NAME,
         "primitive_usage": dict(sorted(primitive_usage.items(), key=lambda item: (-item[1], item[0]))),
         "group_counts": group_counts,
+        "failure_count": failure_count,
         "wall_clock_seconds": wall_clock_seconds,
         "best_results": best_results,
     }
@@ -430,12 +432,43 @@ def _write_report(*, run_dir: Path, summary: dict[str, Any]) -> None:
         f"- Evaluations: `{summary['evaluation_count']}`",
         f"- Benchmarks: `{summary['benchmark_count']}`",
         f"- Budget Policy: `{summary['budget_policy_name']}`",
+        f"- Wall Clock Seconds: `{float(summary.get('wall_clock_seconds', 0.0)):.3f}`",
+        "",
+        "## Primitive Usage",
+        "",
+        "| Primitive Family | Evaluations |",
+        "|---|---:|",
+    ]
+    primitive_usage = summary.get("primitive_usage", {})
+    if primitive_usage:
+        for family, count in primitive_usage.items():
+            lines.append(f"| {family} | {count} |")
+    else:
+        lines.append("| none | 0 |")
+    lines.extend([
+        "",
+        "## Benchmark Group Coverage",
+        "",
+        "| Group | Benchmarks |",
+        "|---|---:|",
+    ])
+    group_counts = summary.get("group_counts", {})
+    if group_counts:
+        for group, count in group_counts.items():
+            lines.append(f"| {group} | {count} |")
+    else:
+        lines.append("| none | 0 |")
+    lines.extend([
+        "",
+        "## Failure Summary",
+        "",
+        f"- Failure Count: `{summary.get('failure_count', 0)}`",
         "",
         "## Best Primitive Per Benchmark",
         "",
         "| Benchmark | Primitive | Metric | Value | Status |",
         "|---|---|---|---:|---|",
-    ]
+    ])
     for record in summary["best_results"]:
         value = "---" if record["metric_value"] is None else f"{float(record['metric_value']):.6f}"
         lines.append(

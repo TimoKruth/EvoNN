@@ -45,6 +45,7 @@ Current deliverables:
 - Primordia-local benchmark and parity loaders
 - MLX-backed primitive candidate search
 - runtime metadata carried through run/export artifacts
+- primitive usage, benchmark-group coverage, and failure telemetry carried through reports/exports
 - budget-matched per-benchmark evaluation scheduling
 - per-benchmark best primitive selection
 - compare-ready manifest/results export
