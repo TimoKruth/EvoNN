@@ -82,6 +82,14 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
     assert manifest["device"]["framework_version"] == budget_meta["runtime_version"]
 
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert f"- Runtime: `{budget_meta['runtime_backend']}`" in report
+    expected_version = budget_meta["runtime_version"] or "unknown"
+    assert f"- Runtime Version: `{expected_version}`" in report
+    assert f"- Effective Training Epochs: `{budget_meta['effective_training_epochs']}`" in report
+    assert f"- Architecture Mode: `{budget_meta['architecture_mode']}`" in report
+    assert "## Benchmarks" in report
+
 
 def test_build_execution_ladder(tmp_path) -> None:
     cases = build_execution_ladder(tmp_path / "ladder")
