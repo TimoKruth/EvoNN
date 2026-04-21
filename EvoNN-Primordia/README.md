@@ -41,9 +41,10 @@ Primordia now includes a cheap, runnable primitive-search lane aimed at fair
 comparison against the rest of the umbrella.
 
 Current deliverables:
-- self-contained Primordia-local MLX runtime
+- self-contained Primordia-local runtime boundary with MLX as the reference backend
 - Primordia-local benchmark and parity loaders
 - MLX-backed primitive candidate search
+- runtime metadata carried through run/export artifacts
 - budget-matched per-benchmark evaluation scheduling
 - per-benchmark best primitive selection
 - compare-ready manifest/results export
@@ -67,12 +68,16 @@ uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/ru
 ## Fair Comparison Role
 
 Primordia currently acts as a primitive-first search system with MLX as its
-core execution runtime and an explicitly budget-matched evaluation count. That
-makes it possible to include Primordia in fair EvoNN-Compare matrix runs
-alongside Prism, Topograph, Stratograph, and the Contenders baseline.
+reference execution runtime and an explicitly budget-matched evaluation count.
+The package now also installs cleanly on non-Darwin hosts by treating MLX as a
+platform-specific dependency, while run/export artifacts still record the actual
+runtime backend used. That makes it possible to include Primordia in fair
+EvoNN-Compare matrix runs alongside Prism, Topograph, Stratograph, and the
+Contenders baseline.
 
 ## Core Docs
 
 - `VISION.md`
 - `IMPLEMENTATION_PLAN.md`
 - `ARCHITECTURE_RULES.md`
+- `CHANGELOG.md`

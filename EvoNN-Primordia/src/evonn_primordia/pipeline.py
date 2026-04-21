@@ -33,6 +33,8 @@ class RuntimeBindings:
     mutate_genome: Callable[[Any, int, list[str], RunConfig], Any]
     compile_genome: Callable[[Any, list[int], int, str, str], Any]
     train_and_evaluate: Callable[..., Any]
+    runtime_backend: str = "mlx"
+    runtime_version: str | None = None
 
 
 def run_search(
@@ -44,6 +46,8 @@ def run_search(
     """Run Primordia search with MLX-backed family evaluation."""
 
     runtime = _load_runtime_bindings()
+    runtime_backend = getattr(runtime, "runtime_backend", "mlx")
+    runtime_version = getattr(runtime, "runtime_version", _MLX_VERSION)
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     if config_path is not None:
@@ -65,7 +69,7 @@ def run_search(
     started_clock = perf_counter()
 
     _emit_progress(
-        f"start run_id={run_id} benchmarks={benchmark_total} target_evals={target_evals} mode={config.search.mode} runtime=mlx"
+        f"start run_id={run_id} benchmarks={benchmark_total} target_evals={target_evals} mode={config.search.mode} runtime={runtime_backend}"
     )
     for benchmark_index, benchmark_name in enumerate(benchmarks, start=1):
         spec = runtime.get_benchmark(benchmark_name)
@@ -98,7 +102,13 @@ def run_search(
                 y_val=y_val,
             )
         except Exception as exc:
-            failed = _failed_record(spec=spec, benchmark_name=benchmark_name, reason=str(exc))
+            failed = _failed_record(
+                spec=spec,
+                benchmark_name=benchmark_name,
+                reason=str(exc),
+                runtime_backend=runtime_backend,
+                runtime_version=runtime_version,
+            )
             executed_records.append(failed)
             best_results.append(dict(failed))
             _emit_progress(f"[{benchmark_index}/{benchmark_total}] load-failed benchmark={benchmark_name} reason={exc}")
@@ -153,7 +163,8 @@ def run_search(
                     "failure_reason": result.failure_reason,
                     "seed": config.seed + benchmark_index * 1009 + slot_index,
                     "slot_index": slot_index,
-                    "runtime": "mlx",
+                    "runtime": runtime_backend,
+                    "runtime_version": runtime_version,
                 }
             except Exception as exc:
                 record = {
@@ -172,7 +183,8 @@ def run_search(
                     "failure_reason": str(exc),
                     "seed": config.seed + benchmark_index * 1009 + slot_index,
                     "slot_index": slot_index,
-                    "runtime": "mlx",
+                    "runtime": runtime_backend,
+                    "runtime_version": runtime_version,
                 }
             benchmark_records.append(record)
             executed_records.append(record)
@@ -186,8 +198,8 @@ def run_search(
     wall_clock_seconds = perf_counter() - started_clock
     summary = {
         "system": "primordia",
-        "runtime": "mlx",
-        "runtime_version": _MLX_VERSION,
+        "runtime": runtime_backend,
+        "runtime_version": runtime_version,
         "run_id": run_id,
         "run_name": run_name,
         "status": "complete",
@@ -255,6 +267,8 @@ def _load_runtime_bindings() -> RuntimeBindings:
         mutate_genome=_mutate,
         compile_genome=_compile,
         train_and_evaluate=train_and_evaluate,
+        runtime_backend="mlx",
+        runtime_version=_MLX_VERSION,
     )
 
 
@@ -363,7 +377,14 @@ def _primitive_names_for_group(config: RunConfig, group: str) -> list[str]:
     return config.primitive_pool.tabular
 
 
-def _failed_record(*, spec: Any, benchmark_name: str, reason: str) -> dict[str, Any]:
+def _failed_record(
+    *,
+    spec: Any,
+    benchmark_name: str,
+    reason: str,
+    runtime_backend: str,
+    runtime_version: str | None,
+) -> dict[str, Any]:
     return {
         "benchmark_name": benchmark_name,
         "primitive_name": "load_failed",
@@ -380,7 +401,8 @@ def _failed_record(*, spec: Any, benchmark_name: str, reason: str) -> dict[str, 
         "failure_reason": reason,
         "seed": 0,
         "slot_index": 0,
-        "runtime": "mlx",
+        "runtime": runtime_backend,
+        "runtime_version": runtime_version,
     }
 
 
@@ -404,6 +426,7 @@ def _write_report(*, run_dir: Path, summary: dict[str, Any]) -> None:
         "",
         f"- Run ID: `{summary['run_id']}`",
         f"- Runtime: `{summary['runtime']}`",
+        f"- Runtime Version: `{summary.get('runtime_version') or 'unknown'}`",
         f"- Evaluations: `{summary['evaluation_count']}`",
         f"- Benchmarks: `{summary['benchmark_count']}`",
         f"- Budget Policy: `{summary['budget_policy_name']}`",

@@ -79,7 +79,9 @@ class FakeBenchmarkSpec:
 
 
 class FakeRuntimeBindings:
-    def __init__(self) -> None:
+    def __init__(self, *, runtime_backend: str = "mlx", runtime_version: str | None = "fake-mlx") -> None:
+        self.runtime_backend = runtime_backend
+        self.runtime_version = runtime_version
         self.benchmarks = {
             "iris": FakeBenchmarkSpec("iris", "classification", "accuracy", "max", 4, 3),
             "tiny_lm_synthetic": FakeBenchmarkSpec("tiny_lm_synthetic", "language_modeling", "perplexity", "min", 3, 8),
@@ -184,8 +186,8 @@ primitive_pool:
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["system"] == "primordia"
     assert summary["budget_policy_name"] == "prototype_equal_budget"
-    assert summary["runtime"] == "mlx"
-    assert "runtime_version" in summary
+    assert summary["runtime"] == fake_runtime.runtime_backend
+    assert summary["runtime_version"] == fake_runtime.runtime_version
     assert {row["benchmark_name"] for row in summary["best_results"]} == {"iris", "tiny_lm_synthetic"}
 
     pack_path = tmp_path / "pack.yaml"
@@ -286,6 +288,47 @@ seed_policy:
 
     assert manifest["device"]["framework"] == "numpy-fallback"
     assert manifest["device"]["framework_version"] == "fallback-1.2.3"
+
+
+def test_runtime_metadata_propagates_to_trials_summary_and_report(tmp_path: Path, monkeypatch) -> None:
+    runtime = FakeRuntimeBindings(runtime_backend="numpy-fallback", runtime_version="fallback-0.9")
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda: runtime)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: fallback_runtime
+benchmark_pool:
+  name: smoke_pack
+  benchmarks: [iris]
+search:
+  mode: budget_matched
+  target_evaluation_count: 1
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "fallback_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    trials = json.loads((run_dir / "trial_records.json").read_text(encoding="utf-8"))
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+
+    assert summary["runtime"] == "numpy-fallback"
+    assert summary["runtime_version"] == "fallback-0.9"
+    assert all(record["runtime"] == "numpy-fallback" for record in trials)
+    assert all(record["runtime_version"] == "fallback-0.9" for record in trials)
+    assert "- Runtime: `numpy-fallback`" in report
+    assert "- Runtime Version: `fallback-0.9`" in report
 
 
 def test_budget_matched_mode_hits_exact_target_evaluation_count(tmp_path: Path, fake_runtime) -> None:
