@@ -56,11 +56,14 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     store = RunStore(run_dir / "metrics.duckdb")
     runs = store.load_runs()
     results = store.load_results(run_dir.name)
+    budget_meta = store.load_budget_metadata(run_dir.name)
     store.close()
 
     assert len(runs) == 1
     assert len(results) == 2
     assert {record["status"] for record in results} <= {"ok", "failed"}
+    assert budget_meta["runtime_backend"] in {"mlx", "numpy-fallback"}
+    assert "runtime_version" in budget_meta
 
     manifest_path, results_path = export_symbiosis_contract(
         run_dir,
@@ -76,6 +79,8 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["artifacts"]["config_snapshot"] == "config.yaml"
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
+    assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
+    assert manifest["device"]["framework_version"] == budget_meta["runtime_version"]
 
 
 def test_build_execution_ladder(tmp_path) -> None:

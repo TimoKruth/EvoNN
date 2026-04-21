@@ -26,6 +26,7 @@ from stratograph.pipeline.evaluator import (
     EvaluationOutcome,
     EvaluationRecord,
     RUNTIME_BACKEND,
+    RUNTIME_VERSION,
     TrainingArtifact,
     evaluate_candidate_with_state,
 )
@@ -253,6 +254,7 @@ def run_evolution(
             "effective_training_epochs": config.training.epochs,
             "created_at": created_at,
             "runtime_backend": RUNTIME_BACKEND,
+            "runtime_version": RUNTIME_VERSION,
             "architecture_mode": architecture_mode,
             "allow_clone_mutation": variant_policy["allow_clone_mutation"],
             "motif_bias": variant_policy["motif_bias"],

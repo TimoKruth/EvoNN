@@ -12,11 +12,9 @@ from typing import Any
 
 try:
     import mlx
-    _MLX_VERSION = getattr(mlx, "__version__", None)
     _EXPORT_FRAMEWORK = "mlx"
 except ImportError:
     mlx = None
-    _MLX_VERSION = None
     _EXPORT_FRAMEWORK = "numpy-fallback"
 
 import stratograph
@@ -54,6 +52,8 @@ def export_symbiosis_contract(
     _write_summary_json(output_dir / "genome_summary.json", genomes)
     _write_summary_json(output_dir / "model_summary.json", results)
     dataset_manifest = []
+    runtime_backend = budget_meta.get("runtime_backend", _EXPORT_FRAMEWORK)
+    runtime_version = budget_meta.get("runtime_version")
 
     manifest_benchmarks: list[dict[str, Any]] = []
     result_records: list[dict[str, Any]] = []
@@ -123,8 +123,8 @@ def export_symbiosis_contract(
         "device": {
             "device_name": platform.machine(),
             "precision_mode": "float32",
-            "framework": budget_meta.get("runtime_backend", _EXPORT_FRAMEWORK),
-            "framework_version": _MLX_VERSION if budget_meta.get("runtime_backend", _EXPORT_FRAMEWORK) == "mlx" else None,
+            "framework": runtime_backend,
+            "framework_version": runtime_version,
         },
         "artifacts": {
             "config_snapshot": "config.yaml",

@@ -9,6 +9,7 @@ Added / changed:
 - MLX-backed trainable classification and LM heads
 - shared-benchmarks-driven parity-pack resolution
 - ladder generation that no longer depends on EvoNN-Compare manual run artifacts
+- runtime backend/version metadata now recorded in run budget metadata and reused by compare exports
 - architecture rules document capturing the distinct-project and shared-boundary rules from the vision docs
 
 Known limits:

@@ -19,6 +19,7 @@ Current state:
 - Runtime maturity improved with resume, checkpoint, status, and best-genome artifacts
 - Compare-compatible export and startup formats implemented
 - Benchmark loading + parity/export boundary implemented
+- Runtime backend/version metadata carried through compare exports
 - Full long-horizon hierarchy-specialized trainer optimization still pending
 
 Core docs:

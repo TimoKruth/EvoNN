@@ -16,6 +16,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 try:  # pragma: no cover - exercised on MLX-capable hosts
+    import mlx
     import mlx.core as mx
     import mlx.nn as nn
     import mlx.optimizers as optim
@@ -23,12 +24,14 @@ try:  # pragma: no cover - exercised on MLX-capable hosts
 
     MLX_AVAILABLE = True
 except ImportError:  # pragma: no cover - covered on Linux CI / non-MLX hosts
+    mlx = None
     mx = None
     nn = None
     optim = None
     MLX_AVAILABLE = False
 
 RUNTIME_BACKEND = "mlx" if MLX_AVAILABLE else "numpy-fallback"
+RUNTIME_VERSION = getattr(mlx, "__version__", None)
 
 from stratograph.benchmarks.spec import BenchmarkSpec
 from stratograph.genome import HierarchicalGenome
