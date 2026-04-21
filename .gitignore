@@ -7,6 +7,26 @@
 **/.cmux/
 .repo-backups/
 .playwright-mcp/
+.env
+**/.env
+.env.*
+**/.env.*
+.envrc
+*.local
+*.pem
+**/*.pem
+*.key
+**/*.key
+*.p12
+**/*.p12
+*.pfx
+**/*.pfx
+*.crt
+**/*.crt
+*.cer
+**/*.cer
+*.der
+**/*.der
 
 # Git backup / migration debris
 *.bundle
@@ -64,5 +84,9 @@ deprecated/
 **/runs/
 **/manual_compare_runs/
 **/logs/
+**/.baseline-cache/
 *.duckdb
 **/*.duckdb
+
+# Generated dashboards / extracted history
+dashboard/compare-history/
