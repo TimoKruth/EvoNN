@@ -231,6 +231,8 @@ Why this matters:
 
 But long run, the architecture concepts should remain portable. Apple-first should be execution strategy, not lock-in doctrine.
 
+That portability should become concrete, not merely rhetorical. Topograph should grow a Linux-capable execution path that can at minimum run smoke tests, regression tests, and compare-grade small-budget studies under the same benchmark packs and export contracts. Full scientific comparison should not depend on MLX being importable on the validation host.
+
 ### Topology Motifs Over Giant Search Spaces
 
 Topograph should not chase infinite graph complexity.
@@ -335,11 +337,12 @@ The path from current codebase to long-run vision likely looks like:
 
 1. harden runtime, telemetry, and test coverage
 2. make benchmark timing and archive behavior visible
-3. improve hardware-aware objectives and budget controls
-4. deepen quality-diversity and topology analytics
-5. expand interop and comparison workflows
-6. turn archives into reusable model-family assets
-7. connect search output to real deployment targets
+3. add a portable Linux-capable execution path for smoke, regression, and compare-style small-budget validation
+4. improve hardware-aware objectives and budget controls without breaking cross-platform comparability
+5. deepen quality-diversity and topology analytics
+6. expand interop and comparison workflows
+7. turn archives into reusable model-family assets
+8. connect search output to real deployment targets
 
 ## Final Statement
 

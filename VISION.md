@@ -332,6 +332,7 @@ Focus:
 - workspace coherence across umbrella packages
 - stronger documentation of roles and boundaries
 - a repeatable automation loop that can pull latest work, run real smoke tests after bounded improvements, and record whether tiny budget runs improve or regress over time
+- a Linux-capable execution path that can run full compare-grade validation instead of leaving reproducibility tied to MLX-only environments
 
 Near-future expectation:
 EvoNN should become stable enough that the routine architecture-parity automation can do more than inspect docs and make tiny edits. It should be able to pull the latest branch state, run package-relevant smoke tests after each bounded improvement, and where practical run small matched-budget validation studies that show whether recent changes actually help, hurt, or leave results unchanged.
@@ -341,6 +342,8 @@ That means the umbrella should steadily move toward:
 - tiny-budget benchmark configs that are intentionally designed for trend detection rather than headline performance
 - package docs and vision files that explicitly state which verification path is expected after small improvements
 - compare/report surfaces that can accumulate these small-budget validation results over time instead of treating every improvement as anecdotal
+- backend/runtime separation strong enough that a Linux host can execute full compare-style validation runs even when MLX is unavailable
+- portability goals defined in terms of shared search semantics and comparable evidence, not fantasy promises of bitwise-identical floating-point results across platforms
 
 ### Horizon 2: Primitive-first search
 
@@ -365,6 +368,18 @@ Focus:
 - transfer-aware seeding across systems
 - explicit comparison of direct primitive seeding versus staged seeding ladders
 - run labeling so transfer policy remains auditable in Compare
+
+### Horizon 3.5: Portable compare execution
+
+Goal:
+make EvoNN capable of running serious compare-style validation on Linux as well as Apple-first local hardware.
+
+Focus:
+- backend/runtime separation so search semantics survive beyond MLX-only execution
+- Linux-capable smoke, regression, and small-budget compare runs
+- explicit runtime metadata that distinguishes backend, device class, precision mode, and worker topology
+- portable evaluation paths that can validate the same benchmark packs and export contracts on Linux even when performance differs
+- reproducibility defined as comparable evidence under shared budgets, not strict numeric identity across runtimes
 
 ### Horizon 4: Harder benchmark classes
 
