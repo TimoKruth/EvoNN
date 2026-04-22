@@ -48,7 +48,7 @@ def export_symbiosis_contract(
     result_records: list[dict[str, Any]] = []
     dataset_manifest: list[dict[str, Any]] = []
     for entry in pack.benchmarks:
-        native_name = fallback_native_id(entry)
+        native_name = _resolve_native_name(entry, available_results=results)
         spec = get_benchmark(native_name)
         result = results.get(native_name)
         status = result["status"] if result else "missing"
@@ -148,6 +148,29 @@ def export_symbiosis_contract(
     return manifest_path, results_path
 
 
+def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]]) -> str:
+    native_ids = entry.native_ids or {}
+    candidates: list[str] = []
+    for candidate in [
+        native_ids.get("contenders"),
+        fallback_native_id(entry),
+        *native_ids.values(),
+        entry.benchmark_id,
+    ]:
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    for candidate in candidates:
+        if candidate in available_results:
+            return candidate
+    for candidate in candidates:
+        try:
+            get_benchmark(candidate)
+            return candidate
+        except Exception:
+            continue
+    return candidates[0]
+
+
 def _write_summary_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -183,7 +206,15 @@ def _benchmark_signature(pack_name: str, benchmark_entries: list[dict[str, Any]]
     payload = json.dumps(
         {
             "pack_name": pack_name,
-            "benchmarks": benchmark_entries,
+            "benchmarks": [
+                {
+                    "benchmark_id": entry.get("benchmark_id"),
+                    "task_kind": entry.get("task_kind"),
+                    "metric_name": entry.get("metric_name"),
+                    "metric_direction": entry.get("metric_direction"),
+                }
+                for entry in benchmark_entries
+            ],
         },
         sort_keys=True,
         separators=(",", ":"),

@@ -17,6 +17,7 @@ from evonn_compare.comparison import build_matrix_summary, summarize_matrix_case
 from evonn_compare.comparison.engine import ComparisonEngine
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.ingest.loader import SystemIngestor
+from evonn_compare.orchestration.benchmark_resolution import resolve_supported_benchmark_ids
 from evonn_compare.orchestration.config_gen import (
     DEFAULT_PRISM_ROOT,
     DEFAULT_TOPOGRAPH_ROOT,
@@ -26,6 +27,10 @@ from evonn_compare.orchestration.config_gen import (
     generate_topograph_config,
 )
 from evonn_compare.orchestration.contenders import ensure_contender_export
+from evonn_compare.orchestration.portable_smoke import (
+    ensure_prism_portable_smoke_export,
+    ensure_topograph_portable_smoke_export,
+)
 from evonn_compare.orchestration.primordia import ensure_primordia_export
 from evonn_compare.reporting import render_comparison_markdown, render_fair_matrix_markdown
 
@@ -216,7 +221,7 @@ def generate_stratograph_config(
         raise ValueError("pack must contain at least one benchmark")
     if budget % len(pack.benchmarks) != 0:
         raise ValueError(f"budget {budget} not divisible by benchmark_count {len(pack.benchmarks)}")
-    benchmark_ids = [fallback_native_id(entry, "stratograph") for entry in pack.benchmarks]
+    benchmark_ids = resolve_supported_benchmark_ids(pack.benchmarks, "stratograph")
     population_size, generations = _exact_factorization(budget // len(pack.benchmarks), preferred_population_cap=8)
     payload = {
         "seed": seed,
@@ -258,7 +263,7 @@ def generate_contender_config(
         "run_name": run_name,
         "benchmark_pool": {
             "name": pack.name,
-            "benchmarks": [_contender_native_id(entry) for entry in pack.benchmarks],
+            "benchmarks": resolve_supported_benchmark_ids(pack.benchmarks, "contenders"),
         },
         "baseline": {
             "mode": "budget_matched",
@@ -285,7 +290,7 @@ def generate_primordia_config(
         "run_name": run_name,
         "benchmark_pool": {
             "name": pack.name,
-            "benchmarks": [_primordia_native_id(entry) for entry in pack.benchmarks],
+            "benchmarks": resolve_supported_benchmark_ids(pack.benchmarks, "primordia"),
         },
         "search": {
             "mode": "budget_matched",
@@ -313,25 +318,20 @@ def run_fair_matrix_case(
     case.report_dir.mkdir(parents=True, exist_ok=True)
     case.log_dir.mkdir(parents=True, exist_ok=True)
 
-    stages = [
-        [
+    use_portable_prism = not _native_runtime_available(prism_root.resolve(), "prism.pipeline.coordinator")
+    use_portable_topograph = not _native_runtime_available(topograph_root.resolve(), "topograph.pipeline.coordinator")
+
+    stage_runs: list[CommandSpec] = []
+    stage_exports: list[CommandSpec] = []
+    if not use_portable_prism:
+        stage_runs.append(
             CommandSpec(
                 name="prism_run",
                 cwd=prism_root.resolve(),
                 argv=["uv", "run", "prism", "evolve", "--config", str(case.prism_config_path), "--run-dir", str(case.prism_run_dir)],
-            ),
-            CommandSpec(
-                name="topograph_run",
-                cwd=topograph_root.resolve(),
-                argv=["uv", "run", "topograph", "evolve", "--config", str(case.topograph_config_path), "--run-dir", str(case.topograph_run_dir)],
-            ),
-            CommandSpec(
-                name="stratograph_run",
-                cwd=stratograph_root.resolve(),
-                argv=["uv", "run", "stratograph", "evolve", "--config", str(case.stratograph_config_path), "--run-dir", str(case.stratograph_run_dir)],
-            ),
-        ],
-        [
+            )
+        )
+        stage_exports.append(
             CommandSpec(
                 name="prism_export",
                 cwd=prism_root.resolve(),
@@ -347,7 +347,17 @@ def run_fair_matrix_case(
                     "--output-dir",
                     str(case.prism_run_dir),
                 ],
-            ),
+            )
+        )
+    if not use_portable_topograph:
+        stage_runs.append(
+            CommandSpec(
+                name="topograph_run",
+                cwd=topograph_root.resolve(),
+                argv=["uv", "run", "topograph", "evolve", "--config", str(case.topograph_config_path), "--run-dir", str(case.topograph_run_dir)],
+            )
+        )
+        stage_exports.append(
             CommandSpec(
                 name="topograph_export",
                 cwd=topograph_root.resolve(),
@@ -363,33 +373,61 @@ def run_fair_matrix_case(
                     "--output-dir",
                     str(case.topograph_run_dir),
                 ],
-            ),
-            CommandSpec(
-                name="stratograph_export",
-                cwd=stratograph_root.resolve(),
-                argv=[
-                    "uv",
-                    "run",
-                    "stratograph",
-                    "symbiosis",
-                    "export",
-                    "--run-dir",
-                    str(case.stratograph_run_dir),
-                    "--pack-path",
-                    str(case.pack_path),
-                    "--output-dir",
-                    str(case.stratograph_run_dir),
-                ],
-            ),
-        ],
-    ]
+            )
+        )
 
-    for stage in stages:
+    stage_runs.append(
+        CommandSpec(
+            name="stratograph_run",
+            cwd=stratograph_root.resolve(),
+            argv=["uv", "run", "stratograph", "evolve", "--config", str(case.stratograph_config_path), "--run-dir", str(case.stratograph_run_dir)],
+        )
+    )
+    stage_exports.append(
+        CommandSpec(
+            name="stratograph_export",
+            cwd=stratograph_root.resolve(),
+            argv=[
+                "uv",
+                "run",
+                "stratograph",
+                "symbiosis",
+                "export",
+                "--run-dir",
+                str(case.stratograph_run_dir),
+                "--pack-path",
+                str(case.pack_path),
+                "--output-dir",
+                str(case.stratograph_run_dir),
+            ],
+        )
+    )
+
+    for stage in (stage_runs, stage_exports):
+        if not stage:
+            continue
         if parallel:
             _run_stage_parallel(stage, log_dir=case.log_dir)
         else:
             for spec in stage:
                 _run_command(spec, log_dir=case.log_dir)
+
+    if use_portable_prism:
+        ensure_prism_portable_smoke_export(
+            config_path=case.prism_config_path,
+            pack_path=case.pack_path,
+            run_dir=case.prism_run_dir,
+            output_dir=case.prism_run_dir,
+            log_dir=case.log_dir,
+        )
+    if use_portable_topograph:
+        ensure_topograph_portable_smoke_export(
+            config_path=case.topograph_config_path,
+            pack_path=case.pack_path,
+            run_dir=case.topograph_run_dir,
+            output_dir=case.topograph_run_dir,
+            log_dir=case.log_dir,
+        )
 
     ensure_primordia_export(
         primordia_root=primordia_root.resolve(),
@@ -492,6 +530,20 @@ def _run_stage_parallel(specs: list[CommandSpec], *, log_dir: Path) -> None:
                 errors.append(exc)
     if errors:
         raise errors[0]
+
+
+def _native_runtime_available(project_root: Path, module_name: str) -> bool:
+    try:
+        process = subprocess.run(
+            ["uv", "run", "python", "-c", f"import importlib; importlib.import_module({module_name!r})"],
+            cwd=project_root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return False
+    return process.returncode == 0
 
 
 def _exact_factorization(units: int, *, preferred_population_cap: int) -> tuple[int, int]:

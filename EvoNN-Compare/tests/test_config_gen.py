@@ -1,7 +1,11 @@
 from pathlib import Path
+import subprocess
 
+import pytest
 import yaml
 
+from evonn_compare.orchestration import benchmark_resolution
+from evonn_compare.orchestration.benchmark_resolution import resolve_supported_benchmark_id
 from evonn_compare.orchestration.config_gen import (
     generate_budget_pack,
     generate_prism_config,
@@ -21,6 +25,34 @@ def test_generate_budget_pack_sets_campaign_budget(tmp_path: Path) -> None:
     payload = yaml.safe_load(output.read_text(encoding="utf-8"))
     assert payload["name"] == "tier1_core_eval128"
     assert payload["budget_policy"]["evaluation_count"] == 128
+
+
+def test_resolve_supported_benchmark_id_probes_target_project_environment_when_local_loader_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = type(
+        "Entry",
+        (),
+        {
+            "benchmark_id": "credit_g_classification",
+            "native_ids": {"prism": "credit_g", "evonn": "credit_g_classification"},
+        },
+    )()
+
+    benchmark_resolution._get_benchmark_loader.cache_clear()
+    monkeypatch.setattr(benchmark_resolution, "_get_benchmark_loader", lambda system: None)
+
+    calls: list[dict[str, object]] = []
+
+    def fake_run(argv, *, cwd, stdout, stderr, check):
+        calls.append({"argv": argv, "cwd": cwd, "check": check})
+        code = 0 if "loader('credit_g')" in argv[-1] else 1
+        return subprocess.CompletedProcess(argv, code)
+
+    monkeypatch.setattr(benchmark_resolution.subprocess, "run", fake_run)
+
+    assert resolve_supported_benchmark_id(entry, "prism") == "credit_g"
+    assert calls[0]["cwd"] == benchmark_resolution._PROJECT_ROOTS["prism"]
 
 
 def test_generate_prism_and_topograph_configs_use_legacy_slots(tmp_path: Path) -> None:
@@ -45,7 +77,7 @@ def test_generate_prism_and_topograph_configs_use_legacy_slots(tmp_path: Path) -
     topograph_payload = yaml.safe_load(topograph_path.read_text(encoding="utf-8"))
 
     assert prism_payload["benchmark_pack"]["benchmark_ids"][0] == "iris_classification"
-    assert topograph_payload["benchmark_pool"]["benchmarks"][0] == "iris"
+    assert topograph_payload["benchmark_pool"]["benchmarks"][0] in {"iris", "iris_classification"}
     assert prism_payload["evolution"]["num_generations"] == 1
     assert topograph_payload["training"]["parallel_workers"] == 2
 def test_generate_prism_config_uses_mlp_and_attention_for_mixed_lm_pack(tmp_path: Path) -> None:
@@ -218,7 +250,7 @@ def test_generate_stratograph_and_contender_configs_match_budget(tmp_path: Path)
     stratograph_payload = yaml.safe_load(stratograph_path.read_text(encoding="utf-8"))
     contender_payload = yaml.safe_load(contender_path.read_text(encoding="utf-8"))
 
-    assert stratograph_payload["benchmark_pool"]["benchmarks"][0] == "iris"
+    assert stratograph_payload["benchmark_pool"]["benchmarks"][0] in {"iris", "iris_classification"}
     assert (
         stratograph_payload["evolution"]["population_size"]
         * stratograph_payload["evolution"]["generations"]
@@ -227,6 +259,50 @@ def test_generate_stratograph_and_contender_configs_match_budget(tmp_path: Path)
     )
     assert contender_payload["baseline"]["mode"] == "budget_matched"
     assert contender_payload["baseline"]["target_evaluation_count"] == 64
+
+
+def test_generate_smoke_configs_resolve_supported_benchmark_ids_across_systems(tmp_path: Path) -> None:
+    base_pack = Path(__file__).resolve().parents[1] / "parity_packs" / "tier1_core_smoke.yaml"
+    pack_path = generate_budget_pack(base_pack_path=base_pack, budget=16, output_dir=tmp_path / "packs")
+
+    prism_path = generate_prism_config(
+        output_path=tmp_path / "configs" / "prism.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=16,
+    )
+    stratograph_path = generate_stratograph_config(
+        output_path=tmp_path / "configs" / "stratograph.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=16,
+    )
+    primordia_path = generate_primordia_config(
+        output_path=tmp_path / "configs" / "primordia.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=16,
+        run_name="demo",
+    )
+    contender_path = generate_contender_config(
+        output_path=tmp_path / "configs" / "contenders.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=16,
+        run_name="demo",
+    )
+
+    prism_payload = yaml.safe_load(prism_path.read_text(encoding="utf-8"))
+    stratograph_payload = yaml.safe_load(stratograph_path.read_text(encoding="utf-8"))
+    primordia_payload = yaml.safe_load(primordia_path.read_text(encoding="utf-8"))
+    contender_payload = yaml.safe_load(contender_path.read_text(encoding="utf-8"))
+
+    assert "friedman1" in prism_payload["benchmark_pack"]["benchmark_ids"]
+    assert "credit_g" in prism_payload["benchmark_pack"]["benchmark_ids"]
+    assert "diabetes" in stratograph_payload["benchmark_pool"]["benchmarks"]
+    assert "friedman1" in stratograph_payload["benchmark_pool"]["benchmarks"]
+    assert "diabetes" in primordia_payload["benchmark_pool"]["benchmarks"]
+    assert "credit_g" in contender_payload["benchmark_pool"]["benchmarks"]
 
 
 def test_generate_primordia_config_sets_training_epochs_from_pack_budget(tmp_path: Path) -> None:

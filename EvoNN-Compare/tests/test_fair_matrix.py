@@ -1,9 +1,13 @@
 from pathlib import Path
+import subprocess
+
+import pytest
 
 from evonn_compare.comparison.fair_matrix import build_matrix_summary, summarize_matrix_case
 from evonn_compare.comparison.engine import ComparisonEngine
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.ingest.loader import SystemIngestor
+from evonn_compare.orchestration.fair_matrix import _native_runtime_available
 from evonn_compare.reporting.fair_matrix_md import render_fair_matrix_markdown
 from test_compare import PACK_PATH, _write_run
 
@@ -93,3 +97,37 @@ def test_fair_matrix_reference_row_for_nonfair_pair(tmp_path: Path) -> None:
     assert fair_row is None
     assert reference_row is not None
     assert "prism/contenders" in reference_row.note
+
+
+def test_native_runtime_available_checks_target_project_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run(argv, *, cwd, stdout, stderr, check):
+        calls.append({"argv": argv, "cwd": cwd, "check": check})
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert _native_runtime_available(tmp_path, "prism.pipeline.coordinator") is True
+    assert calls == [
+        {
+            "argv": [
+                "uv",
+                "run",
+                "python",
+                "-c",
+                "import importlib; importlib.import_module('prism.pipeline.coordinator')",
+            ],
+            "cwd": tmp_path,
+            "check": False,
+        }
+    ]
+
+
+def test_native_runtime_available_returns_false_when_probe_cannot_launch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def fake_run(argv, *, cwd, stdout, stderr, check):
+        raise FileNotFoundError("uv missing")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert _native_runtime_available(tmp_path, "prism.pipeline.coordinator") is False
