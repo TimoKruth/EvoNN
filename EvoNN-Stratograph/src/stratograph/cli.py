@@ -91,6 +91,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     results = context["results"]
     genomes = context["genomes"]
     budget_meta = context["budget_meta"]
+    status_payload = context["status"]
     runtime_meta = load_runtime_metadata(budget_meta)
     failed_results = context["failed_results"]
     skipped_results = context["skipped_results"]
@@ -101,6 +102,8 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_column("Value", style="green")
     overview.add_row("Run ID", str(run["run_id"]))
     overview.add_row("Seed", str(run["seed"]))
+    overview.add_row("Created At", str(budget_meta.get("created_at") or run.get("created_at") or "unknown"))
+    overview.add_row("Run State", str(status_payload.get("state", "unknown")))
     overview.add_row("Benchmarks", str(len(results)))
     overview.add_row("Genomes Stored", str(len(genomes)))
     overview.add_row("Runtime", runtime_meta["runtime_backend"])
@@ -109,6 +112,11 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_row("Architecture Mode", str(budget_meta.get("architecture_mode", "unknown")))
     overview.add_row("Evaluation Count", str(budget_meta.get("evaluation_count", 0)))
     overview.add_row("Effective Training Epochs", str(budget_meta.get("effective_training_epochs", "unknown")))
+    overview.add_row(
+        "Completed Benchmarks",
+        f"{status_payload.get('completed_count', len(context['ok_results']) + len(skipped_results) + len(failed_results))}/{status_payload.get('total_benchmarks', len(results))}",
+    )
+    overview.add_row("Remaining Benchmarks", str(status_payload.get("remaining_count", 0)))
     overview.add_row("Novelty Mean", f"{float(budget_meta.get('novelty_score_mean', 0.0)):.4f}")
     overview.add_row("Occupied Niches", str(budget_meta.get("map_elites_occupied_niches", 0)))
     overview.add_row(
@@ -116,6 +124,8 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
         f"ok={len(context['ok_results'])}, skipped={len(skipped_results)}, failed={len(failed_results)}",
     )
     checkpoint_path = run_dir / "checkpoint.json"
+    if context["status_path"].exists():
+        overview.add_row("Status Artifact", str(context["status_path"]))
     if checkpoint_path.exists():
         overview.add_row("Checkpoint", str(checkpoint_path))
     console.print(overview)

@@ -88,10 +88,17 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["device"]["precision_mode"] == budget_meta["precision_mode"]
 
     report = (run_dir / "report.md").read_text(encoding="utf-8")
+    status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
     assert f"- Runtime: `{budget_meta['runtime_backend']}`" in report
     expected_version = budget_meta["runtime_version"] or "unknown"
     assert f"- Runtime Version: `{expected_version}`" in report
     assert f"- Precision Mode: `{budget_meta['precision_mode']}`" in report
+    assert f"- Created At: `{budget_meta['created_at']}`" in report
+    assert f"- Run State: `{status['state']}`" in report
+    assert f"- Completed Benchmarks: `{status['completed_count']}/{status['total_benchmarks']}`" in report
+    assert f"- Remaining Benchmarks: `{status['remaining_count']}`" in report
+    assert "- Status Artifact: `status.json`" in report
+    assert "- Checkpoint Artifact: `checkpoint.json`" in report
     assert f"- Effective Training Epochs: `{budget_meta['effective_training_epochs']}`" in report
     assert f"- Architecture Mode: `{budget_meta['architecture_mode']}`" in report
     assert "## Benchmarks" in report
@@ -121,8 +128,13 @@ def test_inspect_command_surfaces_rich_run_summary(repo_root, tmp_path) -> None:
     assert "Run Overview" in result.stdout
     assert "Best Benchmarks" in result.stdout
     assert "Failure Details" in result.stdout
+    assert "Created At" in result.stdout
+    assert "Run State" in result.stdout
     assert "Runtime Version" in result.stdout
     assert "Precision Mode" in result.stdout
+    assert "Completed Benchmarks" in result.stdout
+    assert "Remaining Benchmarks" in result.stdout
+    assert "Status Artifact" in result.stdout
     assert "Occupied Niches" in result.stdout
 
 

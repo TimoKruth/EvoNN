@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,10 @@ def load_runtime_metadata(budget_meta: dict[str, Any]) -> dict[str, str]:
 def load_report_context(run_dir: str | Path) -> dict[str, Any]:
     """Load one run plus derived reporting summaries from the run DB."""
     run_dir = Path(run_dir)
+    status_path = run_dir / "status.json"
+    checkpoint_path = run_dir / "checkpoint.json"
+    status_payload = json.loads(status_path.read_text(encoding="utf-8")) if status_path.exists() else {}
+
     with RunStore(run_dir / "metrics.duckdb") as store:
         runs = store.load_runs()
         if not runs:
@@ -52,6 +57,9 @@ def load_report_context(run_dir: str | Path) -> dict[str, Any]:
         "results": results,
         "genomes": genomes,
         "budget_meta": budget_meta,
+        "status": status_payload,
+        "status_path": status_path,
+        "checkpoint_path": checkpoint_path,
         "ok_results": ok_results,
         "failed_results": failed_results,
         "skipped_results": skipped_results,
@@ -89,6 +97,7 @@ def write_report(run_dir: str | Path) -> Path:
     results = context["results"]
     genomes = context["genomes"]
     budget_meta = context["budget_meta"]
+    status_payload = context["status"]
     runtime_meta = load_runtime_metadata(budget_meta)
     ok_results = context["ok_results"]
     failed_results = context["failed_results"]
@@ -100,6 +109,8 @@ def write_report(run_dir: str | Path) -> Path:
         "",
         f"- Run ID: `{run['run_id']}`",
         f"- Seed: `{run['seed']}`",
+        f"- Created At: `{budget_meta.get('created_at') or run.get('created_at') or 'unknown'}`",
+        f"- Run State: `{status_payload.get('state', 'unknown')}`",
         f"- Runtime: `{runtime_meta['runtime_backend']}`",
         f"- Runtime Version: `{runtime_meta['runtime_version']}`",
         f"- Precision Mode: `{runtime_meta['precision_mode']}`",
@@ -108,14 +119,22 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Genomes Stored: `{len(genomes)}`",
         f"- Effective Training Epochs: `{budget_meta.get('effective_training_epochs', 'unknown')}`",
         f"- Status Mix: `ok={len(ok_results)}, skipped={len(skipped_results)}, failed={len(failed_results)}`",
+        f"- Completed Benchmarks: `{status_payload.get('completed_count', len(ok_results) + len(skipped_results) + len(failed_results))}/{status_payload.get('total_benchmarks', len(results))}`",
+        f"- Remaining Benchmarks: `{status_payload.get('remaining_count', 0)}`",
         f"- Novelty Mean: `{budget_meta.get('novelty_score_mean', 0.0):.4f}`",
         f"- Occupied Niches: `{budget_meta.get('map_elites_occupied_niches', 0)}`",
+    ]
+    if context["status_path"].exists():
+        lines.append(f"- Status Artifact: `{context['status_path'].name}`")
+    if context["checkpoint_path"].exists():
+        lines.append(f"- Checkpoint Artifact: `{context['checkpoint_path'].name}`")
+    lines.extend([
         "",
         "## Benchmarks",
         "",
         "| Benchmark | Metric | Direction | Status | Notes |",
         "|---|---|---|---|---|",
-    ]
+    ])
     for record in results:
         lines.append(
             f"| {record['benchmark_name']} | {record['metric_name']} | "
