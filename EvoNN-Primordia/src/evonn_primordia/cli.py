@@ -9,7 +9,12 @@ from rich.table import Table
 
 from evonn_primordia.config import load_config
 from evonn_primordia.export import export_symbiosis_contract, write_report, write_seed_candidates
-from evonn_primordia.export.report import build_primitive_bank_summary, enrich_best_results, load_best_results
+from evonn_primordia.export.report import (
+    build_primitive_bank_summary,
+    enrich_best_results,
+    load_best_results,
+    load_runtime_metadata,
+)
 from evonn_primordia.pipeline import run_search
 
 app = typer.Typer(help="Primitive-first evolutionary search for EvoNN.", no_args_is_help=False)
@@ -65,6 +70,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
         raise typer.Exit(code=1)
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    runtime_meta = load_runtime_metadata(summary)
     trial_records_path = run_dir / "trial_records.json"
     trial_records = json.loads(trial_records_path.read_text(encoding="utf-8")) if trial_records_path.exists() else []
     best_results = enrich_best_results(load_best_results(run_dir, summary), trial_records)
@@ -81,8 +87,9 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview = Table(title=f"Run: {summary.get('run_name') or summary.get('run_id') or run_dir.name}")
     overview.add_column("Metric", style="cyan")
     overview.add_column("Value", style="green")
-    overview.add_row("Runtime", str(summary.get("runtime", "unknown")))
-    overview.add_row("Runtime Version", str(summary.get("runtime_version") or "n/a"))
+    overview.add_row("Runtime", runtime_meta["runtime"])
+    overview.add_row("Runtime Version", runtime_meta["runtime_version"])
+    overview.add_row("Precision Mode", runtime_meta["precision_mode"])
     overview.add_row("Evaluation Count", str(summary.get("evaluation_count", 0)))
     overview.add_row("Target Evaluations", str(summary.get("target_evaluation_count", "n/a")))
     overview.add_row("Benchmarks", str(summary.get("benchmark_count", 0)))

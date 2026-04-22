@@ -24,6 +24,7 @@ from evonn_primordia.export.report import build_primitive_bank_summary, write_re
 from evonn_primordia.export.seeding import build_seed_candidates
 
 BUDGET_POLICY_NAME = "prototype_equal_budget"
+PRECISION_MODE = "fp32"
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ def run_search(
     runtime = _load_runtime_bindings()
     runtime_backend = getattr(runtime, "runtime_backend", "mlx")
     runtime_version = getattr(runtime, "runtime_version", _MLX_VERSION)
+    precision_mode = PRECISION_MODE
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     if config_path is not None:
@@ -175,6 +177,7 @@ def run_search(
                     "slot_index": slot_index,
                     "runtime": runtime_backend,
                     "runtime_version": runtime_version,
+                    "precision_mode": precision_mode,
                 }
             except Exception as exc:
                 record = {
@@ -196,6 +199,7 @@ def run_search(
                     "slot_index": slot_index,
                     "runtime": runtime_backend,
                     "runtime_version": runtime_version,
+                    "precision_mode": precision_mode,
                 }
             benchmark_records.append(record)
             executed_records.append(record)
@@ -212,6 +216,7 @@ def run_search(
         "system": "primordia",
         "runtime": runtime_backend,
         "runtime_version": runtime_version,
+        "precision_mode": precision_mode,
         "run_id": run_id,
         "run_name": run_name,
         "status": "complete",

@@ -202,6 +202,7 @@ primitive_pool:
     assert summary["budget_policy_name"] == "prototype_equal_budget"
     assert summary["runtime"] == fake_runtime.runtime_backend
     assert summary["runtime_version"] == fake_runtime.runtime_version
+    assert summary["precision_mode"] == "fp32"
     assert {row["benchmark_name"] for row in summary["best_results"]} == {"iris", "tiny_lm_synthetic"}
 
     pack_path = tmp_path / "pack.yaml"
@@ -239,6 +240,7 @@ seed_policy:
     assert manifest["system"] == "primordia"
     assert manifest["device"]["framework"] == "mlx"
     assert manifest["device"]["framework_version"] == summary["runtime_version"]
+    assert manifest["device"]["precision_mode"] == summary["precision_mode"]
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["artifacts"]["primitive_bank_summary_json"] == "primitive_bank_summary.json"
     assert manifest["artifacts"]["seed_candidates_json"] == "seed_candidates.json"
@@ -248,6 +250,7 @@ seed_policy:
     assert primitive_bank["system"] == "primordia"
     assert primitive_bank["run_id"] == summary["run_id"]
     assert primitive_bank["runtime"] == summary["runtime"]
+    assert primitive_bank["precision_mode"] == summary["precision_mode"]
     assert seed_candidates["system"] == "primordia"
     assert seed_candidates["run_id"] == summary["run_id"]
     assert seed_candidates["seed_candidates"][0]["family"] == "attention"
@@ -294,6 +297,7 @@ primitive_pool:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     summary["runtime"] = "numpy-fallback"
     summary["runtime_version"] = "fallback-1.2.3"
+    summary["precision_mode"] = "bf16"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     pack_path = tmp_path / "pack.yaml"
@@ -323,6 +327,7 @@ seed_policy:
 
     assert manifest["device"]["framework"] == "numpy-fallback"
     assert manifest["device"]["framework_version"] == "fallback-1.2.3"
+    assert manifest["device"]["precision_mode"] == "bf16"
 
 
 def test_enrich_best_results_does_not_guess_ambiguous_benchmark_only_match() -> None:
@@ -679,10 +684,13 @@ primitive_pool:
 
     assert summary["runtime"] == "numpy-fallback"
     assert summary["runtime_version"] == "fallback-0.9"
+    assert summary["precision_mode"] == "fp32"
     assert all(record["runtime"] == "numpy-fallback" for record in trials)
     assert all(record["runtime_version"] == "fallback-0.9" for record in trials)
+    assert all(record["precision_mode"] == "fp32" for record in trials)
     assert "- Runtime: `numpy-fallback`" in report
     assert "- Runtime Version: `fallback-0.9`" in report
+    assert "- Precision Mode: `fp32`" in report
     assert "- Wall Clock Seconds: `" in report
     assert "## Primitive Usage" in report
     assert "| mlp | 1 |" in report

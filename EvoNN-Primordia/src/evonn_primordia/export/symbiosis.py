@@ -15,7 +15,7 @@ from evonn_primordia.benchmarks.parity import fallback_native_id, load_parity_pa
 from evonn_primordia import __version__ as PRIMORDIA_VERSION
 
 from evonn_primordia.config import load_config
-from evonn_primordia.export.report import build_primitive_bank_summary, write_report
+from evonn_primordia.export.report import build_primitive_bank_summary, load_runtime_metadata, write_report
 from evonn_primordia.export.seeding import build_seed_candidates
 
 BUDGET_POLICY_NAME = "prototype_equal_budget"
@@ -44,6 +44,7 @@ def export_symbiosis_contract(
     best_results = json.loads((run_dir / "best_results.json").read_text(encoding="utf-8"))
     trial_records = json.loads((run_dir / "trial_records.json").read_text(encoding="utf-8"))
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    runtime_meta = load_runtime_metadata(summary)
     by_name = {record["benchmark_name"]: record for record in best_results}
 
     manifest_benchmarks: list[dict[str, Any]] = []
@@ -110,8 +111,6 @@ def export_symbiosis_contract(
     _write_summary_json(output_dir / "seed_candidates.json", seed_candidates)
 
     evaluation_count = int(summary.get("evaluation_count", len(trial_records)))
-    runtime_backend = summary.get("runtime", "mlx")
-    runtime_version = summary.get("runtime_version")
     manifest = {
         "schema_version": "1.0",
         "system": "primordia",
@@ -132,9 +131,9 @@ def export_symbiosis_contract(
         },
         "device": {
             "device_name": platform.machine(),
-            "precision_mode": "float32",
-            "framework": runtime_backend,
-            "framework_version": runtime_version,
+            "precision_mode": runtime_meta["precision_mode"],
+            "framework": runtime_meta["runtime"],
+            "framework_version": runtime_meta["runtime_version"],
         },
         "artifacts": {
             "config_snapshot": "config.yaml",

@@ -6,6 +6,16 @@ from pathlib import Path
 from typing import Any
 
 
+def load_runtime_metadata(summary: dict[str, Any]) -> dict[str, str]:
+    """Return normalized runtime metadata from run summary artifacts."""
+
+    return {
+        "runtime": str(summary.get("runtime") or "unknown"),
+        "runtime_version": str(summary.get("runtime_version") or "unknown"),
+        "precision_mode": str(summary.get("precision_mode") or "fp32"),
+    }
+
+
 def _metric_values_match(left: Any, right: Any) -> bool:
     if left is None or right is None:
         return False
@@ -154,6 +164,7 @@ def build_primitive_bank_summary(
         "run_name": summary.get("run_name"),
         "runtime": summary.get("runtime"),
         "runtime_version": summary.get("runtime_version"),
+        "precision_mode": summary.get("precision_mode") or "fp32",
         "primitive_families": primitive_families,
     }
 
@@ -168,6 +179,7 @@ def write_report(run_dir: str | Path) -> Path:
     summary_path = run_dir / "summary.json"
     if summary_path.exists():
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        runtime_meta = load_runtime_metadata(summary)
         trial_records_path = run_dir / "trial_records.json"
         primitive_bank_path = run_dir / "primitive_bank_summary.json"
         seed_candidates_path = run_dir / "seed_candidates.json"
@@ -188,8 +200,9 @@ def write_report(run_dir: str | Path) -> Path:
             "# Primordia Run Report",
             "",
             f"- Run ID: `{summary.get('run_id', run_dir.name)}`",
-            f"- Runtime: `{summary.get('runtime', 'unknown')}`",
-            f"- Runtime Version: `{summary.get('runtime_version') or 'unknown'}`",
+            f"- Runtime: `{runtime_meta['runtime']}`",
+            f"- Runtime Version: `{runtime_meta['runtime_version']}`",
+            f"- Precision Mode: `{runtime_meta['precision_mode']}`",
             f"- Evaluations: `{summary.get('evaluation_count', 0)}`",
             f"- Target Evaluations: `{summary.get('target_evaluation_count', 'n/a')}`",
             f"- Benchmarks: `{summary.get('benchmark_count', 0)}`",
