@@ -85,12 +85,10 @@ def build_primitive_bank_summary(
 
 
 def write_report(run_dir: str | Path) -> Path:
-    """Return the existing Primordia report path, regenerating from run summary if missing."""
+    """Write or refresh the Primordia report from run artifacts when possible."""
 
     run_dir = Path(run_dir)
     report_path = run_dir / "report.md"
-    if report_path.exists():
-        return report_path
 
     summary_path = run_dir / "summary.json"
     if summary_path.exists():
@@ -188,6 +186,9 @@ def write_report(run_dir: str | Path) -> Path:
         return report_path
 
     best_path = run_dir / "best_results.json"
+    if not best_path.exists() and report_path.exists():
+        return report_path
+
     records = json.loads(best_path.read_text(encoding="utf-8")) if best_path.exists() else []
     lines = [
         "# Primordia Export Report",

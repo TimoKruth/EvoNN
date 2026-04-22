@@ -71,6 +71,10 @@ uv run --package evonn-primordia primordia report --run-dir path/to/run
 uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/run --pack-path path/to/pack.yaml
 ```
 
+`primordia report` now refreshes `report.md` from the current run artifacts when
+`summary.json` is present, so stale markdown snapshots can be rebuilt after
+export or telemetry updates without deleting the old report first.
+
 `primordia inspect` now surfaces benchmark-group coverage, primitive-bank leaders,
 representative primitive architectures, and recent failure reasons directly from
 `summary.json` and `trial_records.json`, rebuilding the primitive-bank view from

@@ -520,6 +520,50 @@ primitive_pool:
     assert "- Failure Count: `0`" in report
 
 
+def test_report_refresh_overwrites_existing_report_with_current_summary_data(tmp_path: Path) -> None:
+    run_dir = tmp_path / "refresh_report"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "refresh_report",
+                "runtime": "numpy-fallback",
+                "runtime_version": "fallback-1.0",
+                "evaluation_count": 5,
+                "target_evaluation_count": 6,
+                "benchmark_count": 2,
+                "budget_policy_name": "prototype_equal_budget",
+                "failure_count": 0,
+                "primitive_usage": {"mlp": 5},
+                "group_counts": {"tabular": 2},
+                "wall_clock_seconds": 7.25,
+                "best_results": [
+                    {
+                        "benchmark_name": "iris",
+                        "primitive_name": "mlp-deep",
+                        "metric_name": "accuracy",
+                        "metric_value": 0.97,
+                        "status": "ok",
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    stale_report = run_dir / "report.md"
+    stale_report.write_text("# stale report\n", encoding="utf-8")
+
+    refreshed_path = write_report(run_dir)
+    refreshed = refreshed_path.read_text(encoding="utf-8")
+
+    assert refreshed_path == stale_report
+    assert refreshed != "# stale report\n"
+    assert "- Runtime: `numpy-fallback`" in refreshed
+    assert "| mlp | 5 |" in refreshed
+    assert "| iris | mlp-deep | accuracy | 0.970000 | ok |" in refreshed
+
+
 def test_report_regeneration_reuses_best_results_artifact_when_summary_omits_best_rows(tmp_path: Path) -> None:
     run_dir = tmp_path / "artifact_only_report"
     run_dir.mkdir()
