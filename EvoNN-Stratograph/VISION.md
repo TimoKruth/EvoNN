@@ -231,6 +231,21 @@ evidence hierarchy is discovering something real, not noise.
 
 Can motif priors discovered on one benchmark family improve search on another?
 
+### Which Seeding Ladder Works Better?
+
+Stratograph should also answer whether it is best seeded directly from
+`Primordia` or whether its strongest downstream contribution is to become the
+first stage of a longer inheritance ladder.
+
+That means comparing at least:
+- unseeded Stratograph
+- `Primordia -> Stratograph`
+- `Primordia -> Stratograph -> Topograph`
+
+The first comparison tests whether hierarchy is the right first consumer of
+primitive motifs. The second tests whether Stratograph produces abstractions
+worth passing upward to Topograph.
+
 ### Where Does Hierarchy Hurt?
 
 We also want clear map of failure:
@@ -321,6 +336,18 @@ Instead:
 - LM tasks seed from proven sequence motifs
 - image tasks seed from proven spatial motifs
 - mixed tasks test crossover of motif families
+
+Stratograph should also remain explicit about two different upstream/downstream
+roles in the umbrella seeding story:
+
+- as a **direct consumer** of `Primordia` motifs in the direct ladder
+- as an **intermediate translator** that turns primitive motifs into
+  hierarchy-level priors for `Topograph` in the staged ladder
+
+Both roles matter. The direct ladder tests whether hierarchy is the first
+productive consumer of primitive motifs. The staged ladder tests whether
+hierarchy is the right abstraction layer to refine primitive structure before it
+is handed to flat topology search.
 
 ### 4. Structural Compression And Distillation
 

@@ -248,6 +248,60 @@ The intended stack looks like this:
 6. `Compare` evaluates them under shared packs and fair budget contracts.
 7. The project learns which ideas deserve to survive into later merged systems.
 
+## Seeding Ladders As Research Objects
+
+EvoNN should treat transfer and seeding policy as a first-class research topic,
+not only as a convenience feature.
+
+There are at least two legitimate inheritance ladders the umbrella should test.
+
+### Ladder A: Direct Primitive Seeding
+
+- `Primordia -> Stratograph`
+- `Primordia -> Topograph`
+- `Primordia -> Prism`
+
+This ladder tests whether low-level primitive priors are already rich enough to
+improve all higher systems directly.
+
+Questions this ladder answers:
+- do primitive motifs help every higher abstraction immediately?
+- which packages benefit from direct low-level priors and which do not?
+- does direct seeding accelerate search enough to justify the extra coupling?
+
+### Ladder B: Staged Seeding
+
+- `Primordia -> Stratograph`
+- `Stratograph -> Topograph`
+- `Topograph -> Prism`
+
+This ladder tests whether discoveries should be translated upward through each
+successive abstraction instead of being injected everywhere directly.
+
+Questions this ladder answers:
+- does hierarchy form the right first consumer of primitive motifs?
+- does topology benefit more from hierarchical priors than from raw primitive
+  priors?
+- does Prism become stronger when it inherits already-structured topology-level
+  knowledge instead of primitive-level knowledge?
+
+### Umbrella Policy
+
+EvoNN should not assume one ladder is correct in advance.
+
+Instead, the project should:
+- implement both ladders explicitly
+- label runs with the seeding ladder they use
+- keep non-seeded baselines available
+- compare direct, staged, and no-seeding regimes under shared benchmark packs
+  and budget contracts
+- preserve enough package distinctness that gains can still be attributed to the
+  target architecture rather than hidden coupling
+
+This is important scientifically. If direct primitive seeding helps everything,
+that is evidence. If staged inheritance wins, that is also evidence. The project
+should measure the difference instead of settling the question rhetorically.
+
 That means the umbrella project is not centered on one repo. It is centered on
 an evaluation loop:
 
@@ -299,6 +353,8 @@ Focus:
 - archive reuse
 - benchmark-family priors
 - transfer-aware seeding across systems
+- explicit comparison of direct primitive seeding versus staged seeding ladders
+- run labeling so transfer policy remains auditable in Compare
 
 ### Horizon 4: Harder benchmark classes
 

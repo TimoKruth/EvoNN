@@ -33,6 +33,7 @@ Root-level strategy docs:
 - `BENCHMARK_LADDER.md`
 - `BUDGET_CONTRACT.md`
 - `TELEMETRY_SPEC.md`
+- `SEEDING_LADDERS_IMPLEMENTATION_PLAN.md`
 
 ## Commands
 

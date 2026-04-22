@@ -120,6 +120,52 @@ That should remain central.
 
 Long run, Topograph should not live in isolation. It should be one participant in a broader comparative search ecosystem where runs can be exported, audited, reproduced, and compared against EvoNN, EvoNN-2, and future systems using a shared contract.
 
+## Seeding Strategy Options
+
+Topograph should explicitly support two distinct upstream seeding stories and
+keep them separable in reports and compare artifacts.
+
+### Option A: Direct Primordia Seeding
+
+In this mode, Topograph accepts low-level priors directly from `Primordia`.
+
+This is the shortest inheritance path and tests whether primitive-level motifs
+are already informative enough to bias flat topology search usefully.
+
+Questions:
+- do primitive motifs map cleanly into topology/operator priors?
+- does direct primitive seeding improve search speed or final quality?
+- does it blur the distinction between primitive-first and topology-first search
+  too much to remain scientifically useful?
+
+### Option B: Staged Stratograph Seeding
+
+In this mode, Topograph is seeded by `Stratograph`, which has already consumed
+primitive motifs and translated them into hierarchical structure.
+
+This tests whether Topograph benefits more from already-organized architectural
+priors than from raw primitive priors.
+
+Questions:
+- does hierarchy produce better topology priors than direct primitive motifs?
+- does staged inheritance improve reuse while preserving cleaner abstraction
+  boundaries?
+- are topology-level wins more interpretable when they descend from
+  Stratograph-style motifs instead of direct primitive injection?
+
+### Topograph Rule
+
+Topograph should not collapse these two options into one hidden mechanism.
+
+It should:
+- label the seeding source explicitly
+- preserve an unseeded baseline
+- treat direct and staged seeding as comparable experimental regimes
+- make it easy to inspect which seed source shaped a run
+
+This matters because Topograph is supposed to test flat-topology search as a
+separate idea. Seeding should enrich that test, not erase it.
+
 ## What Topograph Should Become
 
 ### Horizon 1: Reliable Search Engine
