@@ -10,18 +10,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-try:
-    import mlx
-    _EXPORT_FRAMEWORK = "mlx"
-except ImportError:
-    mlx = None
-    _EXPORT_FRAMEWORK = "numpy-fallback"
-
 import stratograph
 from stratograph.benchmarks import get_benchmark
 from stratograph.benchmarks.parity import fallback_native_id, load_parity_pack
 from stratograph.config import load_config
-from stratograph.export.report import write_report
+from stratograph.export.report import load_runtime_metadata, write_report
 from stratograph.storage import RunStore
 
 
@@ -52,8 +45,7 @@ def export_symbiosis_contract(
     _write_summary_json(output_dir / "genome_summary.json", genomes)
     _write_summary_json(output_dir / "model_summary.json", results)
     dataset_manifest = []
-    runtime_backend = budget_meta.get("runtime_backend", _EXPORT_FRAMEWORK)
-    runtime_version = budget_meta.get("runtime_version")
+    runtime_meta = load_runtime_metadata(budget_meta)
 
     manifest_benchmarks: list[dict[str, Any]] = []
     result_records: list[dict[str, Any]] = []
@@ -122,9 +114,9 @@ def export_symbiosis_contract(
         },
         "device": {
             "device_name": platform.machine(),
-            "precision_mode": "float32",
-            "framework": runtime_backend,
-            "framework_version": runtime_version,
+            "precision_mode": runtime_meta["precision_mode"],
+            "framework": runtime_meta["runtime_backend"],
+            "framework_version": runtime_meta["runtime_version"],
         },
         "artifacts": {
             "config_snapshot": "config.yaml",

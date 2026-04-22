@@ -67,6 +67,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert {record["status"] for record in results} <= {"ok", "failed"}
     assert budget_meta["runtime_backend"] in {"mlx", "numpy-fallback"}
     assert "runtime_version" in budget_meta
+    assert budget_meta["precision_mode"] == "fp32"
 
     manifest_path, results_path = export_symbiosis_contract(
         run_dir,
@@ -83,12 +84,14 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
     assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
-    assert manifest["device"]["framework_version"] == budget_meta["runtime_version"]
+    assert manifest["device"]["framework_version"] == (budget_meta["runtime_version"] or "unknown")
+    assert manifest["device"]["precision_mode"] == budget_meta["precision_mode"]
 
     report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert f"- Runtime: `{budget_meta['runtime_backend']}`" in report
     expected_version = budget_meta["runtime_version"] or "unknown"
     assert f"- Runtime Version: `{expected_version}`" in report
+    assert f"- Precision Mode: `{budget_meta['precision_mode']}`" in report
     assert f"- Effective Training Epochs: `{budget_meta['effective_training_epochs']}`" in report
     assert f"- Architecture Mode: `{budget_meta['architecture_mode']}`" in report
     assert "## Benchmarks" in report
@@ -119,6 +122,7 @@ def test_inspect_command_surfaces_rich_run_summary(repo_root, tmp_path) -> None:
     assert "Best Benchmarks" in result.stdout
     assert "Failure Details" in result.stdout
     assert "Runtime Version" in result.stdout
+    assert "Precision Mode" in result.stdout
     assert "Occupied Niches" in result.stdout
 
 

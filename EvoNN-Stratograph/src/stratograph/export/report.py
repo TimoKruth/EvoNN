@@ -8,6 +8,15 @@ from typing import Any
 from stratograph.storage import RunStore
 
 
+def load_runtime_metadata(budget_meta: dict[str, Any]) -> dict[str, str]:
+    """Normalize persisted runtime metadata for CLI/report/export surfaces."""
+    return {
+        "runtime_backend": str(budget_meta.get("runtime_backend") or "unknown"),
+        "runtime_version": str(budget_meta.get("runtime_version") or "unknown"),
+        "precision_mode": str(budget_meta.get("precision_mode") or "fp32"),
+    }
+
+
 def load_report_context(run_dir: str | Path) -> dict[str, Any]:
     """Load one run plus derived reporting summaries from the run DB."""
     run_dir = Path(run_dir)
@@ -80,6 +89,7 @@ def write_report(run_dir: str | Path) -> Path:
     results = context["results"]
     genomes = context["genomes"]
     budget_meta = context["budget_meta"]
+    runtime_meta = load_runtime_metadata(budget_meta)
     ok_results = context["ok_results"]
     failed_results = context["failed_results"]
     skipped_results = context["skipped_results"]
@@ -90,8 +100,9 @@ def write_report(run_dir: str | Path) -> Path:
         "",
         f"- Run ID: `{run['run_id']}`",
         f"- Seed: `{run['seed']}`",
-        f"- Runtime: `{budget_meta.get('runtime_backend', 'unknown')}`",
-        f"- Runtime Version: `{budget_meta.get('runtime_version') or 'unknown'}`",
+        f"- Runtime: `{runtime_meta['runtime_backend']}`",
+        f"- Runtime Version: `{runtime_meta['runtime_version']}`",
+        f"- Precision Mode: `{runtime_meta['precision_mode']}`",
         f"- Architecture Mode: `{budget_meta.get('architecture_mode', 'unknown')}`",
         f"- Benchmarks: `{len(results)}`",
         f"- Genomes Stored: `{len(genomes)}`",

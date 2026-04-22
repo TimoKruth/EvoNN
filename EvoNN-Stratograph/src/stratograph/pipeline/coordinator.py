@@ -35,6 +35,9 @@ from stratograph.search.operators import MOTIF_LIBRARY
 from stratograph.storage import RunStore
 
 
+PRECISION_MODE = "fp32"
+
+
 def run_evolution(
     config: RunConfig,
     *,
@@ -255,6 +258,7 @@ def run_evolution(
             "created_at": created_at,
             "runtime_backend": RUNTIME_BACKEND,
             "runtime_version": RUNTIME_VERSION,
+            "precision_mode": PRECISION_MODE,
             "architecture_mode": architecture_mode,
             "allow_clone_mutation": variant_policy["allow_clone_mutation"],
             "motif_bias": variant_policy["motif_bias"],

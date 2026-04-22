@@ -13,7 +13,7 @@ from stratograph.benchmarks import list_benchmarks
 from stratograph.benchmarks.lm import available_lm_caches, warm_lm_cache
 from stratograph.config import load_config
 from stratograph.export import export_symbiosis_contract, write_report
-from stratograph.export.report import load_report_context
+from stratograph.export.report import load_report_context, load_runtime_metadata
 from stratograph.pipeline import build_execution_ladder, run_evolution, run_execution_ladder
 
 
@@ -91,6 +91,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     results = context["results"]
     genomes = context["genomes"]
     budget_meta = context["budget_meta"]
+    runtime_meta = load_runtime_metadata(budget_meta)
     failed_results = context["failed_results"]
     skipped_results = context["skipped_results"]
     best_results = context["best_results"]
@@ -102,8 +103,9 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_row("Seed", str(run["seed"]))
     overview.add_row("Benchmarks", str(len(results)))
     overview.add_row("Genomes Stored", str(len(genomes)))
-    overview.add_row("Runtime", str(budget_meta.get("runtime_backend", "unknown")))
-    overview.add_row("Runtime Version", str(budget_meta.get("runtime_version") or "unknown"))
+    overview.add_row("Runtime", runtime_meta["runtime_backend"])
+    overview.add_row("Runtime Version", runtime_meta["runtime_version"])
+    overview.add_row("Precision Mode", runtime_meta["precision_mode"])
     overview.add_row("Architecture Mode", str(budget_meta.get("architecture_mode", "unknown")))
     overview.add_row("Evaluation Count", str(budget_meta.get("evaluation_count", 0)))
     overview.add_row("Effective Training Epochs", str(budget_meta.get("effective_training_epochs", "unknown")))
