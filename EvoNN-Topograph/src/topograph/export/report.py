@@ -103,6 +103,17 @@ def primordia_seeding_rows(seeding: dict[str, Any] | None) -> list[tuple[str, st
     return rows
 
 
+def summarize_failure_patterns(failed_results: list[dict[str, Any]]) -> list[tuple[str, int]]:
+    """Aggregate failure reasons for shared inspect/report surfaces."""
+    counts = Counter(str(row.get("failure_reason") or "unknown") for row in failed_results)
+    return counts.most_common()
+
+
+def _escape_markdown_cell(value: Any) -> str:
+    """Escape markdown table cell content derived from runtime strings."""
+    return str(value).replace("|", "\\|").replace("\n", "<br>")
+
+
 def run_state_rows(
     *,
     run: dict[str, Any],
@@ -170,6 +181,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     run_state = store.load_run_state(run_id) or {}
     benchmark_timings = store.load_benchmark_timings(run_id)
     benchmark_results = store.load_benchmark_results(run_id)
+    failed_results = [row for row in benchmark_results if row.get("status") == "failed"]
     timing_summary = _summarize_benchmark_timings(benchmark_timings)
     benchmark_extremes = _benchmark_quality_extremes(store.load_best_benchmark_results(run_id))
     sampled_orders = _sampled_benchmark_orders(benchmark_timings)
@@ -327,6 +339,25 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
             lines.append(
                 f"| {r['benchmark_name']} | {r['metric_name']} "
                 f"| {r['metric_direction']} | {val} | {r['status']} |"
+            )
+        lines.append("")
+
+    failure_patterns = summarize_failure_patterns(failed_results)
+    if failure_patterns:
+        lines.append("## Failure Patterns\n")
+        lines.append("| Reason | Count |")
+        lines.append("|--------|-------|")
+        for reason, count in failure_patterns:
+            lines.append(f"| {_escape_markdown_cell(reason)} | {count} |")
+        lines.append("")
+
+        lines.append("## Failure Details\n")
+        lines.append("| Benchmark | Reason |")
+        lines.append("|-----------|--------|")
+        for record in failed_results:
+            lines.append(
+                f"| {_escape_markdown_cell(record.get('benchmark_name') or 'unknown')} | "
+                f"{_escape_markdown_cell(record.get('failure_reason') or 'unknown')} |"
             )
         lines.append("")
 

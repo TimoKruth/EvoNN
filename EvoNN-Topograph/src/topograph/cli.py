@@ -159,6 +159,7 @@ def inspect(
         load_report_context,
         primordia_seeding_rows,
         run_state_rows,
+        summarize_failure_patterns,
     )
 
     run_path = Path(run_dir)
@@ -179,6 +180,7 @@ def inspect(
     checkpoint_path = context["checkpoint_path"]
     benchmark_results = context["benchmark_results"]
     run_state = context["run_state"]
+    failure_patterns = summarize_failure_patterns(failed_results)
 
     table = Table(title="Run Overview")
     table.add_column("Metric", style="cyan")
@@ -259,6 +261,16 @@ def inspect(
     else:
         best_table.add_row("none", "—", "---", "---", "—", "—")
     console.print(best_table)
+
+    failure_pattern_table = Table(title="Failure Patterns")
+    failure_pattern_table.add_column("Reason", style="white")
+    failure_pattern_table.add_column("Count", style="green")
+    if failure_patterns:
+        for reason, count in failure_patterns:
+            failure_pattern_table.add_row(reason, str(count))
+    else:
+        failure_pattern_table.add_row("none", "0")
+    console.print(failure_pattern_table)
 
     failure_table = Table(title="Failure Details")
     failure_table.add_column("Benchmark", style="cyan")

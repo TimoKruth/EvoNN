@@ -467,6 +467,7 @@ def test_load_report_context_and_inspect_surface_best_benchmarks_and_failures(tm
     assert result.exit_code == 0
     assert "Run Overview" in result.stdout
     assert "Best Benchmarks" in result.stdout
+    assert "Failure Patterns" in result.stdout
     assert "Failure Details" in result.stdout
     assert "Run State" in result.stdout
     assert "in_progress" in result.stdout
@@ -486,6 +487,80 @@ def test_load_report_context_and_inspect_surface_best_benchmarks_and_failures(tm
     assert "Primordia Seed Summary" in result.stdout
     assert "4L/6C sparse" in result.stdout
     assert "bad dataset" in result.stdout
+
+
+def test_generate_report_surfaces_failure_patterns_and_escaped_details(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run("current", {"run_id": "current", "seed": 7, "benchmark": "multi_pack"})
+        genome = Genome.create_seed(InnovationCounter(), random.Random(3))
+        genome.fitness = 0.12
+        store.save_genomes("current", 0, [genome_to_dict(genome)])
+        store.save_budget_metadata(
+            "current",
+            {
+                "runtime_backend": "mlx",
+                "runtime_version": "0.31.0",
+                "precision_mode": "bf16",
+            },
+        )
+        store.save_benchmark_results(
+            "current",
+            0,
+            [
+                {
+                    "benchmark_name": "moons",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": 0.9,
+                    "quality": 0.9,
+                    "parameter_count": 42,
+                    "train_seconds": 0.2,
+                    "architecture_summary": "2L/3C",
+                    "genome_id": "g0",
+                    "genome_idx": 0,
+                    "status": "ok",
+                    "failure_reason": None,
+                },
+                {
+                    "benchmark_name": "lm|pack",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": None,
+                    "quality": None,
+                    "parameter_count": None,
+                    "train_seconds": 0.1,
+                    "architecture_summary": "failed",
+                    "genome_id": "g1",
+                    "genome_idx": 0,
+                    "status": "failed",
+                    "failure_reason": "compile_error|oom\nretry exhausted",
+                },
+                {
+                    "benchmark_name": "iris",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": None,
+                    "quality": None,
+                    "parameter_count": None,
+                    "train_seconds": 0.1,
+                    "architecture_summary": "failed",
+                    "genome_id": "g2",
+                    "genome_idx": 0,
+                    "status": "failed",
+                    "failure_reason": "compile_error|oom\nretry exhausted",
+                },
+            ],
+        )
+
+    report = report_mod.generate_report(run_dir)
+
+    assert "## Failure Patterns" in report
+    assert "| compile_error\\|oom<br>retry exhausted | 2 |" in report
+    assert "## Failure Details" in report
+    assert "| lm\\|pack | compile_error\\|oom<br>retry exhausted |" in report
 
 
 def test_evaluate_pool_namespaces_weight_cache_by_benchmark(monkeypatch):
