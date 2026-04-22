@@ -619,7 +619,8 @@ primitive_pool:
     assert "## Primitive Usage" in regenerated
     assert "| mlp | 1 |" in regenerated
     assert "## Primitive Bank Summary" in regenerated
-    assert "| mlp | 1 | 1 | iris | accuracy | 0.780000 | mlp-64x64 |" in regenerated
+    assert "| Family | Evaluations | Benchmark Wins | Won Benchmarks | Best Metric | Best Value | Representative Genome | Representative Architecture |" in regenerated
+    assert "| mlp | 1 | 1 | iris | accuracy | 0.780000 | mlp-64x64 | mlp[64x64] |" in regenerated
     assert "## Benchmark Group Coverage" in regenerated
     assert "| tabular | 1 |" in regenerated
     assert "## Failure Summary" in regenerated

@@ -132,8 +132,8 @@ def write_report(run_dir: str | Path) -> Path:
             "",
             "## Primitive Bank Summary",
             "",
-            "| Family | Evaluations | Benchmark Wins | Won Benchmarks | Best Metric | Best Value | Representative Genome |",
-            "|---|---:|---:|---|---|---:|---|",
+            "| Family | Evaluations | Benchmark Wins | Won Benchmarks | Best Metric | Best Value | Representative Genome | Representative Architecture |",
+            "|---|---:|---:|---|---|---:|---|---|",
         ])
         primitive_rows = primitive_bank.get("primitive_families") or []
         if primitive_rows:
@@ -142,7 +142,7 @@ def write_report(run_dir: str | Path) -> Path:
                 best_value = row.get("best_metric_value")
                 rendered_value = "---" if best_value is None else f"{float(best_value):.6f}"
                 lines.append(
-                    "| {family} | {evaluation_count} | {benchmark_wins} | {won} | {best_metric} | {best_value} | {genome} |".format(
+                    "| {family} | {evaluation_count} | {benchmark_wins} | {won} | {best_metric} | {best_value} | {genome} | {architecture} |".format(
                         family=row.get("family", "unknown"),
                         evaluation_count=int(row.get("evaluation_count", 0)),
                         benchmark_wins=int(row.get("benchmark_wins", 0)),
@@ -150,10 +150,11 @@ def write_report(run_dir: str | Path) -> Path:
                         best_metric=row.get("best_metric_name") or "—",
                         best_value=rendered_value,
                         genome=row.get("representative_genome_id") or "—",
+                        architecture=row.get("representative_architecture_summary") or "—",
                     )
                 )
         else:
-            lines.append("| none | 0 | 0 | — | — | --- | — |")
+            lines.append("| none | 0 | 0 | — | — | --- | — | — |")
         lines.extend([
             "",
             "## Benchmark Group Coverage",

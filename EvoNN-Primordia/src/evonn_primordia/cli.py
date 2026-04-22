@@ -116,6 +116,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
         bank_table.add_column("Evaluations", style="green")
         bank_table.add_column("Benchmark Wins", style="green")
         bank_table.add_column("Won Benchmarks", style="white")
+        bank_table.add_column("Representative Architecture", style="white")
         for row in bank_rows[:8]:
             won = row.get("benchmarks_won") or row.get("won_benchmarks") or []
             bank_table.add_row(
@@ -123,6 +124,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
                 str(row.get("evaluation_count", 0)),
                 str(row.get("benchmark_wins", 0)),
                 ", ".join(map(str, won)) if won else "—",
+                str(row.get("representative_architecture_summary") or "—"),
             )
         console.print(bank_table)
 

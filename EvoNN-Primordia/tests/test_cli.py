@@ -58,12 +58,14 @@ def test_inspect_renders_compact_run_summary(tmp_path: Path) -> None:
                         "evaluation_count": 4,
                         "benchmark_wins": 2,
                         "benchmarks_won": ["moons", "iris"],
+                        "representative_architecture_summary": "mlp[64,32]",
                     },
                     {
                         "family": "embedding",
                         "evaluation_count": 2,
                         "benchmark_wins": 0,
                         "benchmarks_won": [],
+                        "representative_architecture_summary": "embedding[128]",
                     },
                 ]
             },
@@ -99,11 +101,14 @@ def test_inspect_renders_compact_run_summary(tmp_path: Path) -> None:
     assert "Benchmark Group Coverage" in result.output
     assert "language_modeling" in result.output
     assert "Benchmark Wins" in result.output
+    assert "Representative" in result.output
+    assert "Architecture" in result.output
     assert "Recent Failures" in result.output
     assert "OOM during token embedding warmup" in result.output
     assert "Best Benchmarks" in result.output
     assert "moons" in result.output
     assert "iris" in result.output
+    assert "mlp[64,32]" in result.output
 
 
 def test_inspect_rebuilds_primitive_bank_from_summary_and_trials_when_bank_artifact_is_missing(tmp_path: Path) -> None:
