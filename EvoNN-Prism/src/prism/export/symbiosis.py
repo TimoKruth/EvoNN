@@ -330,8 +330,8 @@ def _load_runtime_metadata(run_dir: Path) -> dict[str, str | None]:
     else:
         summary = {}
     return {
-        "runtime_backend": summary.get("runtime_backend") or "mlx",
-        "runtime_version": summary.get("runtime_version") or _MLX_VERSION,
+        "runtime_backend": summary.get("runtime_backend") or "unknown",
+        "runtime_version": summary.get("runtime_version") or "unknown",
         "precision_mode": summary.get("precision_mode") or "fp32",
     }
 
@@ -453,8 +453,8 @@ def _write_summary_json(
         "generations_completed": (latest_gen + 1) if latest_gen is not None else 0,
         "epochs_per_candidate": config.training.epochs,
         "population_size": config.evolution.population_size,
-        "runtime_backend": device.get("framework", "mlx"),
-        "runtime_version": device.get("framework_version"),
+        "runtime_backend": device.get("framework", "unknown"),
+        "runtime_version": device.get("framework_version") or "unknown",
         "precision_mode": device.get("precision_mode", "fp32"),
         "best_fitness": best_fitness,
         "median_parameter_count": median_param_count,

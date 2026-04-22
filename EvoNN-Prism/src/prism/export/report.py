@@ -364,7 +364,7 @@ def _load_runtime_metadata(run_dir: Path) -> dict[str, str]:
     else:
         summary = {}
     return {
-        "runtime_backend": str(summary.get("runtime_backend") or "mlx"),
+        "runtime_backend": str(summary.get("runtime_backend") or "unknown"),
         "runtime_version": str(summary.get("runtime_version") or "unknown"),
         "precision_mode": str(summary.get("precision_mode") or "fp32"),
     }
