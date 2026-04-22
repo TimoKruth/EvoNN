@@ -180,8 +180,8 @@ def export_symbiosis_contract(
         "device": {
             "device_name": _detect_device(),
             "precision_mode": budget_meta.get("precision_mode", "unknown"),
-            "framework": "mlx",
-            "framework_version": _MLX_VERSION,
+            "framework": budget_meta.get("runtime_backend", "mlx"),
+            "framework_version": budget_meta.get("runtime_version") or _MLX_VERSION,
         },
         "config_snapshot": config.model_dump(mode="json"),
         "artifacts": _build_artifacts_section(
@@ -347,6 +347,7 @@ def _search_telemetry(
         "family_stage_history": budget_meta.get("family_stage_history"),
         "benchmark_elite_families": budget_meta.get("benchmark_elite_families"),
         "topology_atlas_motif_counts": budget_meta.get("topology_atlas_motif_counts"),
+        "primordia_seeding": budget_meta.get("primordia_seeding"),
     }
 
 

@@ -106,6 +106,7 @@ class EarlyStoppingConfig(BaseModel):
 class BenchmarkPoolConfig(BaseModel):
     benchmarks: list[str] = Field(default_factory=list)
     suite: str | None = None
+    primordia_seed_candidates_path: str | None = None
     sample_k: int = 3
     aggregation: Literal["percentile", "family_percentile"] = "family_percentile"
     rotation_interval: int | None = None

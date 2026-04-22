@@ -206,10 +206,20 @@ def inspect(
         table.add_row("Total Evaluations", str(budget["evaluation_count"]))
     if budget.get("effective_training_epochs") is not None:
         table.add_row("Effective Training Epochs", str(budget["effective_training_epochs"]))
+    if budget.get("runtime_backend"):
+        table.add_row("Runtime", str(budget["runtime_backend"]))
+    if budget.get("runtime_version") is not None:
+        table.add_row("Runtime Version", str(budget.get("runtime_version") or "unknown"))
     if budget.get("novelty_score_mean") is not None:
         table.add_row("Novelty Mean", f"{float(budget['novelty_score_mean']):.4f}")
     if budget.get("map_elites_occupied_niches") is not None:
         table.add_row("Occupied Niches", str(budget.get("map_elites_occupied_niches", 0)))
+    if budget.get("primordia_seeding"):
+        seed = budget["primordia_seeding"]
+        table.add_row(
+            "Primordia Seeding",
+            f"{seed.get('selected_family', 'unknown')} -> {seed.get('target_family', 'unknown')} (rank {seed.get('selected_rank', 'n/a')})",
+        )
     if checkpoint_path.exists():
         table.add_row("Checkpoint", str(checkpoint_path))
 

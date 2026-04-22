@@ -124,6 +124,8 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     lines.append(f"- **Benchmark:** {config_dict.get('benchmark', 'N/A')}")
     lines.append(f"- **Generations:** {latest_gen + 1}")
     lines.append(f"- **Population Size:** {len(population)}")
+    lines.append(f"- **Runtime:** {budget.get('runtime_backend', 'unknown')}")
+    lines.append(f"- **Runtime Version:** {budget.get('runtime_version') or 'unknown'}")
     if budget.get("wall_clock_seconds"):
         lines.append(f"- **Wall Clock:** {budget['wall_clock_seconds']:.1f}s")
     if budget.get("evaluation_count"):
@@ -158,6 +160,13 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
             f"{family}={count}" for family, count in budget["benchmark_elite_families"].items()
         )
         lines.append(f"- **Atlas Families:** {family_counts}")
+    primordia_seeding = budget.get("primordia_seeding")
+    if primordia_seeding:
+        lines.append(
+            f"- **Primordia Seeding:** {primordia_seeding.get('selected_family', 'unknown')} "
+            f"for {primordia_seeding.get('target_family', 'unknown')} "
+            f"(rank {primordia_seeding.get('selected_rank', 'n/a')})"
+        )
     lines.append("")
 
     # --- Best Genome ---
