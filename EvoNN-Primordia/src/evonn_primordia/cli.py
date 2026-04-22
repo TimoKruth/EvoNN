@@ -8,13 +8,15 @@ from rich.console import Console
 from rich.table import Table
 
 from evonn_primordia.config import load_config
-from evonn_primordia.export import export_symbiosis_contract, write_report
+from evonn_primordia.export import export_symbiosis_contract, write_report, write_seed_candidates
 from evonn_primordia.export.report import build_primitive_bank_summary, load_best_results
 from evonn_primordia.pipeline import run_search
 
 app = typer.Typer(help="Primitive-first evolutionary search for EvoNN.", no_args_is_help=False)
 symbiosis_app = typer.Typer(help="Export Primordia runs for compare tooling.", no_args_is_help=True)
+seed_app = typer.Typer(help="Build benchmark-conditioned seed artifacts for later EvoNN systems.", no_args_is_help=True)
 app.add_typer(symbiosis_app, name="symbiosis")
+app.add_typer(seed_app, name="seed")
 console = Console()
 
 
@@ -176,6 +178,15 @@ def symbiosis_export(
 
     manifest_path, results_path = export_symbiosis_contract(run_dir, pack_path, output_dir)
     typer.echo(f"{manifest_path}\n{results_path}")
+
+
+@seed_app.command("export")
+def seed_export(
+    run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_okay=True),
+) -> None:
+    """Write Primordia seed candidates for later package seeding experiments."""
+
+    typer.echo(str(write_seed_candidates(run_dir)))
 
 
 if __name__ == "__main__":

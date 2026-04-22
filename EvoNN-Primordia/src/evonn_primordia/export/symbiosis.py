@@ -15,6 +15,7 @@ from evonn_primordia import __version__ as PRIMORDIA_VERSION
 
 from evonn_primordia.config import load_config
 from evonn_primordia.export.report import build_primitive_bank_summary, write_report
+from evonn_primordia.export.seeding import build_seed_candidates
 
 BUDGET_POLICY_NAME = "prototype_equal_budget"
 
@@ -93,6 +94,13 @@ def export_symbiosis_contract(
         trial_records=trial_records,
     )
     _write_summary_json(output_dir / "primitive_bank_summary.json", primitive_bank_summary)
+    seed_candidates = build_seed_candidates(
+        summary=summary,
+        best_results=best_results,
+        trial_records=trial_records,
+        primitive_bank=primitive_bank_summary,
+    )
+    _write_summary_json(output_dir / "seed_candidates.json", seed_candidates)
 
     evaluation_count = int(summary.get("evaluation_count", len(trial_records)))
     runtime_backend = summary.get("runtime", "mlx")
@@ -128,6 +136,7 @@ def export_symbiosis_contract(
             "genome_summary_json": "primitive_trials.json",
             "dataset_manifest_json": "dataset_manifest.json",
             "primitive_bank_summary_json": "primitive_bank_summary.json",
+            "seed_candidates_json": "seed_candidates.json",
         },
         "search_telemetry": {
             "qd_enabled": False,

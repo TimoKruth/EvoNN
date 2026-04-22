@@ -9,6 +9,7 @@ import pytest
 from evonn_primordia.benchmarks import get_benchmark
 from evonn_primordia.config import load_config
 from evonn_primordia.export.report import write_report
+from evonn_primordia.export.seeding import write_seed_candidates
 from evonn_primordia.export.symbiosis import export_symbiosis_contract
 from evonn_primordia.pipeline import run_search
 
@@ -234,17 +235,23 @@ seed_policy:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     results = json.loads(results_path.read_text(encoding="utf-8"))
     primitive_bank = json.loads((run_dir / "primitive_bank_summary.json").read_text(encoding="utf-8"))
+    seed_candidates = json.loads((run_dir / "seed_candidates.json").read_text(encoding="utf-8"))
     assert manifest["system"] == "primordia"
     assert manifest["device"]["framework"] == "mlx"
     assert manifest["device"]["framework_version"] == summary["runtime_version"]
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["artifacts"]["primitive_bank_summary_json"] == "primitive_bank_summary.json"
+    assert manifest["artifacts"]["seed_candidates_json"] == "seed_candidates.json"
     assert manifest["search_telemetry"]["primitive_usage"] == summary["primitive_usage"]
     assert manifest["search_telemetry"]["group_counts"] == summary["group_counts"]
     assert manifest["search_telemetry"]["failure_count"] == 0
     assert primitive_bank["system"] == "primordia"
     assert primitive_bank["run_id"] == summary["run_id"]
     assert primitive_bank["runtime"] == summary["runtime"]
+    assert seed_candidates["system"] == "primordia"
+    assert seed_candidates["run_id"] == summary["run_id"]
+    assert seed_candidates["seed_candidates"][0]["family"] == "attention"
+    assert seed_candidates["benchmark_seeds"][0]["benchmark_group"] == "tabular"
     assert {entry["family"] for entry in primitive_bank["primitive_families"]} == {"attention", "embedding", "mlp", "sparse_mlp"}
     sparse = next(entry for entry in primitive_bank["primitive_families"] if entry["family"] == "sparse_mlp")
     assert sparse["evaluation_count"] == 1
@@ -779,15 +786,14 @@ def test_run_search_requires_runtime_bindings(monkeypatch, tmp_path: Path) -> No
     config_path.write_text(
         """
 seed: 42
-run_name: broken_primordia
+run_name: missing_runtime
 benchmark_pool:
   name: smoke_pack
   benchmarks: [iris]
 primitive_pool:
   tabular: [mlp]
-  synthetic: [mlp]
-  image: [mlp]
-  language_modeling: [embedding]
+training:
+  epochs_per_candidate: 1
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -795,3 +801,136 @@ primitive_pool:
     config = load_config(config_path)
     with pytest.raises(RuntimeError, match="mlx unavailable"):
         run_search(config, run_dir=tmp_path / "run", config_path=config_path)
+
+
+def test_write_seed_candidates_and_report_include_transfer_section(tmp_path: Path) -> None:
+    run_dir = tmp_path / "seed_artifact"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "system": "primordia",
+                "runtime": "numpy-fallback",
+                "runtime_version": "fallback-1.0",
+                "run_id": "seed_artifact",
+                "run_name": "seed_artifact",
+                "evaluation_count": 2,
+                "target_evaluation_count": 2,
+                "benchmark_count": 2,
+                "budget_policy_name": "prototype_equal_budget",
+                "primitive_usage": {"attention": 1, "sparse_mlp": 1},
+                "group_counts": {"tabular": 1, "synthetic": 0, "image": 0, "language_modeling": 1},
+                "failure_count": 0,
+                "wall_clock_seconds": 0.2,
+                "best_results": [
+                    {
+                        "benchmark_name": "iris",
+                        "benchmark_group": "tabular",
+                        "primitive_name": "sparse_mlp",
+                        "primitive_family": "sparse_mlp",
+                        "metric_name": "accuracy",
+                        "metric_value": 0.82,
+                        "status": "ok",
+                        "genome_id": "sparse-1",
+                        "architecture_summary": "sparse_mlp[64x64]",
+                        "runtime": "numpy-fallback",
+                        "runtime_version": "fallback-1.0",
+                    },
+                    {
+                        "benchmark_name": "tiny_lm_synthetic",
+                        "benchmark_group": "language_modeling",
+                        "primitive_name": "attention",
+                        "primitive_family": "attention",
+                        "metric_name": "perplexity",
+                        "metric_value": 3.1,
+                        "status": "ok",
+                        "genome_id": "attention-1",
+                        "architecture_summary": "attention[64x64]",
+                        "runtime": "numpy-fallback",
+                        "runtime_version": "fallback-1.0",
+                    },
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "trial_records.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "iris",
+                    "benchmark_group": "tabular",
+                    "primitive_name": "sparse_mlp",
+                    "primitive_family": "sparse_mlp",
+                    "metric_name": "accuracy",
+                    "metric_value": 0.82,
+                    "quality": 0.82,
+                    "genome_id": "sparse-1",
+                    "architecture_summary": "sparse_mlp[64x64]",
+                    "status": "ok",
+                },
+                {
+                    "benchmark_name": "tiny_lm_synthetic",
+                    "benchmark_group": "language_modeling",
+                    "primitive_name": "attention",
+                    "primitive_family": "attention",
+                    "metric_name": "perplexity",
+                    "metric_value": 3.1,
+                    "quality": -3.1,
+                    "genome_id": "attention-1",
+                    "architecture_summary": "attention[64x64]",
+                    "status": "ok",
+                },
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "best_results.json").write_text(
+        json.dumps(json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))["best_results"], indent=2),
+        encoding="utf-8",
+    )
+    (run_dir / "primitive_bank_summary.json").write_text(
+        json.dumps(
+            {
+                "system": "primordia",
+                "run_id": "seed_artifact",
+                "run_name": "seed_artifact",
+                "runtime": "numpy-fallback",
+                "runtime_version": "fallback-1.0",
+                "primitive_families": [
+                    {
+                        "family": "attention",
+                        "evaluation_count": 1,
+                        "benchmark_wins": 1,
+                        "benchmarks_won": ["tiny_lm_synthetic"],
+                        "best_metric_name": "perplexity",
+                        "best_metric_value": 3.1,
+                        "representative_genome_id": "attention-1",
+                        "representative_architecture_summary": "attention[64x64]",
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    seed_path = write_seed_candidates(run_dir)
+    report_path = write_report(run_dir)
+
+    seed_payload = json.loads(seed_path.read_text(encoding="utf-8"))
+    report = report_path.read_text(encoding="utf-8")
+    assert seed_payload["seed_candidates"][0]["family"] == "attention"
+    assert seed_payload["seed_candidates"][0]["benchmark_groups"] == ["language_modeling"]
+    assert "## Transfer Seed Candidates" in report
+    assert "attention[64x64]" in report
+
+
+def test_primordia_compiler_module_imports_without_touching_mlx_runtime():
+    import importlib
+
+    module = importlib.import_module("evonn_primordia.families.compiler")
+    assert hasattr(module, "compile_genome")
+

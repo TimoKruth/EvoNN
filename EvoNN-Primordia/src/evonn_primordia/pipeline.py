@@ -21,6 +21,7 @@ except ImportError:
 
 from evonn_primordia.config import RunConfig
 from evonn_primordia.export.report import build_primitive_bank_summary, write_report
+from evonn_primordia.export.seeding import build_seed_candidates
 
 BUDGET_POLICY_NAME = "prototype_equal_budget"
 
@@ -106,6 +107,7 @@ def run_search(
             failed = _failed_record(
                 spec=spec,
                 benchmark_name=benchmark_name,
+                benchmark_group=group,
                 reason=str(exc),
                 runtime_backend=runtime_backend,
                 runtime_version=runtime_version,
@@ -156,6 +158,7 @@ def run_search(
                 )
                 record = {
                     "benchmark_name": benchmark_name,
+                    "benchmark_group": group,
                     "primitive_name": primitive_label,
                     "primitive_family": family,
                     "metric_name": result.metric_name,
@@ -176,6 +179,7 @@ def run_search(
             except Exception as exc:
                 record = {
                     "benchmark_name": benchmark_name,
+                    "benchmark_group": group,
                     "primitive_name": primitive_label,
                     "primitive_family": family,
                     "metric_name": spec.metric_name,
@@ -229,10 +233,17 @@ def run_search(
         best_results=best_results,
         trial_records=executed_records,
     )
+    seed_candidates = build_seed_candidates(
+        summary=summary,
+        best_results=best_results,
+        trial_records=executed_records,
+        primitive_bank=primitive_bank_summary,
+    )
     (run_dir / "trial_records.json").write_text(json.dumps(executed_records, indent=2), encoding="utf-8")
     (run_dir / "best_results.json").write_text(json.dumps(best_results, indent=2), encoding="utf-8")
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     (run_dir / "primitive_bank_summary.json").write_text(json.dumps(primitive_bank_summary, indent=2), encoding="utf-8")
+    (run_dir / "seed_candidates.json").write_text(json.dumps(seed_candidates, indent=2), encoding="utf-8")
     write_report(run_dir)
     _emit_progress(
         f"finished run_id={run_id} evaluation_count={len(executed_records)} wall_clock_seconds={wall_clock_seconds:.3f}"
@@ -417,12 +428,14 @@ def _failed_record(
     *,
     spec: Any,
     benchmark_name: str,
+    benchmark_group: str,
     reason: str,
     runtime_backend: str,
     runtime_version: str | None,
 ) -> dict[str, Any]:
     return {
         "benchmark_name": benchmark_name,
+        "benchmark_group": benchmark_group,
         "primitive_name": "load_failed",
         "primitive_family": "load_failed",
         "metric_name": spec.metric_name,

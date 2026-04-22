@@ -47,6 +47,7 @@ Current deliverables:
 - runtime metadata carried through run/export artifacts
 - primitive usage, benchmark-group coverage, and failure telemetry carried through reports/exports
 - primitive bank summary artifact emitted alongside run artifacts and compare exports for later seeding-style analysis
+- benchmark-conditioned seed candidate artifact emitted for downstream family/topology/hierarchy seeding experiments
 - richer markdown reports that include primitive-bank winners and representative genomes
 - richer CLI inspection that summarizes runtime, usage, wins, and best benchmark outcomes from run artifacts
 - budget-matched per-benchmark evaluation scheduling
@@ -68,6 +69,7 @@ uv run --package evonn-primordia primordia --help
 uv run --package evonn-primordia primordia run --config path/to/config.yaml
 uv run --package evonn-primordia primordia inspect --run-dir path/to/run
 uv run --package evonn-primordia primordia report --run-dir path/to/run
+uv run --package evonn-primordia primordia seed export --run-dir path/to/run
 uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/run --pack-path path/to/pack.yaml
 ```
 

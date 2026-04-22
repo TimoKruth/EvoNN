@@ -346,6 +346,75 @@ def test_cli_benchmarks_and_symbiosis_export(monkeypatch, tmp_path: Path):
     assert "manifest" in result.stdout
 
 
+def test_load_report_context_and_inspect_surface_best_benchmarks_and_failures(tmp_path: Path):
+    run_dir = tmp_path / "inspect-run"
+    run_dir.mkdir()
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run("current", {"seed": 7})
+        store.save_budget_metadata(
+            "current",
+            {
+                "evaluation_count": 3,
+                "wall_clock_seconds": 1.5,
+                "effective_training_epochs": 2,
+                "novelty_score_mean": 0.125,
+                "map_elites_occupied_niches": 4,
+            },
+        )
+        genome = Genome.create_seed(InnovationCounter(), random.Random(3))
+        genome.fitness = 0.25
+        genome.param_count = 42
+        genome.model_bytes = 96
+        store.save_genomes("current", 0, [genome_to_dict(genome)])
+        store.save_benchmark_results(
+            "current",
+            0,
+            [
+                {
+                    "benchmark_name": "moons",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": 0.91,
+                    "quality": 0.91,
+                    "parameter_count": 42,
+                    "train_seconds": 0.2,
+                    "architecture_summary": "2L/3C",
+                    "genome_id": "g0",
+                    "genome_idx": 0,
+                    "status": "ok",
+                    "failure_reason": None,
+                },
+                {
+                    "benchmark_name": "iris",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": None,
+                    "quality": None,
+                    "parameter_count": None,
+                    "train_seconds": 0.1,
+                    "architecture_summary": "failed",
+                    "genome_id": "g1",
+                    "genome_idx": 0,
+                    "status": "failed",
+                    "failure_reason": "bad dataset",
+                },
+            ],
+        )
+
+    context = report_mod.load_report_context(run_dir)
+    assert context["latest_generation"] == 0
+    assert len(context["best_results"]) == 2
+    assert len(context["failed_results"]) == 1
+    assert context["failed_results"][0]["failure_reason"] == "bad dataset"
+
+    result = runner.invoke(app, ["inspect", str(run_dir)])
+    assert result.exit_code == 0
+    assert "Run Overview" in result.stdout
+    assert "Best Benchmarks" in result.stdout
+    assert "Failure Details" in result.stdout
+    assert "bad dataset" in result.stdout
+
+
 def test_evaluate_pool_namespaces_weight_cache_by_benchmark(monkeypatch):
     state = GenerationState(
         generation=0,

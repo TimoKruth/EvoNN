@@ -17,6 +17,69 @@ from topograph.storage import RunStore
 # ===========================================================================
 
 
+def load_report_context(run_dir: str | Path) -> dict[str, Any]:
+    """Load the shared Topograph run context used by inspect/report flows."""
+    run_dir = Path(run_dir)
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        run_id = _resolve_run_id(store)
+        latest_gen = store.load_latest_generation(run_id)
+        if latest_gen is None:
+            return {
+                "run_dir": run_dir,
+                "run_id": run_id,
+                "latest_generation": None,
+                "run": {},
+                "population": [],
+                "best_genome": None,
+                "budget_meta": {},
+                "run_state": {},
+                "benchmark_results": [],
+                "ok_results": [],
+                "failed_results": [],
+                "skipped_results": [],
+                "best_results": [],
+                "benchmark_timings": [],
+                "checkpoint_path": run_dir / "checkpoint.json",
+            }
+
+        genome_dicts = store.load_genomes(run_id, latest_gen)
+        population = [dict_to_genome(d) for d in genome_dicts]
+        best_genome = min(
+            population,
+            key=lambda g: g.fitness if g.fitness is not None else float("inf"),
+        ) if population else None
+
+        try:
+            run = store.load_run(run_id)
+        except ValueError:
+            run = {}
+
+        benchmark_results = store.load_benchmark_results(run_id)
+        ok_results = [row for row in benchmark_results if row.get("status") == "ok"]
+        failed_results = [row for row in benchmark_results if row.get("status") == "failed"]
+        skipped_results = [
+            row for row in benchmark_results if row.get("status") not in {None, "ok", "failed"}
+        ]
+
+        return {
+            "run_dir": run_dir,
+            "run_id": run_id,
+            "latest_generation": latest_gen,
+            "run": run,
+            "population": population,
+            "best_genome": best_genome,
+            "budget_meta": store.load_budget_metadata(run_id) or {},
+            "run_state": store.load_run_state(run_id) or {},
+            "benchmark_results": benchmark_results,
+            "ok_results": ok_results,
+            "failed_results": failed_results,
+            "skipped_results": skipped_results,
+            "best_results": store.load_best_benchmark_results(run_id),
+            "benchmark_timings": store.load_benchmark_timings(run_id),
+            "checkpoint_path": run_dir / "checkpoint.json",
+        }
+
+
 def generate_report(run_dir: str | Path, output_path: str | Path | None = None) -> str:
     """Generate a markdown report for a completed run. Returns the markdown string."""
     run_dir = Path(run_dir)

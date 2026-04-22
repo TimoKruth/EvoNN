@@ -95,12 +95,18 @@ def write_report(run_dir: str | Path) -> Path:
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
         trial_records_path = run_dir / "trial_records.json"
         primitive_bank_path = run_dir / "primitive_bank_summary.json"
+        seed_candidates_path = run_dir / "seed_candidates.json"
         best_results = load_best_results(run_dir, summary)
         trial_records = json.loads(trial_records_path.read_text(encoding="utf-8")) if trial_records_path.exists() else []
         primitive_bank = (
             json.loads(primitive_bank_path.read_text(encoding="utf-8"))
             if primitive_bank_path.exists()
             else build_primitive_bank_summary(summary=summary, best_results=best_results, trial_records=trial_records)
+        )
+        seed_candidates = (
+            json.loads(seed_candidates_path.read_text(encoding="utf-8"))
+            if seed_candidates_path.exists()
+            else {"seed_candidates": [], "benchmark_seeds": []}
         )
 
         lines = [
@@ -153,6 +159,28 @@ def write_report(run_dir: str | Path) -> Path:
                 )
         else:
             lines.append("| none | 0 | 0 | — | — | --- | — | — |")
+        lines.extend([
+            "",
+            "## Transfer Seed Candidates",
+            "",
+            "| Rank | Family | Groups | Benchmark Wins | Representative Genome | Representative Architecture |",
+            "|---:|---|---|---:|---|---|",
+        ])
+        seed_rows = seed_candidates.get("seed_candidates") or []
+        if seed_rows:
+            for row in seed_rows[:8]:
+                lines.append(
+                    "| {rank} | {family} | {groups} | {wins} | {genome} | {architecture} |".format(
+                        rank=int(row.get("seed_rank", 0)),
+                        family=row.get("family", "unknown"),
+                        groups=", ".join(row.get("benchmark_groups") or []) or "—",
+                        wins=int(row.get("benchmark_wins", 0)),
+                        genome=row.get("representative_genome_id") or "—",
+                        architecture=row.get("representative_architecture_summary") or "—",
+                    )
+                )
+        else:
+            lines.append("| 0 | none | — | 0 | — | — |")
         lines.extend([
             "",
             "## Benchmark Group Coverage",

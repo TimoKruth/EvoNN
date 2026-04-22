@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-
-import mlx.nn as nn
+from typing import Any
 
 from evonn_primordia.genome import ModelGenome
-from evonn_primordia.families.models import FAMILY_CLASSES
 
 # ---------------------------------------------------------------------------
 # Family -> supported modalities
@@ -37,9 +35,25 @@ FAMILY_MODALITY: dict[str, list[str]] = {
 class CompiledModel:
     """Result of compiling a genome: the model, its family name, and parameter count."""
 
-    model: nn.Module
+    model: Any
     family: str
     parameter_count: int
+
+
+def _load_family_classes() -> dict[str, type[Any]]:
+    """Import MLX-backed family implementations lazily.
+
+    This keeps Primordia importable on non-Darwin hosts until the actual MLX
+    runtime path is requested.
+    """
+    try:
+        from evonn_primordia.families.models import FAMILY_CLASSES
+    except Exception as exc:  # pragma: no cover - exercised via runtime error path
+        raise RuntimeError(
+            "Primordia family compilation requires MLX-backed model families. "
+            "Install Primordia on an MLX-capable host or use the exported run artifacts instead."
+        ) from exc
+    return FAMILY_CLASSES
 
 
 # ---------------------------------------------------------------------------
@@ -87,9 +101,10 @@ def compile_genome(
                      or the genome is invalid.
     """
     family = genome.family
+    family_classes = _load_family_classes()
 
     # Validate family exists
-    if family not in FAMILY_CLASSES:
+    if family not in family_classes:
         raise ValueError(f"Unknown model family: {family!r}")
 
     if task == "language_modeling" and family not in {"embedding", "attention", "sparse_attention"}:
@@ -111,7 +126,7 @@ def compile_genome(
         raise ValueError("output_dim must be positive.")
 
     # Instantiate the model
-    cls = FAMILY_CLASSES[family]
+    cls = family_classes[family]
     try:
         model = cls(genome, input_shape, output_dim, task=task)
     except TypeError as exc:
