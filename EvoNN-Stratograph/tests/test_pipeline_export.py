@@ -75,11 +75,22 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     exported_results = json.loads(results_path.read_text(encoding="utf-8"))
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
 
     assert manifest["system"] == "stratograph"
     assert manifest["pack_name"] == "mini_export_pack"
     assert len(manifest["benchmarks"]) == 2
     assert len(exported_results) == 2
+    assert summary["system"] == "stratograph"
+    assert summary["runtime_backend"] == budget_meta["runtime_backend"]
+    assert summary["runtime_version"] == (budget_meta["runtime_version"] or "unknown")
+    assert summary["precision_mode"] == budget_meta["precision_mode"]
+    assert summary["completed_benchmarks"] == status["completed_count"]
+    assert summary["remaining_benchmarks"] == status["remaining_count"]
+    assert summary["failure_count"] == sum(1 for record in exported_results if record["status"] != "ok")
+    assert "failure_patterns" in summary
+    assert "hierarchy_summary" in summary
     assert manifest["artifacts"]["config_snapshot"] == "config.yaml"
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
@@ -88,7 +99,6 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["device"]["precision_mode"] == budget_meta["precision_mode"]
 
     report = (run_dir / "report.md").read_text(encoding="utf-8")
-    status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
     assert f"- Runtime: `{budget_meta['runtime_backend']}`" in report
     expected_version = budget_meta["runtime_version"] or "unknown"
     assert f"- Runtime Version: `{expected_version}`" in report
