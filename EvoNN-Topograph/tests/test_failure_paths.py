@@ -158,6 +158,9 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
         store.save_budget_metadata(
             "current",
             {
+                "runtime_backend": "mlx",
+                "runtime_version": "0.17.1",
+                "precision_mode": "mixed",
                 "wall_clock_seconds": 3.2,
                 "evaluation_count": 8,
                 "evals_per_second": 2.5,
@@ -284,6 +287,8 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
     assert "Parallel Workers" in report
     assert "Cache Reuse Rate" in report
     assert "Data Cache" in report
+    assert "Precision Mode" in report
+    assert "mixed" in report
     assert "## Sampled Benchmark Order" in report
     assert "## Worst Benchmark Trend" in report
     assert "## Topology Atlas" in report

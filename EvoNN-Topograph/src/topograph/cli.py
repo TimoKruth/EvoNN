@@ -210,6 +210,8 @@ def inspect(
         table.add_row("Runtime", str(budget["runtime_backend"]))
     if budget.get("runtime_version") is not None:
         table.add_row("Runtime Version", str(budget.get("runtime_version") or "unknown"))
+    if budget.get("precision_mode") is not None:
+        table.add_row("Precision Mode", str(budget.get("precision_mode") or "unknown"))
     if budget.get("novelty_score_mean") is not None:
         table.add_row("Novelty Mean", f"{float(budget['novelty_score_mean']):.4f}")
     if budget.get("map_elites_occupied_niches") is not None:

@@ -357,6 +357,9 @@ def test_load_report_context_and_inspect_surface_best_benchmarks_and_failures(tm
                 "evaluation_count": 3,
                 "wall_clock_seconds": 1.5,
                 "effective_training_epochs": 2,
+                "runtime_backend": "mlx",
+                "runtime_version": "0.17.1",
+                "precision_mode": "bf16",
                 "novelty_score_mean": 0.125,
                 "map_elites_occupied_niches": 4,
             },
@@ -412,6 +415,8 @@ def test_load_report_context_and_inspect_surface_best_benchmarks_and_failures(tm
     assert "Run Overview" in result.stdout
     assert "Best Benchmarks" in result.stdout
     assert "Failure Details" in result.stdout
+    assert "Precision Mode" in result.stdout
+    assert "bf16" in result.stdout
     assert "bad dataset" in result.stdout
 
 

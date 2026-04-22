@@ -126,6 +126,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     lines.append(f"- **Population Size:** {len(population)}")
     lines.append(f"- **Runtime:** {budget.get('runtime_backend', 'unknown')}")
     lines.append(f"- **Runtime Version:** {budget.get('runtime_version') or 'unknown'}")
+    lines.append(f"- **Precision Mode:** {budget.get('precision_mode') or 'unknown'}")
     if budget.get("wall_clock_seconds"):
         lines.append(f"- **Wall Clock:** {budget['wall_clock_seconds']:.1f}s")
     if budget.get("evaluation_count"):
