@@ -80,6 +80,29 @@ def load_report_context(run_dir: str | Path) -> dict[str, Any]:
         }
 
 
+def primordia_seeding_rows(seeding: dict[str, Any] | None) -> list[tuple[str, str]]:
+    """Return Topograph seeding metadata rows for inspect/report surfaces."""
+    if not seeding:
+        return []
+
+    rows = [
+        (
+            "Primordia Seeding",
+            f"{seeding.get('selected_family', 'unknown')} -> {seeding.get('target_family', 'unknown')} "
+            f"(rank {seeding.get('selected_rank', 'n/a')})",
+        )
+    ]
+    if seeding.get("seed_path"):
+        rows.append(("Primordia Seed Artifact", str(seeding["seed_path"])))
+    if seeding.get("representative_genome_id"):
+        rows.append(("Primordia Seed Genome", str(seeding["representative_genome_id"])))
+    if seeding.get("representative_architecture_summary"):
+        rows.append(
+            ("Primordia Seed Summary", str(seeding["representative_architecture_summary"]))
+        )
+    return rows
+
+
 def generate_report(run_dir: str | Path, output_path: str | Path | None = None) -> str:
     """Generate a markdown report for a completed run. Returns the markdown string."""
     run_dir = Path(run_dir)
@@ -161,13 +184,8 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
             f"{family}={count}" for family, count in budget["benchmark_elite_families"].items()
         )
         lines.append(f"- **Atlas Families:** {family_counts}")
-    primordia_seeding = budget.get("primordia_seeding")
-    if primordia_seeding:
-        lines.append(
-            f"- **Primordia Seeding:** {primordia_seeding.get('selected_family', 'unknown')} "
-            f"for {primordia_seeding.get('target_family', 'unknown')} "
-            f"(rank {primordia_seeding.get('selected_rank', 'n/a')})"
-        )
+    for label, value in primordia_seeding_rows(budget.get("primordia_seeding")):
+        lines.append(f"- **{label}:** {value}")
     lines.append("")
 
     # --- Best Genome ---

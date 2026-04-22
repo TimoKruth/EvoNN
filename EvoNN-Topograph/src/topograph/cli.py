@@ -154,7 +154,7 @@ def inspect(
     run_dir: str = typer.Argument(..., help="Path to run directory"),
 ) -> None:
     """Inspect run metrics."""
-    from topograph.export.report import dag_summary, load_report_context
+    from topograph.export.report import dag_summary, load_report_context, primordia_seeding_rows
 
     run_path = Path(run_dir)
     context = load_report_context(run_path)
@@ -216,12 +216,8 @@ def inspect(
         table.add_row("Novelty Mean", f"{float(budget['novelty_score_mean']):.4f}")
     if budget.get("map_elites_occupied_niches") is not None:
         table.add_row("Occupied Niches", str(budget.get("map_elites_occupied_niches", 0)))
-    if budget.get("primordia_seeding"):
-        seed = budget["primordia_seeding"]
-        table.add_row(
-            "Primordia Seeding",
-            f"{seed.get('selected_family', 'unknown')} -> {seed.get('target_family', 'unknown')} (rank {seed.get('selected_rank', 'n/a')})",
-        )
+    for label, value in primordia_seeding_rows(budget.get("primordia_seeding")):
+        table.add_row(label, value)
     if checkpoint_path.exists():
         table.add_row("Checkpoint", str(checkpoint_path))
 

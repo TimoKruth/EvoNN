@@ -362,6 +362,14 @@ def test_load_report_context_and_inspect_surface_best_benchmarks_and_failures(tm
                 "precision_mode": "bf16",
                 "novelty_score_mean": 0.125,
                 "map_elites_occupied_niches": 4,
+                "primordia_seeding": {
+                    "seed_path": "/tmp/primordia/seed_candidates.json",
+                    "target_family": "tabular",
+                    "selected_family": "sparse_mlp",
+                    "selected_rank": 2,
+                    "representative_architecture_summary": "4L/6C sparse",
+                    "representative_genome_id": "prim-g7",
+                },
             },
         )
         genome = Genome.create_seed(InnovationCounter(), random.Random(3))
@@ -417,6 +425,14 @@ def test_load_report_context_and_inspect_surface_best_benchmarks_and_failures(tm
     assert "Failure Details" in result.stdout
     assert "Precision Mode" in result.stdout
     assert "bf16" in result.stdout
+    assert "Primordia Seeding" in result.stdout
+    assert "sparse_mlp -> tabular (rank 2)" in result.stdout
+    assert "Primordia Seed Artifact" in result.stdout
+    assert "/tmp/primordia/seed_candidates.json" in result.stdout
+    assert "Primordia Seed Genome" in result.stdout
+    assert "prim-g7" in result.stdout
+    assert "Primordia Seed Summary" in result.stdout
+    assert "4L/6C sparse" in result.stdout
     assert "bad dataset" in result.stdout
 
 
