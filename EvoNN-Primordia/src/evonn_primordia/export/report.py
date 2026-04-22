@@ -6,6 +6,56 @@ from pathlib import Path
 from typing import Any
 
 
+def enrich_best_results(
+    best_results: list[dict[str, Any]],
+    trial_records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Fill missing winner metadata from trial artifacts for backward-compatible reports."""
+
+    trial_by_genome: dict[str, dict[str, Any]] = {}
+    trial_by_benchmark_primitive: dict[tuple[str, str], dict[str, Any]] = {}
+    trial_by_benchmark: dict[str, dict[str, Any]] = {}
+    for record in trial_records:
+        genome_id = record.get("genome_id")
+        if genome_id:
+            trial_by_genome[str(genome_id)] = record
+        benchmark_name = str(record.get("benchmark_name") or "")
+        primitive_name = str(record.get("primitive_name") or "")
+        if benchmark_name and primitive_name:
+            trial_by_benchmark_primitive[(benchmark_name, primitive_name)] = record
+        if benchmark_name and benchmark_name not in trial_by_benchmark:
+            trial_by_benchmark[benchmark_name] = record
+
+    enriched: list[dict[str, Any]] = []
+    for record in best_results:
+        match = None
+        genome_id = record.get("genome_id")
+        if genome_id:
+            match = trial_by_genome.get(str(genome_id))
+        if match is None:
+            benchmark_name = str(record.get("benchmark_name") or "")
+            primitive_name = str(record.get("primitive_name") or "")
+            if benchmark_name and primitive_name:
+                match = trial_by_benchmark_primitive.get((benchmark_name, primitive_name))
+            if match is None and benchmark_name:
+                match = trial_by_benchmark.get(benchmark_name)
+
+        merged = dict(record)
+        if match is not None:
+            for field in (
+                "primitive_family",
+                "benchmark_group",
+                "architecture_summary",
+                "genome_id",
+                "runtime",
+                "runtime_version",
+            ):
+                if merged.get(field) in {None, ""} and match.get(field) not in {None, ""}:
+                    merged[field] = match.get(field)
+        enriched.append(merged)
+    return enriched
+
+
 def load_best_results(run_dir: str | Path, summary: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Load benchmark winners from the summary first, then fall back to best_results.json."""
 
@@ -31,6 +81,7 @@ def build_primitive_bank_summary(
     best_results: list[dict[str, Any]],
     trial_records: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    best_results = enrich_best_results(best_results, trial_records)
     by_family: dict[str, list[dict[str, Any]]] = {}
     for record in trial_records:
         family = str(record.get("primitive_family") or "unknown")
@@ -96,8 +147,8 @@ def write_report(run_dir: str | Path) -> Path:
         trial_records_path = run_dir / "trial_records.json"
         primitive_bank_path = run_dir / "primitive_bank_summary.json"
         seed_candidates_path = run_dir / "seed_candidates.json"
-        best_results = load_best_results(run_dir, summary)
         trial_records = json.loads(trial_records_path.read_text(encoding="utf-8")) if trial_records_path.exists() else []
+        best_results = enrich_best_results(load_best_results(run_dir, summary), trial_records)
         primitive_bank = (
             json.loads(primitive_bank_path.read_text(encoding="utf-8"))
             if primitive_bank_path.exists()

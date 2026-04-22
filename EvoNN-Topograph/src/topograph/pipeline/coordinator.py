@@ -96,6 +96,7 @@ def run_evolution(
     elif benchmark_spec is None:
         benchmark_spec = get_benchmark(config.benchmark)
 
+    existing_budget_meta = store.load_budget_metadata(run_id) if store is not None else None
     state = GenerationState(generation=0, population=[])
     fitness_history: list[float] = []
     pending_outcomes: list[PendingMutationOutcome] = []
@@ -114,7 +115,11 @@ def run_evolution(
     map_elites_insertions = 0
     start_gen = 0
     completed = False
-    primordia_seeding: dict[str, object] | None = None
+    primordia_seeding: dict[str, object] | None = (
+        dict(existing_budget_meta["primordia_seeding"])
+        if existing_budget_meta and existing_budget_meta.get("primordia_seeding")
+        else None
+    )
 
     if resume and store:
         snapshot = store.load_run_state(run_id)

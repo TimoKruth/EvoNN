@@ -186,6 +186,72 @@ def test_inspect_rebuilds_primitive_bank_from_summary_and_trials_when_bank_artif
     assert "moons" in result.output
 
 
+def test_inspect_rebuilds_primitive_bank_without_unknown_family_when_best_results_omit_family(tmp_path: Path) -> None:
+    run_dir = tmp_path / "legacy_best_results"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "legacy_best_results",
+                "run_name": "legacy_best_results",
+                "runtime": "numpy-fallback",
+                "runtime_version": "fallback-1.0",
+                "evaluation_count": 2,
+                "target_evaluation_count": 2,
+                "benchmark_count": 1,
+                "failure_count": 0,
+                "primitive_usage": {"mlp": 2},
+                "group_counts": {"tabular": 1},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "best_results.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "moons",
+                    "primitive_name": "mlp-wide",
+                    "metric_name": "accuracy",
+                    "metric_value": 0.93,
+                    "status": "ok",
+                }
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "trial_records.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "moons",
+                    "benchmark_group": "tabular",
+                    "primitive_name": "mlp-wide",
+                    "primitive_family": "mlp",
+                    "metric_name": "accuracy",
+                    "metric_value": 0.93,
+                    "quality": 0.93,
+                    "genome_id": "mlp-wide-1",
+                    "architecture_summary": "mlp[32,16]",
+                    "status": "ok",
+                }
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["inspect", "--run-dir", str(run_dir)])
+
+    assert result.exit_code == 0
+    assert "Primitive Bank" in result.output
+    assert "mlp" in result.output
+    assert "moons" in result.output
+    assert "unknown" not in result.output
+
+
 def test_inspect_reads_best_benchmarks_from_best_results_artifact_when_summary_omits_them(tmp_path: Path) -> None:
     run_dir = tmp_path / "best_results_artifact"
     run_dir.mkdir()

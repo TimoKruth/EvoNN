@@ -9,7 +9,7 @@ from rich.table import Table
 
 from evonn_primordia.config import load_config
 from evonn_primordia.export import export_symbiosis_contract, write_report, write_seed_candidates
-from evonn_primordia.export.report import build_primitive_bank_summary, load_best_results
+from evonn_primordia.export.report import build_primitive_bank_summary, enrich_best_results, load_best_results
 from evonn_primordia.pipeline import run_search
 
 app = typer.Typer(help="Primitive-first evolutionary search for EvoNN.", no_args_is_help=False)
@@ -65,17 +65,17 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
         raise typer.Exit(code=1)
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    trial_records_path = run_dir / "trial_records.json"
+    trial_records = json.loads(trial_records_path.read_text(encoding="utf-8")) if trial_records_path.exists() else []
+    best_results = enrich_best_results(load_best_results(run_dir, summary), trial_records)
     primitive_bank_path = run_dir / "primitive_bank_summary.json"
     if primitive_bank_path.exists():
         primitive_bank = json.loads(primitive_bank_path.read_text(encoding="utf-8"))
     else:
-        trial_records_path = run_dir / "trial_records.json"
         primitive_bank = build_primitive_bank_summary(
             summary=summary,
-            best_results=load_best_results(run_dir, summary),
-            trial_records=(
-                json.loads(trial_records_path.read_text(encoding="utf-8")) if trial_records_path.exists() else []
-            ),
+            best_results=best_results,
+            trial_records=trial_records,
         )
 
     overview = Table(title=f"Run: {summary.get('run_name') or summary.get('run_id') or run_dir.name}")
@@ -130,9 +130,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
             )
         console.print(bank_table)
 
-    trial_records_path = run_dir / "trial_records.json"
     if summary.get("failure_count", 0) and trial_records_path.exists():
-        trial_records = json.loads(trial_records_path.read_text(encoding="utf-8"))
         failures = [record for record in trial_records if record.get("status") != "ok"]
         if failures:
             failure_table = Table(title="Recent Failures")
@@ -147,7 +145,6 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
                 )
             console.print(failure_table)
 
-    best_results = load_best_results(run_dir, summary)
     if best_results:
         best_table = Table(title="Best Benchmarks")
         best_table.add_column("Benchmark", style="cyan")

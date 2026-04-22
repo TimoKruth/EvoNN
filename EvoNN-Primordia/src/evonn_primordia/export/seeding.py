@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from evonn_primordia.export.report import build_primitive_bank_summary, load_best_results
+from evonn_primordia.export.report import build_primitive_bank_summary, enrich_best_results, load_best_results
 
 
 def build_seed_candidates(
@@ -16,6 +16,7 @@ def build_seed_candidates(
     primitive_bank: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a benchmark-conditioned seed manifest for later EvoNN systems."""
+    best_results = enrich_best_results(best_results, trial_records)
     primitive_bank = primitive_bank or build_primitive_bank_summary(
         summary=summary,
         best_results=best_results,
@@ -23,10 +24,13 @@ def build_seed_candidates(
     )
 
     family_groups: dict[str, set[str]] = {}
-    for record in trial_records:
+    for record in best_results:
+        if record.get("status") != "ok":
+            continue
         family = str(record.get("primitive_family") or "unknown")
-        group = str(record.get("benchmark_group") or "unknown")
-        family_groups.setdefault(family, set()).add(group)
+        group = str(record.get("benchmark_group") or "")
+        if group:
+            family_groups.setdefault(family, set()).add(group)
 
     best_rows: list[dict[str, Any]] = []
     for record in best_results:
@@ -64,7 +68,7 @@ def build_seed_candidates(
             {
                 "seed_rank": index,
                 "family": family,
-                "benchmark_groups": sorted(family_groups.get(family, {"unknown"})),
+                "benchmark_groups": sorted(family_groups.get(family, set())),
                 "evaluation_count": int(row.get("evaluation_count", 0)),
                 "benchmark_wins": int(row.get("benchmark_wins", 0)),
                 "benchmarks_won": list(row.get("benchmarks_won") or []),

@@ -325,6 +325,127 @@ seed_policy:
     assert manifest["device"]["framework_version"] == "fallback-1.2.3"
 
 
+def test_symbiosis_export_with_external_output_dir_writes_self_contained_artifacts(tmp_path: Path) -> None:
+    run_dir = tmp_path / "external_export_run"
+    run_dir.mkdir()
+    (run_dir / "config.yaml").write_text(
+        """
+seed: 42
+run_name: external_export_run
+benchmark_pool:
+  name: smoke_pack
+  benchmarks: [iris]
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "system": "primordia",
+                "runtime": "numpy-fallback",
+                "runtime_version": "fallback-1.0",
+                "run_id": "external_export_run",
+                "run_name": "external_export_run",
+                "evaluation_count": 1,
+                "benchmark_count": 1,
+                "budget_policy_name": "prototype_equal_budget",
+                "primitive_usage": {"mlp": 1},
+                "group_counts": {"tabular": 1},
+                "failure_count": 0,
+                "wall_clock_seconds": 0.1,
+                "best_results": [
+                    {
+                        "benchmark_name": "iris",
+                        "benchmark_group": "tabular",
+                        "primitive_name": "mlp",
+                        "primitive_family": "mlp",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                        "metric_value": 0.9,
+                        "quality": 0.9,
+                        "parameter_count": 10,
+                        "train_seconds": 0.01,
+                        "architecture_summary": "mlp[32]",
+                        "genome_id": "mlp-32",
+                        "status": "ok",
+                        "failure_reason": None,
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "best_results.json").write_text(
+        json.dumps(json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))["best_results"], indent=2),
+        encoding="utf-8",
+    )
+    (run_dir / "trial_records.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "iris",
+                    "benchmark_group": "tabular",
+                    "primitive_name": "mlp",
+                    "primitive_family": "mlp",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": 0.9,
+                    "quality": 0.9,
+                    "parameter_count": 10,
+                    "train_seconds": 0.01,
+                    "architecture_summary": "mlp[32]",
+                    "genome_id": "mlp-32",
+                    "status": "ok",
+                    "failure_reason": None,
+                }
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    pack_path = tmp_path / "external_pack.yaml"
+    pack_path.write_text(
+        """
+name: external_pack
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      primordia: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+budget_policy:
+  evaluation_count: 1
+  epochs_per_candidate: 1
+seed_policy:
+  mode: campaign
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "exported"
+
+    manifest_path, _results_path = export_symbiosis_contract(run_dir, pack_path, output_dir)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["artifacts"]["config_snapshot"] == "config.yaml"
+    assert manifest["artifacts"]["report_markdown"] == "report.md"
+    assert (output_dir / "config.yaml").exists()
+    assert (output_dir / "report.md").exists()
+    assert (output_dir / "primitive_summary.json").exists()
+    assert (output_dir / "primitive_trials.json").exists()
+
+
 def test_primitive_bank_summary_ignores_failed_records_for_wins_and_representatives(tmp_path: Path) -> None:
     run_dir = tmp_path / "failed_bank"
     run_dir.mkdir()
@@ -882,6 +1003,18 @@ def test_write_seed_candidates_and_report_include_transfer_section(tmp_path: Pat
                     "architecture_summary": "attention[64x64]",
                     "status": "ok",
                 },
+                {
+                    "benchmark_name": "iris",
+                    "benchmark_group": "tabular",
+                    "primitive_name": "attention",
+                    "primitive_family": "attention",
+                    "metric_name": "accuracy",
+                    "metric_value": 0.71,
+                    "quality": 0.71,
+                    "genome_id": "attention-tabular-1",
+                    "architecture_summary": "attention[32x32]",
+                    "status": "ok",
+                },
             ],
             indent=2,
         ),
@@ -933,4 +1066,3 @@ def test_primordia_compiler_module_imports_without_touching_mlx_runtime():
 
     module = importlib.import_module("evonn_primordia.families.compiler")
     assert hasattr(module, "compile_genome")
-

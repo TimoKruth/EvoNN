@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +35,12 @@ def export_symbiosis_contract(
     config = load_config(run_dir / "config.yaml")
     pack = load_parity_pack(pack_path)
     report_path = write_report(run_dir)
+    export_config_path = output_dir / "config.yaml"
+    export_report_path = output_dir / "report.md"
+    if run_dir / "config.yaml" != export_config_path:
+        shutil.copy2(run_dir / "config.yaml", export_config_path)
+    if Path(report_path) != export_report_path:
+        shutil.copy2(report_path, export_report_path)
     best_results = json.loads((run_dir / "best_results.json").read_text(encoding="utf-8"))
     trial_records = json.loads((run_dir / "trial_records.json").read_text(encoding="utf-8"))
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
@@ -131,7 +138,7 @@ def export_symbiosis_contract(
         },
         "artifacts": {
             "config_snapshot": "config.yaml",
-            "report_markdown": str(Path(report_path).relative_to(run_dir)),
+            "report_markdown": "report.md",
             "model_summary_json": "primitive_summary.json",
             "genome_summary_json": "primitive_trials.json",
             "dataset_manifest_json": "dataset_manifest.json",
