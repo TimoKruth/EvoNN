@@ -5,7 +5,7 @@ from typer.testing import CliRunner
 from stratograph.cli import app
 from stratograph.config import BenchmarkPoolConfig, load_config
 from stratograph.export import export_symbiosis_contract
-from stratograph.export.report import load_report_context
+from stratograph.export.report import _escape_markdown_cell, load_report_context, summarize_failure_patterns
 from stratograph.pipeline import build_execution_ladder, run_evolution
 from stratograph.storage import RunStore
 
@@ -110,8 +110,10 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert "| Reuse Ratio | `" in report
     assert "## Benchmarks" in report
     assert "## Best Benchmarks" in report
+    assert "## Failure Patterns" in report
     assert "## Failure Details" in report
     assert "| Benchmark | Metric | Value | Quality | Params | Train Seconds | Genome | Architecture |" in report
+    assert "| Reason | Count |" in report
     assert "| Benchmark | Reason |" in report
 
 
@@ -134,6 +136,7 @@ def test_inspect_command_surfaces_rich_run_summary(repo_root, tmp_path) -> None:
     assert result.exit_code == 0
     assert "Run Overview" in result.stdout
     assert "Best Benchmarks" in result.stdout
+    assert "Failure Patterns" in result.stdout
     assert "Failure Details" in result.stdout
     assert "Created At" in result.stdout
     assert "Run State" in result.stdout
@@ -209,8 +212,30 @@ def test_report_context_keeps_best_result_per_benchmark(tmp_path) -> None:
     assert context["best_results"][0]["genome_id"] == "g2"
 
 
+def test_summarize_failure_patterns_groups_duplicate_reasons() -> None:
+    failed_results = [
+        {"failure_reason": "compile_error"},
+        {"failure_reason": "compile_error"},
+        {"failure_reason": "oom"},
+        {"failure_reason": None},
+    ]
+
+    assert summarize_failure_patterns(failed_results) == [
+        ("compile_error", 2),
+        ("oom", 1),
+        ("unknown", 1),
+    ]
+
+
+
+def test_escape_markdown_cell_handles_pipes_and_newlines() -> None:
+    assert _escape_markdown_cell("compile|error\nretry") == "compile\\|error<br>retry"
+
+
+
 def test_report_context_selects_representative_hierarchy_genome(tmp_path) -> None:
     run_dir = tmp_path / "representative_run"
+
     with RunStore(run_dir / "metrics.duckdb") as store:
         store.record_run(
             run_id="representative_run",

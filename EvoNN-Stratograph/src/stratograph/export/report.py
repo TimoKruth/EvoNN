@@ -1,8 +1,8 @@
 """Report rendering for prototype runs."""
-
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -125,6 +125,16 @@ def _render_seconds(value: Any) -> str:
     return f"{float(value):.3f}"
 
 
+def _escape_markdown_cell(value: Any) -> str:
+    return str(value).replace("|", "\\|").replace("\n", "<br>")
+
+
+def summarize_failure_patterns(failed_results: list[dict[str, Any]]) -> list[tuple[str, int]]:
+    """Return compact failure-pattern counts for inspect/report parity."""
+    counts = Counter(str(record.get("failure_reason") or "unknown") for record in failed_results)
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+
+
 
 def write_report(run_dir: str | Path) -> Path:
     """Render prototype markdown report from run DB."""
@@ -141,6 +151,7 @@ def write_report(run_dir: str | Path) -> Path:
     skipped_results = context["skipped_results"]
     best_results = context["best_results"]
     representative_genome = context["representative_genome"]
+    failure_patterns = summarize_failure_patterns(failed_results)
 
     lines = [
         "# Stratograph Prototype Report",
@@ -223,6 +234,19 @@ def write_report(run_dir: str | Path) -> Path:
 
     lines.extend([
         "",
+        "## Failure Patterns",
+        "",
+        "| Reason | Count |",
+        "|---|---:|",
+    ])
+    if failure_patterns:
+        for reason, count in failure_patterns:
+            lines.append(f"| {_escape_markdown_cell(reason)} | {count} |")
+    else:
+        lines.append("| none | 0 |")
+
+    lines.extend([
+        "",
         "## Failure Details",
         "",
         "| Benchmark | Reason |",
@@ -230,7 +254,10 @@ def write_report(run_dir: str | Path) -> Path:
     ])
     if failed_results:
         for record in failed_results:
-            lines.append(f"| {record['benchmark_name']} | {record.get('failure_reason') or 'unknown'} |")
+            lines.append(
+                f"| {_escape_markdown_cell(record['benchmark_name'])} | "
+                f"{_escape_markdown_cell(record.get('failure_reason') or 'unknown')} |"
+            )
     else:
         lines.append("| none | no failed benchmarks |")
 

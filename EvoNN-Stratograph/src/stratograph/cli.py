@@ -13,7 +13,11 @@ from stratograph.benchmarks import list_benchmarks
 from stratograph.benchmarks.lm import available_lm_caches, warm_lm_cache
 from stratograph.config import load_config
 from stratograph.export import export_symbiosis_contract, write_report
-from stratograph.export.report import load_report_context, load_runtime_metadata
+from stratograph.export.report import (
+    load_report_context,
+    load_runtime_metadata,
+    summarize_failure_patterns,
+)
 from stratograph.pipeline import build_execution_ladder, run_evolution, run_execution_ladder
 
 
@@ -160,15 +164,30 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
         best_table.add_row("none", "—", "---", "---", "—", "—")
     console.print(best_table)
 
-    failure_table = Table(title="Failure Details")
-    failure_table.add_column("Benchmark", style="cyan")
+    failure_patterns = summarize_failure_patterns(failed_results)
+
+    failure_table = Table(title="Failure Patterns")
     failure_table.add_column("Reason", style="white")
+    failure_table.add_column("Count", style="green")
+    if failure_patterns:
+        for reason, count in failure_patterns:
+            failure_table.add_row(reason, str(count))
+    else:
+        failure_table.add_row("none", "0")
+    console.print(failure_table)
+
+    failure_detail_table = Table(title="Failure Details")
+    failure_detail_table.add_column("Benchmark", style="cyan")
+    failure_detail_table.add_column("Reason", style="white")
     if failed_results:
         for record in failed_results:
-            failure_table.add_row(str(record["benchmark_name"]), str(record.get("failure_reason") or "unknown"))
+            failure_detail_table.add_row(
+                str(record["benchmark_name"]),
+                str(record.get("failure_reason") or "unknown"),
+            )
     else:
-        failure_table.add_row("none", "no failed benchmarks")
-    console.print(failure_table)
+        failure_detail_table.add_row("none", "no failed benchmarks")
+    console.print(failure_detail_table)
 
 
 @symbiosis_app.command("export")

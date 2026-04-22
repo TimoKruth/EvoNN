@@ -16,7 +16,7 @@ Current state:
 - Lightweight runtime maturity added: stronger heads, LM bucket/trigram scorer, SGD inheritance
 - Ablation runner implemented to test flat vs unshared vs shared hierarchy
 - Motif mining implemented for repeated winning sub-cell structures
-- Runtime maturity improved with resume, checkpoint, status, and best-genome artifacts
+- Runtime maturity improved with resume, checkpoint, status, best-genome artifacts, and failure-pattern summaries in inspect/report
 - Compare-compatible export and startup formats implemented
 - Benchmark loading + parity/export boundary implemented
 - Runtime backend/version metadata carried through compare exports
