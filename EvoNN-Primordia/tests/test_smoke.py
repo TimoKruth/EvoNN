@@ -8,7 +8,7 @@ import pytest
 
 from evonn_primordia.benchmarks import get_benchmark
 from evonn_primordia.config import load_config
-from evonn_primordia.export.report import write_report
+from evonn_primordia.export.report import enrich_best_results, write_report
 from evonn_primordia.export.seeding import write_seed_candidates
 from evonn_primordia.export.symbiosis import export_symbiosis_contract
 from evonn_primordia.pipeline import run_search
@@ -323,6 +323,50 @@ seed_policy:
 
     assert manifest["device"]["framework"] == "numpy-fallback"
     assert manifest["device"]["framework_version"] == "fallback-1.2.3"
+
+
+def test_enrich_best_results_does_not_guess_ambiguous_benchmark_only_match() -> None:
+    best_results = [
+        {
+            "benchmark_name": "iris",
+            "metric_name": "accuracy",
+            "metric_value": 0.9,
+            "status": "ok",
+        }
+    ]
+    trial_records = [
+        {
+            "benchmark_name": "iris",
+            "benchmark_group": "tabular",
+            "primitive_name": "mlp-a",
+            "primitive_family": "mlp",
+            "metric_name": "accuracy",
+            "metric_value": 0.88,
+            "quality": 0.88,
+            "genome_id": "g-a",
+            "architecture_summary": "mlp[32]",
+            "status": "ok",
+        },
+        {
+            "benchmark_name": "iris",
+            "benchmark_group": "tabular",
+            "primitive_name": "mlp-b",
+            "primitive_family": "sparse_mlp",
+            "metric_name": "accuracy",
+            "metric_value": 0.91,
+            "quality": 0.91,
+            "genome_id": "g-b",
+            "architecture_summary": "sparse_mlp[64]",
+            "status": "ok",
+        },
+    ]
+
+    enriched = enrich_best_results(best_results, trial_records)
+
+    assert enriched[0]["benchmark_name"] == "iris"
+    assert "primitive_family" not in enriched[0]
+    assert "genome_id" not in enriched[0]
+    assert "architecture_summary" not in enriched[0]
 
 
 def test_symbiosis_export_with_external_output_dir_writes_self_contained_artifacts(tmp_path: Path) -> None:

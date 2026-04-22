@@ -6,6 +6,12 @@ from pathlib import Path
 from typing import Any
 
 
+def _metric_values_match(left: Any, right: Any) -> bool:
+    if left is None or right is None:
+        return False
+    return abs(float(left) - float(right)) <= 1e-12
+
+
 def enrich_best_results(
     best_results: list[dict[str, Any]],
     trial_records: list[dict[str, Any]],
@@ -13,8 +19,8 @@ def enrich_best_results(
     """Fill missing winner metadata from trial artifacts for backward-compatible reports."""
 
     trial_by_genome: dict[str, dict[str, Any]] = {}
-    trial_by_benchmark_primitive: dict[tuple[str, str], dict[str, Any]] = {}
-    trial_by_benchmark: dict[str, dict[str, Any]] = {}
+    trial_by_benchmark_primitive: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    trial_by_benchmark: dict[str, list[dict[str, Any]]] = {}
     for record in trial_records:
         genome_id = record.get("genome_id")
         if genome_id:
@@ -22,9 +28,9 @@ def enrich_best_results(
         benchmark_name = str(record.get("benchmark_name") or "")
         primitive_name = str(record.get("primitive_name") or "")
         if benchmark_name and primitive_name:
-            trial_by_benchmark_primitive[(benchmark_name, primitive_name)] = record
-        if benchmark_name and benchmark_name not in trial_by_benchmark:
-            trial_by_benchmark[benchmark_name] = record
+            trial_by_benchmark_primitive.setdefault((benchmark_name, primitive_name), []).append(record)
+        if benchmark_name:
+            trial_by_benchmark.setdefault(benchmark_name, []).append(record)
 
     enriched: list[dict[str, Any]] = []
     for record in best_results:
@@ -35,10 +41,28 @@ def enrich_best_results(
         if match is None:
             benchmark_name = str(record.get("benchmark_name") or "")
             primitive_name = str(record.get("primitive_name") or "")
+            benchmark_candidates = trial_by_benchmark.get(benchmark_name, [])
             if benchmark_name and primitive_name:
-                match = trial_by_benchmark_primitive.get((benchmark_name, primitive_name))
-            if match is None and benchmark_name:
-                match = trial_by_benchmark.get(benchmark_name)
+                primitive_candidates = trial_by_benchmark_primitive.get((benchmark_name, primitive_name), [])
+                if len(primitive_candidates) == 1:
+                    match = primitive_candidates[0]
+            if match is None and benchmark_candidates:
+                metric_name = record.get("metric_name")
+                status = record.get("status")
+                metric_value = record.get("metric_value")
+                precise_candidates = [
+                    candidate for candidate in benchmark_candidates
+                    if (metric_name in {None, ""} or candidate.get("metric_name") == metric_name)
+                    and (status in {None, ""} or candidate.get("status") == status)
+                    and (
+                        metric_value is None
+                        or _metric_values_match(candidate.get("metric_value"), metric_value)
+                    )
+                ]
+                if len(precise_candidates) == 1:
+                    match = precise_candidates[0]
+                elif len(benchmark_candidates) == 1:
+                    match = benchmark_candidates[0]
 
         merged = dict(record)
         if match is not None:

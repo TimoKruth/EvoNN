@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from collections import Counter
 import importlib.metadata
 import json
@@ -115,9 +116,14 @@ def run_evolution(
     map_elites_insertions = 0
     start_gen = 0
     completed = False
+    stored_primordia_seeding = (
+        existing_budget_meta.get("primordia_seeding")
+        if isinstance(existing_budget_meta, dict)
+        else None
+    )
     primordia_seeding: dict[str, object] | None = (
-        dict(existing_budget_meta["primordia_seeding"])
-        if existing_budget_meta and existing_budget_meta.get("primordia_seeding")
+        dict(stored_primordia_seeding)
+        if isinstance(stored_primordia_seeding, Mapping)
         else None
     )
 
