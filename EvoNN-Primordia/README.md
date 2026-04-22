@@ -72,9 +72,10 @@ uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/ru
 ```
 
 `primordia inspect` now surfaces benchmark-group coverage, primitive-bank leaders,
-and recent failure reasons directly from `summary.json` and `trial_records.json`
-so Primordia run introspection stays closer to Prism/Topograph-style operator
-inspection.
+and recent failure reasons directly from `summary.json` and `trial_records.json`,
+rebuilding the primitive-bank view from `best_results.json`/`trial_records.json`
+when the bank artifact itself is missing, so Primordia run introspection stays
+closer to Prism/Topograph-style operator inspection.
 
 ## Fair Comparison Role
 

@@ -9,6 +9,7 @@ from rich.table import Table
 
 from evonn_primordia.config import load_config
 from evonn_primordia.export import export_symbiosis_contract, write_report
+from evonn_primordia.export.report import build_primitive_bank_summary
 from evonn_primordia.pipeline import run_search
 
 app = typer.Typer(help="Primitive-first evolutionary search for EvoNN.", no_args_is_help=False)
@@ -63,11 +64,20 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     primitive_bank_path = run_dir / "primitive_bank_summary.json"
-    primitive_bank = (
-        json.loads(primitive_bank_path.read_text(encoding="utf-8"))
-        if primitive_bank_path.exists()
-        else {"primitive_families": []}
-    )
+    if primitive_bank_path.exists():
+        primitive_bank = json.loads(primitive_bank_path.read_text(encoding="utf-8"))
+    else:
+        best_results_path = run_dir / "best_results.json"
+        trial_records_path = run_dir / "trial_records.json"
+        primitive_bank = build_primitive_bank_summary(
+            summary=summary,
+            best_results=(
+                json.loads(best_results_path.read_text(encoding="utf-8")) if best_results_path.exists() else []
+            ),
+            trial_records=(
+                json.loads(trial_records_path.read_text(encoding="utf-8")) if trial_records_path.exists() else []
+            ),
+        )
 
     overview = Table(title=f"Run: {summary.get('run_name') or summary.get('run_id') or run_dir.name}")
     overview.add_column("Metric", style="cyan")
