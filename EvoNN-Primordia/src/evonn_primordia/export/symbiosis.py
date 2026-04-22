@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from statistics import median as stat_median
 from typing import Any
 
 from evonn_primordia.benchmarks import get_benchmark
@@ -111,6 +112,9 @@ def export_symbiosis_contract(
     _write_summary_json(output_dir / "seed_candidates.json", seed_candidates)
 
     evaluation_count = int(summary.get("evaluation_count", len(trial_records)))
+    compare_summary = _build_compare_summary(summary=summary, results=result_records, evaluation_count=evaluation_count)
+    _write_summary_json(output_dir / "compare_summary.json", compare_summary)
+
     manifest = {
         "schema_version": "1.0",
         "system": "primordia",
@@ -125,6 +129,7 @@ def export_symbiosis_contract(
             "evaluation_count": evaluation_count,
             "epochs_per_candidate": config.training.epochs_per_candidate,
             "effective_training_epochs": config.training.epochs_per_candidate,
+            "wall_clock_seconds": summary.get("wall_clock_seconds"),
             "generations": 1,
             "population_size": evaluation_count,
             "budget_policy_name": BUDGET_POLICY_NAME,
@@ -138,7 +143,7 @@ def export_symbiosis_contract(
         "artifacts": {
             "config_snapshot": "config.yaml",
             "report_markdown": "report.md",
-            "model_summary_json": "primitive_summary.json",
+            "model_summary_json": "compare_summary.json",
             "genome_summary_json": "primitive_trials.json",
             "dataset_manifest_json": "dataset_manifest.json",
             "primitive_bank_summary_json": "primitive_bank_summary.json",
@@ -193,6 +198,51 @@ def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]])
 
 def _write_summary_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _build_compare_summary(
+    *,
+    summary: dict[str, Any],
+    results: list[dict[str, Any]],
+    evaluation_count: int,
+) -> dict[str, Any]:
+    best_fitness: dict[str, float] = {}
+    ok_param_counts: list[int] = []
+    quality_values: list[float] = []
+    for record in results:
+        if record.get("status") != "ok":
+            continue
+        benchmark_id = str(record.get("benchmark_id") or "")
+        metric_value = record.get("metric_value")
+        if benchmark_id and metric_value is not None:
+            best_fitness[benchmark_id] = float(metric_value)
+        parameter_count = record.get("parameter_count")
+        if parameter_count is not None:
+            ok_param_counts.append(int(parameter_count))
+        quality = record.get("quality")
+        if quality is not None:
+            quality_values.append(float(quality))
+
+    return {
+        "system": "primordia",
+        "run_id": summary["run_id"],
+        "status": summary.get("status", "complete"),
+        "total_evaluations": evaluation_count,
+        "generations_completed": 1,
+        "epochs_per_candidate": int(summary.get("epochs_per_candidate", 0)),
+        "population_size": evaluation_count,
+        "runtime_backend": summary.get("runtime", "unknown"),
+        "runtime_version": summary.get("runtime_version") or "unknown",
+        "precision_mode": summary.get("precision_mode", "unknown"),
+        "best_fitness": best_fitness,
+        "median_parameter_count": int(stat_median(ok_param_counts)) if ok_param_counts else 0,
+        "median_benchmark_quality": float(stat_median(quality_values)) if quality_values else None,
+        "failure_count": sum(1 for record in results if record.get("status") != "ok"),
+        "benchmarks_evaluated": len(best_fitness),
+        "wall_clock_seconds": summary.get("wall_clock_seconds"),
+        "primitive_usage": summary.get("primitive_usage", {}),
+        "group_counts": summary.get("group_counts", {}),
+    }
 
 
 def _fairness_manifest(

@@ -235,6 +235,7 @@ seed_policy:
     manifest_path, results_path = export_symbiosis_contract(run_dir, pack_path, run_dir)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     results = json.loads(results_path.read_text(encoding="utf-8"))
+    compare_summary = json.loads((run_dir / "compare_summary.json").read_text(encoding="utf-8"))
     primitive_bank = json.loads((run_dir / "primitive_bank_summary.json").read_text(encoding="utf-8"))
     seed_candidates = json.loads((run_dir / "seed_candidates.json").read_text(encoding="utf-8"))
     assert manifest["system"] == "primordia"
@@ -242,11 +243,20 @@ seed_policy:
     assert manifest["device"]["framework_version"] == summary["runtime_version"]
     assert manifest["device"]["precision_mode"] == summary["precision_mode"]
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
+    assert manifest["budget"]["wall_clock_seconds"] == summary["wall_clock_seconds"]
+    assert manifest["artifacts"]["model_summary_json"] == "compare_summary.json"
     assert manifest["artifacts"]["primitive_bank_summary_json"] == "primitive_bank_summary.json"
     assert manifest["artifacts"]["seed_candidates_json"] == "seed_candidates.json"
     assert manifest["search_telemetry"]["primitive_usage"] == summary["primitive_usage"]
     assert manifest["search_telemetry"]["group_counts"] == summary["group_counts"]
     assert manifest["search_telemetry"]["failure_count"] == 0
+    assert compare_summary["system"] == "primordia"
+    assert compare_summary["run_id"] == summary["run_id"]
+    assert compare_summary["runtime_backend"] == summary["runtime"]
+    assert compare_summary["precision_mode"] == summary["precision_mode"]
+    assert compare_summary["benchmarks_evaluated"] == 2
+    assert compare_summary["wall_clock_seconds"] == summary["wall_clock_seconds"]
+    assert compare_summary["primitive_usage"] == summary["primitive_usage"]
     assert primitive_bank["system"] == "primordia"
     assert primitive_bank["run_id"] == summary["run_id"]
     assert primitive_bank["runtime"] == summary["runtime"]
@@ -489,8 +499,10 @@ seed_policy:
 
     assert manifest["artifacts"]["config_snapshot"] == "config.yaml"
     assert manifest["artifacts"]["report_markdown"] == "report.md"
+    assert manifest["artifacts"]["model_summary_json"] == "compare_summary.json"
     assert (output_dir / "config.yaml").exists()
     assert (output_dir / "report.md").exists()
+    assert (output_dir / "compare_summary.json").exists()
     assert (output_dir / "primitive_summary.json").exists()
     assert (output_dir / "primitive_trials.json").exists()
 
