@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import os
 import time
@@ -330,6 +331,7 @@ def _write_summary(run_dir: str, state: GenerationState, elapsed: float) -> None
         state.population, state.results, state.generation,
     )
     best = max(summaries, key=lambda s: s.aggregate_quality) if summaries else None
+    runtime_backend, runtime_version, precision_mode = _runtime_metadata()
 
     summary = {
         "elapsed_seconds": elapsed,
@@ -340,10 +342,22 @@ def _write_summary(run_dir: str, state: GenerationState, elapsed: float) -> None
         "best_quality": best.aggregate_quality if best else None,
         "best_parameter_count": best.parameter_count if best else None,
         "families_active": sorted({g.family for g in state.population}),
+        "runtime_backend": runtime_backend,
+        "runtime_version": runtime_version,
+        "precision_mode": precision_mode,
     }
 
     path = os.path.join(run_dir, "summary.json")
     Path(path).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+
+def _runtime_metadata() -> tuple[str, str | None, str]:
+    """Return persisted runtime metadata for Prism run artifacts."""
+    try:
+        version = importlib.metadata.version("mlx")
+    except importlib.metadata.PackageNotFoundError:
+        version = None
+    return "mlx", version, "fp32"
 
 
 def _resolved_run_config(config: RunConfig, benchmark_specs: list) -> RunConfig:

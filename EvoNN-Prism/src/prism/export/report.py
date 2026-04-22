@@ -38,6 +38,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     lineage = store.load_lineage(run_id)
     archives = store.load_archives(run_id)
     store.close()
+    runtime_meta = _load_runtime_metadata(run_dir)
 
     # Build sections
     sections: list[str] = []
@@ -59,6 +60,9 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     sections.append(f"| Epochs/Candidate | {config.training.epochs} |")
     sections.append(f"| Genomes Evolved | {len(genomes)} |")
     sections.append(f"| Benchmarks | {len(best_per_benchmark)} |")
+    sections.append(f"| Runtime | {runtime_meta['runtime_backend']} |")
+    sections.append(f"| Runtime Version | {runtime_meta['runtime_version']} |")
+    sections.append(f"| Precision Mode | {runtime_meta['precision_mode']} |")
     sections.append("")
 
     # Best genome
@@ -348,6 +352,22 @@ def _resolve_run_id(store: RunStore) -> str:
     if row:
         return row[0]
     return "default"
+
+
+def _load_runtime_metadata(run_dir: Path) -> dict[str, str]:
+    summary_path = run_dir / "summary.json"
+    if summary_path.exists():
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            summary = {}
+    else:
+        summary = {}
+    return {
+        "runtime_backend": str(summary.get("runtime_backend") or "mlx"),
+        "runtime_version": str(summary.get("runtime_version") or "unknown"),
+        "precision_mode": str(summary.get("precision_mode") or "fp32"),
+    }
 
 
 def _select_best(

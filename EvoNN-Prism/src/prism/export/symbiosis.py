@@ -146,6 +146,7 @@ def export_symbiosis_contract(
     store.close()
 
     # 7. Build manifest
+    runtime_meta = _load_runtime_metadata(run_dir)
     pack_name = Path(pack_path).stem
     generations = (latest_gen + 1) if latest_gen is not None else 0
     total_evaluations = _intended_evaluation_count(
@@ -176,9 +177,9 @@ def export_symbiosis_contract(
         },
         "device": {
             "device_name": _detect_device(),
-            "precision_mode": "fp32",
-            "framework": "mlx",
-            "framework_version": _MLX_VERSION,
+            "precision_mode": runtime_meta["precision_mode"],
+            "framework": runtime_meta["runtime_backend"],
+            "framework_version": runtime_meta["runtime_version"],
         },
         "config_snapshot": config.model_dump(mode="json"),
         "artifacts": {
@@ -319,6 +320,22 @@ def _detect_device() -> str:
     return f"{system.lower()}_{machine}"
 
 
+def _load_runtime_metadata(run_dir: Path) -> dict[str, str | None]:
+    summary_path = run_dir / "summary.json"
+    if summary_path.exists():
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            summary = {}
+    else:
+        summary = {}
+    return {
+        "runtime_backend": summary.get("runtime_backend") or "mlx",
+        "runtime_version": summary.get("runtime_version") or _MLX_VERSION,
+        "precision_mode": summary.get("precision_mode") or "fp32",
+    }
+
+
 def _load_run_config(run_dir: Path) -> RunConfig:
     config_path = run_dir / "config.yaml"
     if config_path.exists():
@@ -426,6 +443,7 @@ def _write_summary_json(
 
     failure_count = sum(1 for r in results if r.get("status") != "ok")
     budget = manifest.get("budget", {})
+    device = manifest.get("device", {})
 
     summary = {
         "system": "prism",
@@ -435,6 +453,9 @@ def _write_summary_json(
         "generations_completed": (latest_gen + 1) if latest_gen is not None else 0,
         "epochs_per_candidate": config.training.epochs,
         "population_size": config.evolution.population_size,
+        "runtime_backend": device.get("framework", "mlx"),
+        "runtime_version": device.get("framework_version"),
+        "precision_mode": device.get("precision_mode", "fp32"),
         "best_fitness": best_fitness,
         "median_parameter_count": median_param_count,
         "median_benchmark_quality": median_quality,

@@ -133,6 +133,7 @@ def inspect(
     run_dir: str = typer.Argument(..., help="Path to run directory"),
 ) -> None:
     """Inspect run metrics."""
+    from prism.export.report import _load_runtime_metadata, _resolve_run_id
     from prism.genome import ModelGenome
     from prism.storage import RunStore
 
@@ -145,6 +146,7 @@ def inspect(
 
     store = RunStore(run_path / "metrics.duckdb")
     run_id = _resolve_run_id(store)
+    runtime_meta = _load_runtime_metadata(run_path)
 
     latest_gen = store.latest_generation(run_id)
     evaluations = store.load_evaluations(run_id)
@@ -167,6 +169,9 @@ def inspect(
     table.add_row("Genomes", str(len(genomes)))
     table.add_row("Total Evaluations", str(len(evaluations)))
     table.add_row("Benchmarks", str(len(best_per_benchmark)))
+    table.add_row("Runtime", runtime_meta["runtime_backend"])
+    table.add_row("Runtime Version", runtime_meta["runtime_version"])
+    table.add_row("Precision Mode", runtime_meta["precision_mode"])
 
     # Best quality per benchmark
     if best_per_benchmark:

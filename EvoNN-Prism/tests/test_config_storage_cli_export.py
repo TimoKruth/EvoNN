@@ -159,6 +159,8 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
     assert summary["generations_completed"] == 2
     assert summary["failure_count"] == 1
     assert summary["benchmarks_evaluated"] == 2
+    assert summary["runtime_backend"] == "mlx"
+    assert summary["precision_mode"] == "fp32"
     assert summary["operator_mix"]["mutation:width"] == 1
     assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
     assert summary["failure_patterns"]["failed"] == 1
@@ -282,6 +284,9 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
     run_dir = tmp_path / "run"
     state = coordinator.run_evolution(cfg, [benchmark], run_dir=str(run_dir))
     assert state.total_evaluations == 1
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["runtime_backend"] == "mlx"
+    assert summary["precision_mode"] == "fp32"
 
     with RunStore(run_dir / "metrics.duckdb") as store:
         evals = store.load_evaluations(run_dir.name)
@@ -294,6 +299,8 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
 
     report = generate_report(run_dir)
     assert "Total Evaluations | 1" in report
+    assert "| Runtime | mlx |" in report
+    assert "| Precision Mode | fp32 |" in report
     assert "## Family Benchmark Wins" in report
     assert "## Operator Mix" in report
     assert "## Operator Success" in report
@@ -376,8 +383,11 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
     assert manifest["fairness"]["benchmark_pack_id"] == "demo_pack"
     assert manifest["artifacts"]["canonical_benchmarks"] == ["canon::moons", "canon::iris"]
     assert manifest["device"]["framework"] == "mlx"
+    assert manifest["device"]["precision_mode"] == "fp32"
     assert manifest["device"]["framework_version"] == sym._MLX_VERSION
     assert len(results) == 2
+    assert summary["runtime_backend"] == manifest["device"]["framework"]
+    assert summary["precision_mode"] == manifest["device"]["precision_mode"]
     assert summary["operator_mix"]["crossover"] == 1
     assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
     assert summary["failure_patterns"] == {}
