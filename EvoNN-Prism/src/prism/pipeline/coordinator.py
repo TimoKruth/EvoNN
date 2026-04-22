@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 import importlib.metadata
 import json
 import os
@@ -332,16 +333,29 @@ def _write_summary(run_dir: str, state: GenerationState, elapsed: float) -> None
     )
     best = max(summaries, key=lambda s: s.aggregate_quality) if summaries else None
     runtime_backend, runtime_version, precision_mode = _runtime_metadata()
+    evaluation_rows = [
+        result
+        for benchmark_results in state.results.values()
+        for result in benchmark_results.values()
+    ]
+    failure_patterns = Counter(
+        str(result.failure_reason)
+        for result in evaluation_rows
+        if result.failure_reason
+    )
 
     summary = {
         "elapsed_seconds": elapsed,
         "total_evaluations": state.total_evaluations,
+        "benchmarks_evaluated": len({benchmark_id for benchmark_results in state.results.values() for benchmark_id in benchmark_results}),
         "population_size": len(state.population),
         "best_genome_id": best.genome_id if best else None,
         "best_family": best.family if best else None,
         "best_quality": best.aggregate_quality if best else None,
         "best_parameter_count": best.parameter_count if best else None,
         "families_active": sorted({g.family for g in state.population}),
+        "failure_count": sum(1 for result in evaluation_rows if result.failure_reason),
+        "failure_patterns": dict(failure_patterns.most_common()),
         "runtime_backend": runtime_backend,
         "runtime_version": runtime_version,
         "precision_mode": precision_mode,

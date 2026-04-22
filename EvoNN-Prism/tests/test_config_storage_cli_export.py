@@ -312,6 +312,89 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
     assert "| moons | 0.910000 | accuracy | 123 | 0.20 |" in report
 
 
+def test_inspect_surfaces_failure_patterns_and_recent_failures(tmp_path: Path):
+    run_dir = tmp_path / "inspect-run"
+    run_dir.mkdir()
+    (run_dir / "config.json").write_text(json.dumps({"seed": 17}, indent=2), encoding="utf-8")
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "runtime_backend": "mlx",
+                "runtime_version": "0.0-test",
+                "precision_mode": "fp32",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    genome = _sample_genome("mlp", [16, 8])
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run(run_dir.name, {"seed": 17})
+        store.save_genome(run_dir.name, genome)
+        store.save_evaluation(run_dir.name, genome.genome_id, 0, "moons", "accuracy", 0.91, 0.91, 101, 0.2)
+        store.save_evaluation(
+            run_dir.name,
+            genome.genome_id,
+            0,
+            "iris",
+            "accuracy",
+            float("nan"),
+            float("nan"),
+            101,
+            0.1,
+            failure_reason="compile_timeout",
+        )
+
+    result = runner.invoke(app, ["inspect", str(run_dir)])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Evaluation Status Mix" in result.stdout
+    assert "ok=1, failed=1" in result.stdout
+    assert "Failure Patterns" in result.stdout
+    assert "compile_timeout" in result.stdout
+    assert "Recent Failures" in result.stdout
+    assert "iris" in result.stdout
+
+
+def test_coordinator_summary_persists_failure_patterns(monkeypatch, tmp_path: Path):
+    cfg = RunConfig.model_validate(
+        {
+            "seed": 9,
+            "training": {"epochs": 1},
+            "evolution": {
+                "population_size": 1,
+                "offspring_per_generation": 1,
+                "num_generations": 1,
+                "allowed_families": ["mlp"],
+            },
+        }
+    )
+    benchmark = SimpleNamespace(id="iris", name="iris")
+
+    monkeypatch.setattr(
+        "prism.pipeline.evaluate._evaluate_single",
+        lambda genome, spec, training, epoch_scale, cache, parent_ids=None: EvaluationResult(
+            metric_name="accuracy",
+            metric_value=float("nan"),
+            quality=float("nan"),
+            parameter_count=77,
+            train_seconds=0.05,
+            failure_reason="compile_timeout",
+            inherited_from=parent_ids[0] if parent_ids else None,
+        ),
+    )
+
+    run_dir = tmp_path / "failing-run"
+    state = coordinator.run_evolution(cfg, [benchmark], run_dir=str(run_dir))
+    assert state.total_evaluations == 1
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["benchmarks_evaluated"] == 1
+    assert summary["failure_count"] == 1
+    assert summary["failure_patterns"] == {"compile_timeout": 1}
+
+
 def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()

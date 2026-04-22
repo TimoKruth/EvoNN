@@ -133,7 +133,7 @@ def inspect(
     run_dir: str = typer.Argument(..., help="Path to run directory"),
 ) -> None:
     """Inspect run metrics."""
-    from prism.export.report import _load_runtime_metadata, _resolve_run_id
+    from prism.export.report import _compute_failure_patterns, _load_runtime_metadata, _resolve_run_id
     from prism.genome import ModelGenome
     from prism.storage import RunStore
 
@@ -161,6 +161,9 @@ def inspect(
         except Exception:
             pass
 
+    failed_evaluations = [row for row in evaluations if row.get("failure_reason")]
+    failure_patterns = _compute_failure_patterns(evaluations)
+
     table = Table(title=f"Run: {run_path.name}")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="green")
@@ -169,6 +172,10 @@ def inspect(
     table.add_row("Genomes", str(len(genomes)))
     table.add_row("Total Evaluations", str(len(evaluations)))
     table.add_row("Benchmarks", str(len(best_per_benchmark)))
+    table.add_row(
+        "Evaluation Status Mix",
+        f"ok={len(evaluations) - len(failed_evaluations)}, failed={len(failed_evaluations)}",
+    )
     table.add_row("Runtime", runtime_meta["runtime_backend"])
     table.add_row("Runtime Version", runtime_meta["runtime_version"])
     table.add_row("Precision Mode", runtime_meta["precision_mode"])
@@ -204,6 +211,25 @@ def inspect(
                 str(best.get("parameter_count", "?")),
             )
         console.print(bench_table)
+
+    if failure_patterns:
+        failure_table = Table(title="Failure Patterns")
+        failure_table.add_column("Failure", style="cyan")
+        failure_table.add_column("Count", style="green")
+        for reason, count in failure_patterns.items():
+            failure_table.add_row(reason, str(count))
+        console.print(failure_table)
+
+    if failed_evaluations:
+        recent_failure_table = Table(title="Recent Failures")
+        recent_failure_table.add_column("Benchmark", style="cyan")
+        recent_failure_table.add_column("Failure", style="white")
+        for row in failed_evaluations[:8]:
+            recent_failure_table.add_row(
+                str(row.get("benchmark_id") or "unknown"),
+                str(row.get("failure_reason") or "unknown"),
+            )
+        console.print(recent_failure_table)
 
 
 @app.command("analyze-compare")
