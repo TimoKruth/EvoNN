@@ -278,4 +278,5 @@ This plan succeeds when:
 - each seeded run records ladder provenance
 - Compare can group results by ladder
 - at least one direct and one staged end-to-end comparison can be run under matched budgets
+- small smoke-validation and tiny-budget comparison runs can be repeated by automation after bounded improvements
 - conclusions about the better ladder can be made from actual data instead of intuition

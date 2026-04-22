@@ -331,6 +331,16 @@ Focus:
 - common telemetry/reporting surface
 - workspace coherence across umbrella packages
 - stronger documentation of roles and boundaries
+- a repeatable automation loop that can pull latest work, run real smoke tests after bounded improvements, and record whether tiny budget runs improve or regress over time
+
+Near-future expectation:
+EvoNN should become stable enough that the routine architecture-parity automation can do more than inspect docs and make tiny edits. It should be able to pull the latest branch state, run package-relevant smoke tests after each bounded improvement, and where practical run small matched-budget validation studies that show whether recent changes actually help, hurt, or leave results unchanged.
+
+That means the umbrella should steadily move toward:
+- smoke-test coverage that is real, fast, and runnable on the automation host
+- tiny-budget benchmark configs that are intentionally designed for trend detection rather than headline performance
+- package docs and vision files that explicitly state which verification path is expected after small improvements
+- compare/report surfaces that can accumulate these small-budget validation results over time instead of treating every improvement as anecdotal
 
 ### Horizon 2: Primitive-first search
 
