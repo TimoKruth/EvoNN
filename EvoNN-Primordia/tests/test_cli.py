@@ -71,6 +71,21 @@ def test_inspect_renders_compact_run_summary(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
+    (run_dir / "trial_records.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "tiny_lm_synthetic",
+                    "primitive_name": "embedding",
+                    "primitive_family": "embedding",
+                    "status": "failed",
+                    "failure_reason": "OOM during token embedding warmup",
+                }
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     result = runner.invoke(app, ["inspect", "--run-dir", str(run_dir)])
 
@@ -81,7 +96,11 @@ def test_inspect_renders_compact_run_summary(tmp_path: Path) -> None:
     assert "Evaluation Count" in result.output
     assert "Target Evaluations" in result.output
     assert "Primitive Usage" in result.output
+    assert "Benchmark Group Coverage" in result.output
+    assert "language_modeling" in result.output
     assert "Benchmark Wins" in result.output
+    assert "Recent Failures" in result.output
+    assert "OOM during token embedding warmup" in result.output
     assert "Best Benchmarks" in result.output
     assert "moons" in result.output
     assert "iris" in result.output
@@ -109,7 +128,9 @@ def test_inspect_handles_minimal_summary_without_optional_artifacts(tmp_path: Pa
     assert result.exit_code == 0
     assert "minimal_run" in result.output
     assert "Primitive Usage" not in result.output
+    assert "Benchmark Group Coverage" not in result.output
     assert "Primitive Bank" not in result.output
+    assert "Recent Failures" not in result.output
     assert "Best Benchmarks" not in result.output
 
 

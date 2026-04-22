@@ -92,6 +92,16 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
             usage_table.add_row(str(family), str(count))
         console.print(usage_table)
 
+    group_counts = summary.get("group_counts") or {}
+    nonzero_groups = [(str(group), int(count)) for group, count in group_counts.items() if int(count) > 0]
+    if nonzero_groups:
+        group_table = Table(title="Benchmark Group Coverage")
+        group_table.add_column("Group", style="cyan")
+        group_table.add_column("Benchmarks", style="green")
+        for group, count in nonzero_groups:
+            group_table.add_row(group, str(count))
+        console.print(group_table)
+
     bank_rows = primitive_bank.get("primitive_families") or []
     if bank_rows:
         bank_table = Table(title="Primitive Bank")
@@ -108,6 +118,23 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
                 ", ".join(map(str, won)) if won else "—",
             )
         console.print(bank_table)
+
+    trial_records_path = run_dir / "trial_records.json"
+    if summary.get("failure_count", 0) and trial_records_path.exists():
+        trial_records = json.loads(trial_records_path.read_text(encoding="utf-8"))
+        failures = [record for record in trial_records if record.get("status") != "ok"]
+        if failures:
+            failure_table = Table(title="Recent Failures")
+            failure_table.add_column("Benchmark", style="cyan")
+            failure_table.add_column("Primitive", style="green")
+            failure_table.add_column("Reason", style="white")
+            for record in failures[:5]:
+                failure_table.add_row(
+                    str(record.get("benchmark_name", "unknown")),
+                    str(record.get("primitive_name", "unknown")),
+                    str(record.get("failure_reason") or "unknown"),
+                )
+            console.print(failure_table)
 
     best_results = summary.get("best_results") or []
     if best_results:

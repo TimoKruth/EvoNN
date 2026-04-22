@@ -66,8 +66,15 @@ From monorepo root:
 ```bash
 uv run --package evonn-primordia primordia --help
 uv run --package evonn-primordia primordia run --config path/to/config.yaml
+uv run --package evonn-primordia primordia inspect --run-dir path/to/run
+uv run --package evonn-primordia primordia report --run-dir path/to/run
 uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/run --pack-path path/to/pack.yaml
 ```
+
+`primordia inspect` now surfaces benchmark-group coverage, primitive-bank leaders,
+and recent failure reasons directly from `summary.json` and `trial_records.json`
+so Primordia run introspection stays closer to Prism/Topograph-style operator
+inspection.
 
 ## Fair Comparison Role
 
