@@ -32,6 +32,23 @@ including at least:
 - hardware class
 - worker count
 
+## Minimum Seeding Metadata
+
+Every run intended for transfer analysis, ladder comparison, or compare export
+should record:
+- `seeding_enabled`
+- `seeding_ladder`: `none`, `direct`, or `staged`
+- `seed_source_system`: `primordia`, `stratograph`, `topograph`, `prism`, or `null`
+- `seed_source_run_id`
+- `seed_artifact_path`
+- `seed_target_family` when a seed is conditioned on benchmark family or task family
+- `seed_selected_family` when the consumer chooses one family from multiple candidates
+- `seed_rank` when the consumer chooses a ranked seed candidate
+- `seed_overlap_policy`: whether the seed source is benchmark-disjoint, benchmark-overlapping, family-overlapping, or unknown
+
+These fields exist to make transfer policy auditable. They do not erase the
+architectural identity of the target system.
+
 ## Minimum Search Telemetry
 
 The search system should emit whatever is natural for its abstraction, but at a
@@ -90,6 +107,8 @@ than silently pretending it does not matter.
 - pack id
 - comparison assumptions
 - excluded runs or filtered artifacts
+- ladder labels present for every seeded run
+- direct, staged, and unseeded runs kept in distinct comparison buckets
 
 ## Report Surfaces
 
@@ -109,6 +128,19 @@ Runs should make it easy to tell:
 - whether a run consumed prior artifacts
 - why a run stopped
 - whether results are partial or final
+
+## Ladder Comparison Reporting Rules
+
+When a run is seeded and exported into EvoNN-Compare or any umbrella-level table,
+it should remain obvious:
+- whether the run was unseeded, direct-ladder seeded, or staged-ladder seeded
+- which upstream system supplied the seed artifact
+- whether the seed came from overlapping benchmark families
+- whether the run is being used as a fair baseline comparison, transfer study, or acceleration study
+
+Direct and staged runs must not be merged into one anonymous "seeded" bucket.
+If ladder metadata is missing, the run should be marked transfer-opaque rather
+than treated as cleanly comparable.
 
 ## Bottom Line
 

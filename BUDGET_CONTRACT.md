@@ -121,6 +121,8 @@ Every export intended for comparison should expose or derivably imply:
 - declared budget caps
 - actual measured artifacts such as params, bytes, latency, or memory when
   supported
+- seeding regime: `none`, `direct`, or `staged`
+- seed provenance sufficient to identify the immediate upstream source artifact
 
 ## Local-First Defaults
 
@@ -151,8 +153,30 @@ If a run consumes prior motif banks, archives, or seed lineages, it must report:
 - whether the prior was learned on overlapping benchmark families
 - whether the run is intended as fair comparison, transfer study, or internal
   acceleration experiment
+- whether the transfer path is `direct` or `staged`
+- what immediate upstream system supplied the seed
+- what upstream run id produced the seed
+- what target family or benchmark family the seed was selected for, when applicable
+- what ranked seed choice was actually consumed, when applicable
 
 This prevents hidden prior knowledge from masquerading as fresh search.
+
+## Required Seeding Metadata Fields
+
+Any seeded run that claims comparability should expose these fields directly or
+through derivable metadata:
+- `seeding_enabled`
+- `seeding_ladder`
+- `seed_source_system`
+- `seed_source_run_id`
+- `seed_artifact_path`
+- `seed_target_family`
+- `seed_selected_family`
+- `seed_rank`
+- `seed_overlap_policy`
+
+If a field is unknown, it should be reported as unknown or null rather than
+silently omitted.
 
 ## What This Contract Does Not Do
 
