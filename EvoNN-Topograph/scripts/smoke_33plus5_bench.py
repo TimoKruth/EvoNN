@@ -18,12 +18,6 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
-from topograph.benchmarks.parity import get_benchmark
-from topograph.benchmarks.preprocess import Preprocessor
-from topograph.genome import Genome, InnovationCounter
-from topograph.nn.compiler import compile_genome, estimate_model_bytes
-from topograph.nn.train import train_and_evaluate
-
 
 SHARED_33_BENCHMARKS: list[tuple[str, str]] = [
     ("blobs_classification", "blobs_f2_c2"),
@@ -130,6 +124,9 @@ def _prepare_data(
     *,
     seed: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str, int]:
+    from topograph.benchmarks.parity import get_benchmark
+    from topograph.benchmarks.preprocess import Preprocessor
+
     spec = get_benchmark(benchmark_name)
     x_train, y_train, x_val, y_val = spec.load_data(seed=seed, validation_split=0.2)
     x_train, y_train, x_val, y_val = _subset_data(
@@ -141,7 +138,6 @@ def _prepare_data(
         x_train = pp.fit_transform(x_train)
         x_val = pp.transform(x_val)
 
-    input_dim = spec.input_dim or x_train.shape[1]
     if spec.task == "regression":
         num_classes = 1
     else:
@@ -151,6 +147,10 @@ def _prepare_data(
 
 
 def smoke_eval(benchmark_name: str, *, seed: int = SEED) -> dict:
+    from topograph.genome import Genome, InnovationCounter
+    from topograph.nn.compiler import compile_genome, estimate_model_bytes
+    from topograph.nn.train import train_and_evaluate
+
     x_train, y_train, x_val, y_val, task, num_classes = _prepare_data(
         benchmark_name, seed=seed,
     )

@@ -31,16 +31,14 @@ except importlib.metadata.PackageNotFoundError:
 
 import topograph
 from topograph.benchmarks.parity import (
-    get_benchmark,
     get_canonical_id,
     load_parity_pack,
     resolve_benchmark_pool_names,
 )
 from topograph.benchmarks.spec import BenchmarkSpec
 from topograph.config import RunConfig, load_config
-from topograph.genome.codec import dict_to_genome, genome_to_dict
+from topograph.genome.codec import dict_to_genome
 from topograph.genome.genome import Genome
-from topograph.nn.compiler import estimate_model_bytes
 from topograph.storage import RunStore
 
 

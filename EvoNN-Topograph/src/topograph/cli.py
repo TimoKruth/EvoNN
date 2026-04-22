@@ -107,7 +107,7 @@ def evolve(
             encoding="utf-8",
         )
 
-    console.print(f"[bold cyan]Topograph Evolution[/bold cyan]")
+    console.print("[bold cyan]Topograph Evolution[/bold cyan]")
     console.print(f"  Config: {config}")
     console.print(f"  Run dir: {run_path}")
     console.print(f"  Seed: {cfg.seed}")

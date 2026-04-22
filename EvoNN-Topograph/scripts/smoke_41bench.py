@@ -2,9 +2,7 @@
 """Smoke test: run Topograph on all 41 shared benchmarks with minimal budget."""
 
 import json
-import os
 import sys
-import tempfile
 import time
 import traceback
 from pathlib import Path
@@ -16,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from topograph.benchmarks.parity import get_benchmark
 from topograph.benchmarks.preprocess import Preprocessor
-from topograph.config import RunConfig, EvolutionConfig, TrainingConfig, EarlyStoppingConfig
 from topograph.genome import Genome, InnovationCounter
 from topograph.nn.compiler import compile_genome, estimate_model_bytes
 from topograph.nn.train import train_and_evaluate
@@ -240,7 +237,7 @@ def main():
     print(f"DONE: {len(ok)}/{len(results)} passed, {len(failed)} failed, {total_elapsed:.1f}s total")
 
     if failed:
-        print(f"\nFailed benchmarks:")
+        print("\nFailed benchmarks:")
         for r in failed:
             print(f"  - {r['benchmark_id']} ({r['native_id']})")
 

@@ -255,7 +255,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     lines.append("### Layer Details\n")
     lines.append("| Innovation | Width | Activation | W-Bits | A-Bits | Operator | Order |")
     lines.append("|-----------|-------|-----------|--------|--------|----------|-------|")
-    for lg in sorted(best.enabled_layers, key=lambda l: l.order):
+    for lg in sorted(best.enabled_layers, key=lambda layer: layer.order):
         lines.append(
             f"| {lg.innovation} | {lg.width} | {lg.activation.value} "
             f"| {lg.weight_bits.value} | {lg.activation_bits.value} "

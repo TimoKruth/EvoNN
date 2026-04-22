@@ -115,7 +115,6 @@ def run_evolution(
     novelty_score_max = 0.0
     map_elites_insertions = 0
     start_gen = 0
-    completed = False
     stored_primordia_seeding = (
         existing_budget_meta.get("primordia_seeding")
         if isinstance(existing_budget_meta, dict)
@@ -169,7 +168,6 @@ def run_evolution(
                 benchmark_elite_archive = BenchmarkEliteArchive.from_dict(
                     snapshot.get("benchmark_elite_archive")
                 )
-            completed = bool(snapshot.get("completed", False))
             monitor.on_info(f"Resuming from generation {start_gen}")
         else:
             latest_gen = store.load_latest_generation(run_id)

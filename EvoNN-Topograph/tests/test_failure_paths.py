@@ -15,7 +15,6 @@ from topograph.config import EarlyStoppingConfig, RunConfig
 from topograph.export import report as report_mod
 from topograph.genome.codec import genome_to_dict
 from topograph.genome.genome import Genome, InnovationCounter
-from topograph.monitor import TerminalMonitor
 from topograph.parallel import ParallelEvaluator
 from topograph.pipeline import coordinator as coordinator_mod
 from topograph.pipeline.archive import BenchmarkEliteArchive, MAPElitesArchive, NoveltyArchive
