@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from stratograph.genome import dict_to_genome
 from stratograph.storage import RunStore
 
 
@@ -50,6 +51,7 @@ def load_report_context(run_dir: str | Path) -> dict[str, Any]:
         if current is None or quality_key(record) > quality_key(current):
             best_by_benchmark[benchmark_name] = record
     best_results = sorted(best_by_benchmark.values(), key=quality_key, reverse=True)
+    representative_genome = _select_representative_genome(genomes, best_results)
 
     return {
         "run_dir": run_dir,
@@ -64,7 +66,42 @@ def load_report_context(run_dir: str | Path) -> dict[str, Any]:
         "failed_results": failed_results,
         "skipped_results": skipped_results,
         "best_results": best_results,
+        "representative_genome": representative_genome,
     }
+
+
+def _select_representative_genome(
+    genomes: list[dict[str, Any]],
+    best_results: list[dict[str, Any]],
+) -> Any | None:
+    """Return the strongest available hierarchical genome for report/inspect surfaces."""
+    if not genomes:
+        return None
+
+    genomes_by_id = {
+        str(record.get("genome_id")): record
+        for record in genomes
+        if record.get("genome_id") not in {None, ""}
+    }
+    for result in best_results:
+        genome_id = result.get("genome_id")
+        if genome_id in {None, ""}:
+            continue
+        payload_record = genomes_by_id.get(str(genome_id))
+        if payload_record is None:
+            continue
+        try:
+            return dict_to_genome(payload_record["payload"])
+        except Exception:
+            continue
+
+    for record in genomes:
+        try:
+            return dict_to_genome(record["payload"])
+        except Exception:
+            continue
+
+    return None
 
 
 
@@ -103,6 +140,7 @@ def write_report(run_dir: str | Path) -> Path:
     failed_results = context["failed_results"]
     skipped_results = context["skipped_results"]
     best_results = context["best_results"]
+    representative_genome = context["representative_genome"]
 
     lines = [
         "# Stratograph Prototype Report",
@@ -128,6 +166,21 @@ def write_report(run_dir: str | Path) -> Path:
         lines.append(f"- Status Artifact: `{context['status_path'].name}`")
     if context["checkpoint_path"].exists():
         lines.append(f"- Checkpoint Artifact: `{context['checkpoint_path'].name}`")
+    if representative_genome is not None:
+        lines.extend([
+            "",
+            "## Hierarchy Summary",
+            "",
+            "| Property | Value |",
+            "|---|---|",
+            f"| Representative Genome | `{representative_genome.genome_id}` |",
+            f"| Macro Nodes | `{len(representative_genome.macro_nodes)}` |",
+            f"| Enabled Macro Edges | `{sum(1 for edge in representative_genome.macro_edges if edge.enabled)}` |",
+            f"| Cell Library Size | `{len(representative_genome.cell_library)}` |",
+            f"| Macro Depth | `{representative_genome.macro_depth}` |",
+            f"| Avg Cell Depth | `{representative_genome.average_cell_depth:.2f}` |",
+            f"| Reuse Ratio | `{representative_genome.reuse_ratio:.4f}` |",
+        ])
     lines.extend([
         "",
         "## Benchmarks",

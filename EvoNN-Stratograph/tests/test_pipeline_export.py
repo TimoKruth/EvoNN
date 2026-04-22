@@ -101,6 +101,13 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert "- Checkpoint Artifact: `checkpoint.json`" in report
     assert f"- Effective Training Epochs: `{budget_meta['effective_training_epochs']}`" in report
     assert f"- Architecture Mode: `{budget_meta['architecture_mode']}`" in report
+    assert "## Hierarchy Summary" in report
+    assert "| Property | Value |" in report
+    assert "| Representative Genome | `" in report
+    assert "| Cell Library Size | `" in report
+    assert "| Macro Depth | `" in report
+    assert "| Avg Cell Depth | `" in report
+    assert "| Reuse Ratio | `" in report
     assert "## Benchmarks" in report
     assert "## Best Benchmarks" in report
     assert "## Failure Details" in report
@@ -136,6 +143,10 @@ def test_inspect_command_surfaces_rich_run_summary(repo_root, tmp_path) -> None:
     assert "Remaining Benchmarks" in result.stdout
     assert "Status Artifact" in result.stdout
     assert "Occupied Niches" in result.stdout
+    assert "Representative Genome" in result.stdout
+    assert "Cell Library Size" in result.stdout
+    assert "Macro Depth" in result.stdout
+    assert "Reuse Ratio" in result.stdout
 
 
 def test_inspect_command_handles_empty_run_dir(tmp_path) -> None:
@@ -196,6 +207,80 @@ def test_report_context_keeps_best_result_per_benchmark(tmp_path) -> None:
 
     assert len(context["best_results"]) == 1
     assert context["best_results"][0]["genome_id"] == "g2"
+
+
+def test_report_context_selects_representative_hierarchy_genome(tmp_path) -> None:
+    run_dir = tmp_path / "representative_run"
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.record_run(
+            run_id="representative_run",
+            run_name="representative_run",
+            created_at="2026-04-22T00:00:00",
+            seed=11,
+            config={},
+        )
+        store.save_budget_metadata(run_id="representative_run", payload={"runtime_backend": "numpy-fallback"})
+        store.record_genome(
+            run_id="representative_run",
+            generation=0,
+            genome_id="g2",
+            benchmark_name="moons",
+            payload={
+                "genome_id": "g2",
+                "task": "classification",
+                "input_dim": 2,
+                "output_dim": 2,
+                "macro_nodes": [
+                    {"node_id": "macro_0", "cell_id": "shared", "input_width": 16, "output_width": 16, "role": "stem"},
+                    {"node_id": "macro_1", "cell_id": "shared", "input_width": 16, "output_width": 16, "role": "body"},
+                ],
+                "macro_edges": [
+                    {"source": "input", "target": "macro_0", "enabled": True},
+                    {"source": "macro_0", "target": "macro_1", "enabled": True},
+                    {"source": "macro_1", "target": "output", "enabled": True},
+                ],
+                "cell_library": {
+                    "shared": {
+                        "cell_id": "shared",
+                        "input_width": 16,
+                        "output_width": 16,
+                        "shared": True,
+                        "nodes": [
+                            {"node_id": "mix_0", "kind": "mix", "width": 16, "activation": "gelu"}
+                        ],
+                        "edges": [
+                            {"source": "input", "target": "mix_0", "enabled": True},
+                            {"source": "mix_0", "target": "output", "enabled": True},
+                        ],
+                    }
+                },
+            },
+            architecture_summary="cells=1 macro_depth=2 avg_cell_depth=1.0 reuse_ratio=0.50",
+            parameter_count=120,
+        )
+        store.record_result(
+            run_id="representative_run",
+            benchmark_name="moons",
+            record={
+                "metric_name": "accuracy",
+                "metric_direction": "max",
+                "metric_value": 0.9,
+                "quality": 0.9,
+                "parameter_count": 120,
+                "train_seconds": 1.2,
+                "architecture_summary": "stronger",
+                "genome_id": "g2",
+                "status": "ok",
+                "failure_reason": None,
+            },
+        )
+
+    context = load_report_context(run_dir)
+
+    assert context["representative_genome"] is not None
+    assert context["representative_genome"].genome_id == "g2"
+    assert context["representative_genome"].macro_depth == 3
+    assert context["representative_genome"].reuse_ratio == 0.5
 
 
 def test_build_execution_ladder(tmp_path) -> None:

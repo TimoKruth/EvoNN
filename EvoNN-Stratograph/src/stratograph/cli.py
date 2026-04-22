@@ -96,6 +96,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     failed_results = context["failed_results"]
     skipped_results = context["skipped_results"]
     best_results = context["best_results"]
+    representative_genome = context["representative_genome"]
 
     overview = Table(title="Run Overview")
     overview.add_column("Metric", style="cyan")
@@ -119,6 +120,12 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_row("Remaining Benchmarks", str(status_payload.get("remaining_count", 0)))
     overview.add_row("Novelty Mean", f"{float(budget_meta.get('novelty_score_mean', 0.0)):.4f}")
     overview.add_row("Occupied Niches", str(budget_meta.get("map_elites_occupied_niches", 0)))
+    if representative_genome is not None:
+        overview.add_row("Representative Genome", str(representative_genome.genome_id))
+        overview.add_row("Cell Library Size", str(len(representative_genome.cell_library)))
+        overview.add_row("Macro Depth", str(representative_genome.macro_depth))
+        overview.add_row("Avg Cell Depth", f"{representative_genome.average_cell_depth:.2f}")
+        overview.add_row("Reuse Ratio", f"{representative_genome.reuse_ratio:.4f}")
     overview.add_row(
         "Status Mix",
         f"ok={len(context['ok_results'])}, skipped={len(skipped_results)}, failed={len(failed_results)}",
