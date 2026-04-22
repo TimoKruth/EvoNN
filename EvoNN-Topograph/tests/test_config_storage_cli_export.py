@@ -377,6 +377,14 @@ def test_load_report_context_and_inspect_surface_best_benchmarks_and_failures(tm
         genome.param_count = 42
         genome.model_bytes = 96
         store.save_genomes("current", 0, [genome_to_dict(genome)])
+        store.save_run_state(
+            "current",
+            {
+                "next_generation": 1,
+                "pool_state": {"current_sample": ["moons", "iris"]},
+                "completed": False,
+            },
+        )
         store.save_benchmark_results(
             "current",
             0,
@@ -423,6 +431,13 @@ def test_load_report_context_and_inspect_surface_best_benchmarks_and_failures(tm
     assert "Run Overview" in result.stdout
     assert "Best Benchmarks" in result.stdout
     assert "Failure Details" in result.stdout
+    assert "Run State" in result.stdout
+    assert "in_progress" in result.stdout
+    assert "Next Generation" in result.stdout
+    assert "Completed Benchmarks" in result.stdout
+    assert "Remaining Benchmarks" in result.stdout
+    assert "Active Benchmark Sample" in result.stdout
+    assert "moons, iris" in result.stdout
     assert "Precision Mode" in result.stdout
     assert "bf16" in result.stdout
     assert "Primordia Seeding" in result.stdout

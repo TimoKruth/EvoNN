@@ -103,6 +103,47 @@ def primordia_seeding_rows(seeding: dict[str, Any] | None) -> list[tuple[str, st
     return rows
 
 
+def run_state_rows(
+    *,
+    run: dict[str, Any],
+    run_state: dict[str, Any],
+    latest_generation: int | None,
+    benchmark_results: list[dict[str, Any]],
+) -> list[tuple[str, str]]:
+    """Return shared run-state rows for Topograph inspect/report surfaces."""
+    rows: list[tuple[str, str]] = []
+
+    created_at = run.get("created_at")
+    if created_at:
+        rows.append(("Created At", str(created_at)))
+
+    if run_state:
+        rows.append(("Run State", "completed" if run_state.get("completed") else "in_progress"))
+
+        next_generation = run_state.get("next_generation")
+        if next_generation is not None:
+            rows.append(("Next Generation", str(next_generation)))
+
+        total_benchmarks = len(benchmark_results)
+        completed_benchmarks = sum(
+            1
+            for row in benchmark_results
+            if row.get("status") in {"ok", "failed", "skipped"}
+        )
+        if total_benchmarks:
+            rows.append(("Completed Benchmarks", f"{completed_benchmarks}/{total_benchmarks}"))
+            rows.append(("Remaining Benchmarks", str(max(total_benchmarks - completed_benchmarks, 0))))
+
+        current_sample = ((run_state.get("pool_state") or {}).get("current_sample") or [])
+        if current_sample:
+            rows.append(("Active Benchmark Sample", ", ".join(map(str, current_sample))))
+
+    elif latest_generation is not None:
+        rows.append(("Run State", "completed"))
+
+    return rows
+
+
 def generate_report(run_dir: str | Path, output_path: str | Path | None = None) -> str:
     """Generate a markdown report for a completed run. Returns the markdown string."""
     run_dir = Path(run_dir)
@@ -147,6 +188,13 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     lines.append(f"- **Benchmark:** {config_dict.get('benchmark', 'N/A')}")
     lines.append(f"- **Generations:** {latest_gen + 1}")
     lines.append(f"- **Population Size:** {len(population)}")
+    for label, value in run_state_rows(
+        run=config_dict,
+        run_state=run_state,
+        latest_generation=latest_gen,
+        benchmark_results=benchmark_results,
+    ):
+        lines.append(f"- **{label}:** {value}")
     lines.append(f"- **Runtime:** {budget.get('runtime_backend', 'unknown')}")
     lines.append(f"- **Runtime Version:** {budget.get('runtime_version') or 'unknown'}")
     lines.append(f"- **Precision Mode:** {budget.get('precision_mode') or 'unknown'}")

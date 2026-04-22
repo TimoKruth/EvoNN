@@ -154,7 +154,12 @@ def inspect(
     run_dir: str = typer.Argument(..., help="Path to run directory"),
 ) -> None:
     """Inspect run metrics."""
-    from topograph.export.report import dag_summary, load_report_context, primordia_seeding_rows
+    from topograph.export.report import (
+        dag_summary,
+        load_report_context,
+        primordia_seeding_rows,
+        run_state_rows,
+    )
 
     run_path = Path(run_dir)
     context = load_report_context(run_path)
@@ -172,6 +177,8 @@ def inspect(
     skipped_results = context["skipped_results"]
     ok_results = context["ok_results"]
     checkpoint_path = context["checkpoint_path"]
+    benchmark_results = context["benchmark_results"]
+    run_state = context["run_state"]
 
     table = Table(title="Run Overview")
     table.add_column("Metric", style="cyan")
@@ -181,6 +188,13 @@ def inspect(
     table.add_row("Seed", str(run.get("seed", "unknown")))
     table.add_row("Generation", str(latest_gen))
     table.add_row("Population", str(len(population)))
+    for label, value in run_state_rows(
+        run=run,
+        run_state=run_state,
+        latest_generation=latest_gen,
+        benchmark_results=benchmark_results,
+    ):
+        table.add_row(label, value)
     table.add_row(
         "Best Fitness",
         f"{best.fitness:.6f}" if best.fitness is not None else "N/A",

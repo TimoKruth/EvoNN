@@ -270,6 +270,9 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
         store.save_run_state(
             "current",
             {
+                "next_generation": 1,
+                "completed": False,
+                "pool_state": {"current_sample": ["moons", "iris"]},
                 "benchmark_elite_archive": {
                     "elites": {
                         "moons": {
@@ -297,6 +300,13 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
     assert "Data Cache" in report
     assert "Precision Mode" in report
     assert "mixed" in report
+    assert "Run State" in report
+    assert "in_progress" in report
+    assert "Next Generation" in report
+    assert "Completed Benchmarks" in report
+    assert "Remaining Benchmarks" in report
+    assert "Active Benchmark Sample" in report
+    assert "moons, iris" in report
     assert "Primordia Seeding" in report
     assert "/tmp/primordia/seed_candidates.json" in report
     assert "prim-g7" in report
