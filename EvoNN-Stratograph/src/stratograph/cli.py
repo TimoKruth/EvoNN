@@ -5,14 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from rich.console import Console
+from rich.table import Table
 
 from stratograph.analysis import analyze_run_motifs, run_ablation_matrix, run_ablation_suite
 from stratograph.benchmarks import list_benchmarks
 from stratograph.benchmarks.lm import available_lm_caches, warm_lm_cache
 from stratograph.config import load_config
 from stratograph.export import export_symbiosis_contract, write_report
+from stratograph.export.report import load_report_context
 from stratograph.pipeline import build_execution_ladder, run_evolution, run_execution_ladder
-from stratograph.storage import RunStore
 
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -20,6 +22,7 @@ symbiosis_app = typer.Typer(no_args_is_help=True, add_completion=False)
 motifs_app = typer.Typer(no_args_is_help=True, add_completion=False)
 app.add_typer(symbiosis_app, name="symbiosis")
 app.add_typer(motifs_app, name="motifs")
+console = Console()
 
 
 @app.command()
@@ -80,22 +83,73 @@ def report(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_o
 @app.command()
 def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_okay=True)) -> None:
     """Print compact run summary."""
-    store = RunStore(run_dir / "metrics.duckdb")
-    runs = store.load_runs()
-    if not runs:
-        store.close()
-        raise typer.Exit(code=1)
-    run = runs[0]
-    results = store.load_results(run["run_id"])
-    genomes = store.load_genomes(run["run_id"])
-    store.close()
-    typer.echo(f"run_id={run['run_id']}")
-    typer.echo(f"benchmarks={len(results)}")
-    typer.echo(f"genomes={len(genomes)}")
-    typer.echo(f"statuses={','.join(sorted({record['status'] for record in results}))}")
+    try:
+        context = load_report_context(run_dir)
+    except ValueError as exc:
+        raise typer.Exit(code=1) from exc
+    run = context["run"]
+    results = context["results"]
+    genomes = context["genomes"]
+    budget_meta = context["budget_meta"]
+    failed_results = context["failed_results"]
+    skipped_results = context["skipped_results"]
+    best_results = context["best_results"]
+
+    overview = Table(title="Run Overview")
+    overview.add_column("Metric", style="cyan")
+    overview.add_column("Value", style="green")
+    overview.add_row("Run ID", str(run["run_id"]))
+    overview.add_row("Seed", str(run["seed"]))
+    overview.add_row("Benchmarks", str(len(results)))
+    overview.add_row("Genomes Stored", str(len(genomes)))
+    overview.add_row("Runtime", str(budget_meta.get("runtime_backend", "unknown")))
+    overview.add_row("Runtime Version", str(budget_meta.get("runtime_version") or "unknown"))
+    overview.add_row("Architecture Mode", str(budget_meta.get("architecture_mode", "unknown")))
+    overview.add_row("Evaluation Count", str(budget_meta.get("evaluation_count", 0)))
+    overview.add_row("Effective Training Epochs", str(budget_meta.get("effective_training_epochs", "unknown")))
+    overview.add_row("Novelty Mean", f"{float(budget_meta.get('novelty_score_mean', 0.0)):.4f}")
+    overview.add_row("Occupied Niches", str(budget_meta.get("map_elites_occupied_niches", 0)))
+    overview.add_row(
+        "Status Mix",
+        f"ok={len(context['ok_results'])}, skipped={len(skipped_results)}, failed={len(failed_results)}",
+    )
     checkpoint_path = run_dir / "checkpoint.json"
     if checkpoint_path.exists():
-        typer.echo(f"checkpoint={checkpoint_path}")
+        overview.add_row("Checkpoint", str(checkpoint_path))
+    console.print(overview)
+
+    best_table = Table(title="Best Benchmarks")
+    best_table.add_column("Benchmark", style="cyan")
+    best_table.add_column("Metric", style="white")
+    best_table.add_column("Value", style="green")
+    best_table.add_column("Quality", style="green")
+    best_table.add_column("Genome", style="white")
+    best_table.add_column("Architecture", style="white")
+    if best_results:
+        for record in best_results:
+            metric_value = record.get("metric_value")
+            quality = record.get("quality")
+            best_table.add_row(
+                str(record["benchmark_name"]),
+                str(record["metric_name"]),
+                "---" if metric_value is None else f"{float(metric_value):.6f}",
+                "---" if quality is None else f"{float(quality):.4f}",
+                str(record.get("genome_id") or "—"),
+                str(record.get("architecture_summary") or "—"),
+            )
+    else:
+        best_table.add_row("none", "—", "---", "---", "—", "—")
+    console.print(best_table)
+
+    failure_table = Table(title="Failure Details")
+    failure_table.add_column("Benchmark", style="cyan")
+    failure_table.add_column("Reason", style="white")
+    if failed_results:
+        for record in failed_results:
+            failure_table.add_row(str(record["benchmark_name"]), str(record.get("failure_reason") or "unknown"))
+    else:
+        failure_table.add_row("none", "no failed benchmarks")
+    console.print(failure_table)
 
 
 @symbiosis_app.command("export")

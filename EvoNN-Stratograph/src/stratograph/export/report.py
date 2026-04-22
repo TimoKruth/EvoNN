@@ -3,27 +3,88 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from stratograph.storage import RunStore
 
 
+def load_report_context(run_dir: str | Path) -> dict[str, Any]:
+    """Load one run plus derived reporting summaries from the run DB."""
+    run_dir = Path(run_dir)
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        runs = store.load_runs()
+        if not runs:
+            raise ValueError(f"No runs found in {run_dir}")
+
+        run = runs[0]
+        results = store.load_results(run["run_id"])
+        genomes = store.load_genomes(run["run_id"])
+        budget_meta = store.load_budget_metadata(run["run_id"])
+
+    ok_results = [record for record in results if record["status"] == "ok"]
+    failed_results = [record for record in results if record["status"] == "failed"]
+    skipped_results = [record for record in results if record["status"] == "skipped"]
+
+    def quality_key(record: dict[str, Any]) -> tuple[float, str]:
+        quality = record.get("quality")
+        return (float(quality) if quality is not None else float("-inf"), str(record.get("benchmark_name") or ""))
+
+    best_by_benchmark: dict[str, dict[str, Any]] = {}
+    for record in ok_results:
+        benchmark_name = str(record.get("benchmark_name") or "")
+        current = best_by_benchmark.get(benchmark_name)
+        if current is None or quality_key(record) > quality_key(current):
+            best_by_benchmark[benchmark_name] = record
+    best_results = sorted(best_by_benchmark.values(), key=quality_key, reverse=True)
+
+    return {
+        "run_dir": run_dir,
+        "run": run,
+        "results": results,
+        "genomes": genomes,
+        "budget_meta": budget_meta,
+        "ok_results": ok_results,
+        "failed_results": failed_results,
+        "skipped_results": skipped_results,
+        "best_results": best_results,
+    }
+
+
+
+def _render_metric(value: Any) -> str:
+    if value is None:
+        return "---"
+    return f"{float(value):.6f}"
+
+
+
+def _render_quality(value: Any) -> str:
+    if value is None:
+        return "---"
+    return f"{float(value):.4f}"
+
+
+
+def _render_seconds(value: Any) -> str:
+    if value is None:
+        return "---"
+    return f"{float(value):.3f}"
+
+
+
 def write_report(run_dir: str | Path) -> Path:
     """Render prototype markdown report from run DB."""
-    run_dir = Path(run_dir)
-    store = RunStore(run_dir / "metrics.duckdb")
-    runs = store.load_runs()
-    if not runs:
-        store.close()
-        raise ValueError(f"No runs found in {run_dir}")
-    run = runs[0]
-    results = store.load_results(run["run_id"])
-    genomes = store.load_genomes(run["run_id"])
-    budget_meta = store.load_budget_metadata(run["run_id"])
-    store.close()
+    context = load_report_context(run_dir)
+    run_dir = context["run_dir"]
+    run = context["run"]
+    results = context["results"]
+    genomes = context["genomes"]
+    budget_meta = context["budget_meta"]
+    ok_results = context["ok_results"]
+    failed_results = context["failed_results"]
+    skipped_results = context["skipped_results"]
+    best_results = context["best_results"]
 
-    skipped = sum(1 for record in results if record["status"] == "skipped")
-    ok = sum(1 for record in results if record["status"] == "ok")
-    failed = sum(1 for record in results if record["status"] == "failed")
     lines = [
         "# Stratograph Prototype Report",
         "",
@@ -35,7 +96,7 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Benchmarks: `{len(results)}`",
         f"- Genomes Stored: `{len(genomes)}`",
         f"- Effective Training Epochs: `{budget_meta.get('effective_training_epochs', 'unknown')}`",
-        f"- Status Mix: ok={ok}, skipped={skipped}, failed={failed}",
+        f"- Status Mix: `ok={len(ok_results)}, skipped={len(skipped_results)}, failed={len(failed_results)}`",
         f"- Novelty Mean: `{budget_meta.get('novelty_score_mean', 0.0):.4f}`",
         f"- Occupied Niches: `{budget_meta.get('map_elites_occupied_niches', 0)}`",
         "",
@@ -50,6 +111,46 @@ def write_report(run_dir: str | Path) -> Path:
             f"{record['metric_direction']} | {record['status']} | "
             f"{record['failure_reason'] or record['architecture_summary'] or ''} |"
         )
+
+    lines.extend(
+        [
+            "",
+            "## Best Benchmarks",
+            "",
+            "| Benchmark | Metric | Value | Quality | Params | Train Seconds | Genome | Architecture |",
+            "|---|---|---:|---:|---:|---:|---|---|",
+        ]
+    )
+    if best_results:
+        for record in best_results:
+            lines.append(
+                "| {benchmark} | {metric} | {value} | {quality} | {params} | {seconds} | {genome} | {architecture} |".format(
+                    benchmark=record["benchmark_name"],
+                    metric=record["metric_name"],
+                    value=_render_metric(record.get("metric_value")),
+                    quality=_render_quality(record.get("quality")),
+                    params=record.get("parameter_count") if record.get("parameter_count") is not None else "---",
+                    seconds=_render_seconds(record.get("train_seconds")),
+                    genome=record.get("genome_id") or "—",
+                    architecture=record.get("architecture_summary") or "—",
+                )
+            )
+    else:
+        lines.append("| none | — | --- | --- | --- | --- | — | — |")
+
+    lines.extend([
+        "",
+        "## Failure Details",
+        "",
+        "| Benchmark | Reason |",
+        "|---|---|",
+    ])
+    if failed_results:
+        for record in failed_results:
+            lines.append(f"| {record['benchmark_name']} | {record.get('failure_reason') or 'unknown'} |")
+    else:
+        lines.append("| none | no failed benchmarks |")
+
     path = run_dir / "report.md"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
