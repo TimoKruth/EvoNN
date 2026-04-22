@@ -310,12 +310,49 @@ def test_symbiosis_export_preserves_failed_benchmarks(tmp_path: Path, monkeypatc
     rows = json.loads(results_path.read_text(encoding="utf-8"))
     manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
 
-    assert sym._MLX_VERSION is not None
     assert rows[0]["status"] == "failed"
     assert rows[0]["metric_value"] is None
     assert rows[0]["failure_reason"] == "lm backend blew up"
-    assert manifest["device"]["framework"] == "mlx"
-    assert manifest["device"]["framework_version"] == sym._MLX_VERSION
+    assert manifest["device"]["framework"] == "unknown"
+    assert manifest["device"]["framework_version"] == "unknown"
+    assert manifest["device"]["precision_mode"] == "unknown"
+
+
+def test_export_symbiosis_uses_recorded_runtime_metadata_in_manifest_and_summary(tmp_path: Path):
+    output_dir = tmp_path / "export"
+    output_dir.mkdir()
+
+    manifest = {
+        "run_id": "demo",
+        "budget": {"evaluation_count": 4, "population_size": 2},
+        "device": {
+            "framework": "numpy-fallback",
+            "framework_version": "fallback-1.2.3",
+            "precision_mode": "bf16",
+        },
+    }
+    results = [
+        {
+            "benchmark_id": "iris",
+            "metric_value": 0.91,
+            "status": "ok",
+        },
+        {
+            "benchmark_id": "moons",
+            "metric_value": None,
+            "status": "failed",
+        },
+    ]
+    population = [Genome.create_seed(InnovationCounter(), random.Random(1))]
+    config = RunConfig()
+
+    sym._write_summary_json(output_dir, manifest, results, population, latest_gen=0, config=config)
+
+    summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["runtime_backend"] == "numpy-fallback"
+    assert summary["runtime_version"] == "fallback-1.2.3"
+    assert summary["precision_mode"] == "bf16"
+
 
 
 def test_cli_benchmarks_and_symbiosis_export(monkeypatch, tmp_path: Path):

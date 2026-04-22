@@ -164,6 +164,7 @@ def export_symbiosis_contract(
 
     # 8. Build manifest
     pack_name = Path(pack_path).stem
+    runtime_meta = _runtime_metadata_from_budget(budget_meta)
 
     budget_manifest = _budget_manifest(config, budget_meta, latest_gen, len(population))
     manifest = {
@@ -179,9 +180,9 @@ def export_symbiosis_contract(
         "budget": budget_manifest,
         "device": {
             "device_name": _detect_device(),
-            "precision_mode": budget_meta.get("precision_mode", "unknown"),
-            "framework": budget_meta.get("runtime_backend", "mlx"),
-            "framework_version": budget_meta.get("runtime_version") or _MLX_VERSION,
+            "precision_mode": runtime_meta["precision_mode"],
+            "framework": runtime_meta["runtime_backend"],
+            "framework_version": runtime_meta["runtime_version"],
         },
         "config_snapshot": config.model_dump(mode="json"),
         "artifacts": _build_artifacts_section(
@@ -348,6 +349,20 @@ def _search_telemetry(
         "benchmark_elite_families": budget_meta.get("benchmark_elite_families"),
         "topology_atlas_motif_counts": budget_meta.get("topology_atlas_motif_counts"),
         "primordia_seeding": budget_meta.get("primordia_seeding"),
+    }
+
+
+def _runtime_metadata_from_budget(budget_meta: dict[str, Any]) -> dict[str, str]:
+    """Normalize recorded runtime metadata for export artifacts.
+
+    Export must describe the runtime that produced the run artifacts, not the
+    exporter host. Missing recorded fields therefore degrade to ``unknown``.
+    """
+
+    return {
+        "runtime_backend": str(budget_meta.get("runtime_backend") or "unknown"),
+        "runtime_version": str(budget_meta.get("runtime_version") or "unknown"),
+        "precision_mode": str(budget_meta.get("precision_mode") or "unknown"),
     }
 
 
@@ -631,6 +646,7 @@ def _write_summary_json(
     failure_count = sum(1 for r in results if r.get("status") != "ok")
 
     budget = manifest.get("budget", {})
+    device = manifest.get("device", {})
     summary = {
         "system": "topograph",
         "run_id": manifest["run_id"],
@@ -645,6 +661,9 @@ def _write_summary_json(
         "median_benchmark_quality": median_quality,
         "failure_count": failure_count,
         "benchmarks_evaluated": len(best_fitness),
+        "runtime_backend": device.get("framework", "unknown"),
+        "runtime_version": device.get("framework_version", "unknown"),
+        "precision_mode": device.get("precision_mode", "unknown"),
     }
     (output_dir / "summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8",
