@@ -181,6 +181,72 @@ def test_inspect_rebuilds_primitive_bank_from_summary_and_trials_when_bank_artif
     assert "moons" in result.output
 
 
+def test_inspect_reads_best_benchmarks_from_best_results_artifact_when_summary_omits_them(tmp_path: Path) -> None:
+    run_dir = tmp_path / "best_results_artifact"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "best_results_artifact",
+                "runtime": "mlx",
+                "evaluation_count": 2,
+                "benchmark_count": 1,
+                "failure_count": 0,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "best_results.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "moons",
+                    "primitive_name": "mlp-wide",
+                    "primitive_family": "mlp",
+                    "metric_name": "accuracy",
+                    "metric_value": 0.94,
+                    "status": "ok",
+                }
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["inspect", "--run-dir", str(run_dir)])
+
+    assert result.exit_code == 0
+    assert "Best Benchmarks" in result.output
+    assert "moons" in result.output
+    assert "mlp-wide" in result.output
+
+
+def test_inspect_ignores_malformed_best_results_artifact_when_summary_omits_it(tmp_path: Path) -> None:
+    run_dir = tmp_path / "malformed_best_results_artifact"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "malformed_best_results_artifact",
+                "runtime": "mlx",
+                "evaluation_count": 1,
+                "benchmark_count": 1,
+                "failure_count": 0,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "best_results.json").write_text("{not valid json", encoding="utf-8")
+
+    result = runner.invoke(app, ["inspect", "--run-dir", str(run_dir)])
+
+    assert result.exit_code == 0
+    assert "Best Benchmarks" not in result.output
+    assert "Failure Count" in result.output
+
+
 def test_inspect_handles_minimal_summary_without_optional_artifacts(tmp_path: Path) -> None:
     run_dir = tmp_path / "minimal_run"
     run_dir.mkdir()

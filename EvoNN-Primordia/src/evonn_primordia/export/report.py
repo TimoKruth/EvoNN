@@ -6,6 +6,25 @@ from pathlib import Path
 from typing import Any
 
 
+def load_best_results(run_dir: str | Path, summary: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Load benchmark winners from the summary first, then fall back to best_results.json."""
+
+    summary_best_results = list((summary or {}).get("best_results") or [])
+    if summary_best_results:
+        return summary_best_results
+
+    best_results_path = Path(run_dir) / "best_results.json"
+    if not best_results_path.exists():
+        return []
+
+    try:
+        loaded = json.loads(best_results_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    return loaded if isinstance(loaded, list) else []
+
+
 def build_primitive_bank_summary(
     *,
     summary: dict[str, Any],
@@ -76,10 +95,9 @@ def write_report(run_dir: str | Path) -> Path:
     summary_path = run_dir / "summary.json"
     if summary_path.exists():
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        best_results_path = run_dir / "best_results.json"
         trial_records_path = run_dir / "trial_records.json"
         primitive_bank_path = run_dir / "primitive_bank_summary.json"
-        best_results = json.loads(best_results_path.read_text(encoding="utf-8")) if best_results_path.exists() else []
+        best_results = load_best_results(run_dir, summary)
         trial_records = json.loads(trial_records_path.read_text(encoding="utf-8")) if trial_records_path.exists() else []
         primitive_bank = (
             json.loads(primitive_bank_path.read_text(encoding="utf-8"))
@@ -160,7 +178,7 @@ def write_report(run_dir: str | Path) -> Path:
             "| Benchmark | Primitive | Metric | Value | Status |",
             "|---|---|---|---:|---|",
         ])
-        for record in summary.get("best_results", []):
+        for record in best_results:
             value = "---" if record.get("metric_value") is None else f"{float(record['metric_value']):.6f}"
             lines.append(
                 f"| {record['benchmark_name']} | {record['primitive_name']} | {record['metric_name']} | {value} | {record['status']} |"

@@ -9,7 +9,7 @@ from rich.table import Table
 
 from evonn_primordia.config import load_config
 from evonn_primordia.export import export_symbiosis_contract, write_report
-from evonn_primordia.export.report import build_primitive_bank_summary
+from evonn_primordia.export.report import build_primitive_bank_summary, load_best_results
 from evonn_primordia.pipeline import run_search
 
 app = typer.Typer(help="Primitive-first evolutionary search for EvoNN.", no_args_is_help=False)
@@ -67,13 +67,10 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     if primitive_bank_path.exists():
         primitive_bank = json.loads(primitive_bank_path.read_text(encoding="utf-8"))
     else:
-        best_results_path = run_dir / "best_results.json"
         trial_records_path = run_dir / "trial_records.json"
         primitive_bank = build_primitive_bank_summary(
             summary=summary,
-            best_results=(
-                json.loads(best_results_path.read_text(encoding="utf-8")) if best_results_path.exists() else []
-            ),
+            best_results=load_best_results(run_dir, summary),
             trial_records=(
                 json.loads(trial_records_path.read_text(encoding="utf-8")) if trial_records_path.exists() else []
             ),
@@ -146,7 +143,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
                 )
             console.print(failure_table)
 
-    best_results = summary.get("best_results") or []
+    best_results = load_best_results(run_dir, summary)
     if best_results:
         best_table = Table(title="Best Benchmarks")
         best_table.add_column("Benchmark", style="cyan")

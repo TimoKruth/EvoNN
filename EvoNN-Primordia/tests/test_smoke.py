@@ -520,6 +520,53 @@ primitive_pool:
     assert "- Failure Count: `0`" in report
 
 
+def test_report_regeneration_reuses_best_results_artifact_when_summary_omits_best_rows(tmp_path: Path) -> None:
+    run_dir = tmp_path / "artifact_only_report"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "artifact_only_report",
+                "runtime": "numpy-fallback",
+                "runtime_version": "fallback-0.9",
+                "evaluation_count": 2,
+                "target_evaluation_count": 2,
+                "benchmark_count": 1,
+                "budget_policy_name": "prototype_equal_budget",
+                "failure_count": 0,
+                "primitive_usage": {"mlp": 2},
+                "group_counts": {"tabular": 1},
+                "wall_clock_seconds": 3.5,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "best_results.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "moons",
+                    "primitive_name": "mlp-wide",
+                    "primitive_family": "mlp",
+                    "metric_name": "accuracy",
+                    "metric_value": 0.94,
+                    "status": "ok",
+                }
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    regenerated_path = write_report(run_dir)
+    regenerated = regenerated_path.read_text(encoding="utf-8")
+
+    assert regenerated_path == run_dir / "report.md"
+    assert "## Best Primitive Per Benchmark" in regenerated
+    assert "| moons | mlp-wide | accuracy | 0.940000 | ok |" in regenerated
+
+
 def test_report_regeneration_uses_summary_telemetry(tmp_path: Path, fake_runtime) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
