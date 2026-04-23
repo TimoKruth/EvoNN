@@ -20,6 +20,7 @@ from prism.benchmarks.datasets import get_benchmark
 from prism.config import RunConfig, load_config
 from prism.export import symbiosis as sym
 from prism.genome import ModelGenome
+from prism.runtime import cache as cache_mod
 from prism.runtime.cache import WeightCache
 from prism.runtime.training import EvaluationResult
 from prism.storage import RunStore
@@ -576,6 +577,36 @@ def test_weight_cache_skips_missing_parameter_paths():
     cache = WeightCache()
     cache._cache["parent"] = {"layers.0.weight": np.ones((2, 2), dtype=np.float32)}
     assert cache.transfer_weights("parent", DummyModel()) is False
+
+
+def test_weight_cache_finds_best_compatible_fallback(monkeypatch):
+    cache = WeightCache()
+    cache._cache["weak"] = {"w": np.zeros((2, 2), dtype=np.float32)}
+    cache._cache["strong"] = {"w": np.zeros((4, 4), dtype=np.float32)}
+    cache._meta["weak"] = {"family": "mlp"}
+    cache._meta["strong"] = {"family": "mlp"}
+
+    monkeypatch.setattr(
+        cache_mod,
+        "_flatten_trainable_parameters",
+        lambda model: {"w": np.zeros((4, 4), dtype=np.float32)},
+    )
+    monkeypatch.setattr(
+        cache_mod,
+        "_compatibility_score",
+        lambda parent, child: 5.0 if parent["w"].shape == (4, 4) else 1.0,
+    )
+    applied = []
+    monkeypatch.setattr(
+        cache_mod,
+        "_apply_matching_weights",
+        lambda parent, model, child: applied.append(parent["w"].shape) or 1,
+    )
+
+    source = cache.transfer_best_available(object(), family="mlp", preferred_ids=["weak"])
+
+    assert source == "strong"
+    assert applied == [(4, 4)]
 
 
 def test_smoke_pack_contains_33_plus_5_lm():
