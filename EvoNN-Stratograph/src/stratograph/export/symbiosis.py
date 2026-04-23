@@ -135,6 +135,7 @@ def export_symbiosis_contract(
             "raw_database": "metrics.duckdb",
         },
         "search_telemetry": {
+            "architecture_mode": budget_meta.get("architecture_mode", config.evolution.architecture_mode),
             "qd_enabled": bool(budget_meta.get("qd_enabled", False)),
             "effective_training_epochs": budget_meta.get("effective_training_epochs"),
             "novelty_score_mean": budget_meta.get("novelty_score_mean"),
@@ -237,6 +238,8 @@ def _write_contract_summary_json(
         "epochs_per_candidate": budget.get("epochs_per_candidate", config.training.epochs),
         "population_size": budget.get("population_size", config.evolution.population_size),
         "wall_clock_seconds": budget.get("wall_clock_seconds"),
+        "architecture_mode": manifest.get("search_telemetry", {}).get("architecture_mode")
+        or config.evolution.architecture_mode,
         "runtime_backend": device.get("framework", "unknown"),
         "runtime_version": device.get("framework_version") or "unknown",
         "precision_mode": device.get("precision_mode", "unknown"),

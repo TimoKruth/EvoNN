@@ -88,6 +88,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert summary["runtime_version"] == (budget_meta["runtime_version"] or "unknown")
     assert summary["precision_mode"] == budget_meta["precision_mode"]
     assert summary["wall_clock_seconds"] == budget_meta["wall_clock_seconds"]
+    assert summary["architecture_mode"] == budget_meta["architecture_mode"]
     assert summary["completed_benchmarks"] == status["completed_count"]
     assert summary["remaining_benchmarks"] == status["remaining_count"]
     assert summary["failure_count"] == sum(1 for record in exported_results if record["status"] != "ok")
@@ -97,6 +98,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
     assert manifest["budget"]["wall_clock_seconds"] == budget_meta["wall_clock_seconds"]
+    assert manifest["search_telemetry"]["architecture_mode"] == budget_meta["architecture_mode"]
     assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
     assert manifest["device"]["framework_version"] == (budget_meta["runtime_version"] or "unknown")
     assert manifest["device"]["precision_mode"] == budget_meta["precision_mode"]
