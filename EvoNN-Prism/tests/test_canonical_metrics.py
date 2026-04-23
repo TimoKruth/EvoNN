@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -202,3 +203,27 @@ def test_main_fails_fast_when_runtime_unavailable(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "runtime unavailable" in captured.out
+
+
+
+def test_main_records_pack_name_from_pack_path(monkeypatch, tmp_path):
+    smoke = _load_smoke_module()
+    script_root = tmp_path / "EvoNN-Prism" / "scripts"
+    script_root.mkdir(parents=True)
+    fake_script_path = script_root / "smoke_41bench.py"
+    fake_script_path.write_text("# test shim\n", encoding="utf-8")
+    pack_path = tmp_path / "custom_pack.yaml"
+    pack_path.write_text("benchmarks: []\n", encoding="utf-8")
+
+    monkeypatch.setattr(smoke, "__file__", str(fake_script_path))
+    monkeypatch.setattr(smoke, "PACK_PATH", pack_path)
+    monkeypatch.setattr(smoke, "_require_runtime_dependencies", lambda: None)
+    monkeypatch.setattr(smoke, "load_pack", lambda path: [])
+
+    exit_code = smoke.main()
+
+    out_path = tmp_path / "EvoNN-Prism" / "runs" / "smoke_41bench" / "results.json"
+    assert exit_code == 0
+    assert out_path.exists()
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["pack"] == "custom_pack"

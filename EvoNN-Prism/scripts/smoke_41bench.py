@@ -299,11 +299,11 @@ def main() -> int:
     out_dir = Path(__file__).parent.parent / "runs" / "smoke_41bench"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "results.json"
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump({
             "system": "prism",
             "version": "0.1.0",
-            "pack": "all_shared",
+            "pack": PACK_PATH.stem,
             "config": {"population_size": POP_SIZE, "num_generations": NUM_GENS,
                        "epochs": EPOCHS, "batch_size": BATCH_SIZE, "seed": SEED},
             "total_elapsed_seconds": round(total_elapsed, 2),
