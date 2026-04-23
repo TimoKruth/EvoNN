@@ -98,17 +98,23 @@ class BenchmarkSpec(BaseModel):
 
         # Built-in loaders
         if ds == "load_iris":
-            d = skd.load_iris(); return d.data, d.target
+            d = skd.load_iris()
+            return d.data, d.target
         if ds == "load_wine":
-            d = skd.load_wine(); return d.data, d.target
+            d = skd.load_wine()
+            return d.data, d.target
         if ds == "load_digits":
-            d = skd.load_digits(); return d.data, d.target
+            d = skd.load_digits()
+            return d.data, d.target
         if ds == "load_breast_cancer":
-            d = skd.load_breast_cancer(); return d.data, d.target
+            d = skd.load_breast_cancer()
+            return d.data, d.target
         if ds == "load_diabetes":
-            d = skd.load_diabetes(); return d.data, d.target
+            d = skd.load_diabetes()
+            return d.data, d.target
         if ds == "load_linnerud":
-            d = skd.load_linnerud(); return d.data, d.target[:, 0]
+            d = skd.load_linnerud()
+            return d.data, d.target[:, 0]
 
         # Generated classification
         if ds == "make_moons":

@@ -7,10 +7,6 @@ import mlx.nn as nn
 
 from topograph.genome.genes import (
     Activation,
-    ConnectionGene,
-    ConvLayerGene,
-    GateConfig,
-    LayerGene,
     OperatorType,
     WeightBits,
 )

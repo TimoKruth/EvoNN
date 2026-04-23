@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from collections import Counter
+import importlib.metadata
 import json
 import math
 import os
@@ -16,7 +18,7 @@ from topograph.benchmarks.spec import BenchmarkSpec
 from topograph.cache import WeightCache
 from topograph.config import RunConfig
 from topograph.genome.codec import dict_to_genome, genome_to_dict
-from topograph.genome.genes import OperatorType
+from topograph.genome.genes import Activation, OperatorType
 from topograph.genome.genome import Genome, InnovationCounter
 from topograph.monitor import TerminalMonitor
 from topograph.parallel import ParallelEvaluator, ParallelRuntimeLimits
@@ -40,6 +42,13 @@ from topograph.pipeline.schedule import MutationScheduler
 from topograph.storage import RunStore
 
 _MAP_ELITES_TOTAL_NICHES = 6**4
+
+
+def _runtime_metadata() -> tuple[str, str | None]:
+    try:
+        return "mlx", importlib.metadata.version("mlx")
+    except importlib.metadata.PackageNotFoundError:
+        return "mlx", None
 
 
 def run_evolution(
@@ -88,6 +97,7 @@ def run_evolution(
     elif benchmark_spec is None:
         benchmark_spec = get_benchmark(config.benchmark)
 
+    existing_budget_meta = store.load_budget_metadata(run_id) if store is not None else None
     state = GenerationState(generation=0, population=[])
     fitness_history: list[float] = []
     pending_outcomes: list[PendingMutationOutcome] = []
@@ -105,7 +115,16 @@ def run_evolution(
     novelty_score_max = 0.0
     map_elites_insertions = 0
     start_gen = 0
-    completed = False
+    stored_primordia_seeding = (
+        existing_budget_meta.get("primordia_seeding")
+        if isinstance(existing_budget_meta, dict)
+        else None
+    )
+    primordia_seeding: dict[str, object] | None = (
+        dict(stored_primordia_seeding)
+        if isinstance(stored_primordia_seeding, Mapping)
+        else None
+    )
 
     if resume and store:
         snapshot = store.load_run_state(run_id)
@@ -149,7 +168,6 @@ def run_evolution(
                 benchmark_elite_archive = BenchmarkEliteArchive.from_dict(
                     snapshot.get("benchmark_elite_archive")
                 )
-            completed = bool(snapshot.get("completed", False))
             monitor.on_info(f"Resuming from generation {start_gen}")
         else:
             latest_gen = store.load_latest_generation(run_id)
@@ -182,9 +200,20 @@ def run_evolution(
         return state
 
     if not state.population:
+        primordia_seeding = _resolve_primordia_seeding(
+            config,
+            benchmark_spec=benchmark_spec,
+            benchmark_specs=benchmark_specs,
+        )
         state = GenerationState(
             generation=0,
-            population=_create_seed_population(config, innovation_counter, rng),
+            population=_create_seed_population(
+                config,
+                innovation_counter,
+                rng,
+                benchmark_spec=benchmark_spec,
+                benchmark_specs=benchmark_specs,
+            ),
         )
         start_gen = 0
 
@@ -394,6 +423,7 @@ def run_evolution(
                 scheduler=scheduler,
                 parallel_eval=parallel_eval,
                 pool_state=pool_state,
+                primordia_seeding=primordia_seeding,
             )
             if run_dir is not None:
                 _write_archive_artifacts(
@@ -463,6 +493,9 @@ def _create_seed_population(
     config: RunConfig,
     innovation_counter: InnovationCounter,
     rng: random.Random,
+    *,
+    benchmark_spec: BenchmarkSpec | None = None,
+    benchmark_specs: list[BenchmarkSpec] | None = None,
 ) -> list[Genome]:
     population = [
         Genome.create_seed(
@@ -489,10 +522,120 @@ def _create_seed_population(
                 update["num_heads"] = num_heads
             genome.layers[j] = layer.model_copy(update=update)
 
+    primordia_seeding = _resolve_primordia_seeding(
+        config,
+        benchmark_spec=benchmark_spec,
+        benchmark_specs=benchmark_specs,
+    )
+    if primordia_seeding is not None:
+        _apply_primordia_seed_bias(population, primordia_seeding)
+
     for genome in population:
         genome.learning_rate = _sample_learning_rate(config, rng)
         genome.batch_size = _sample_batch_size(config, rng)
     return population
+
+
+def _resolve_primordia_seeding(
+    config: RunConfig,
+    *,
+    benchmark_spec: BenchmarkSpec | None,
+    benchmark_specs: list[BenchmarkSpec] | None,
+) -> dict[str, object] | None:
+    pool_cfg = config.benchmark_pool
+    if pool_cfg is None or not pool_cfg.primordia_seed_candidates_path:
+        return None
+
+    seed_path = Path(pool_cfg.primordia_seed_candidates_path)
+    if not seed_path.exists():
+        return None
+
+    payload = json.loads(seed_path.read_text(encoding="utf-8"))
+    target_family = None
+    if benchmark_specs:
+        target_family = _active_benchmark_family(config, benchmark_specs, generation=0)
+    elif benchmark_spec is not None:
+        target_family = benchmark_family_name(benchmark_spec)
+    if target_family is None:
+        return None
+
+    ranked_rows = payload.get("seed_candidates") or []
+    matching = [
+        row for row in ranked_rows
+        if target_family in set(row.get("benchmark_groups") or [])
+    ]
+    if not matching:
+        return None
+
+    selected = matching[0]
+    return {
+        "seed_path": str(seed_path),
+        "target_family": target_family,
+        "selected_family": str(selected.get("family") or "unknown"),
+        "selected_rank": int(selected.get("seed_rank", 0)),
+        "representative_architecture_summary": selected.get("representative_architecture_summary"),
+        "representative_genome_id": selected.get("representative_genome_id"),
+    }
+
+
+def _apply_primordia_seed_bias(population: list[Genome], seeding: dict[str, object]) -> None:
+    family = str(seeding.get("selected_family") or "")
+    if not family:
+        return
+
+    operator = _primordia_family_operator(family)
+    activation = _primordia_family_activation(family)
+    width_range = _primordia_family_width_range(family)
+    sparsity = 0.2 if family in {"sparse_mlp", "sparse_attention"} else 0.0
+
+    for genome in population[: max(1, min(4, len(population)))]:
+        for index, layer in enumerate(genome.layers):
+            if not layer.enabled:
+                continue
+            width = min(max(layer.width, width_range[0]), width_range[1])
+            update: dict[str, object] = {
+                "operator": operator,
+                "activation": activation,
+                "width": width,
+            }
+            if sparsity > 0.0:
+                update["sparsity"] = max(layer.sparsity, sparsity)
+            if operator in {OperatorType.ATTENTION_LITE, OperatorType.TRANSFORMER_LITE}:
+                num_heads = max(1, min(4, layer.num_heads))
+                while num_heads > 1 and width % num_heads != 0:
+                    num_heads -= 1
+                update["num_heads"] = num_heads
+            genome.layers[index] = layer.model_copy(update=update)
+
+
+def _primordia_family_operator(family: str) -> OperatorType:
+    if family in {"attention", "embedding"}:
+        return OperatorType.ATTENTION_LITE
+    if family == "sparse_attention":
+        return OperatorType.TRANSFORMER_LITE
+    if family in {"conv2d", "lite_conv2d"}:
+        return OperatorType.SPATIAL
+    if family == "sparse_mlp":
+        return OperatorType.SPARSE_DENSE
+    return OperatorType.RESIDUAL if family == "moe_mlp" else OperatorType.DENSE
+
+
+def _primordia_family_activation(family: str) -> Activation:
+    if family in {"attention", "sparse_attention", "embedding"}:
+        return Activation.GELU
+    if family in {"conv2d", "lite_conv2d"}:
+        return Activation.RELU
+    return Activation.SILU if family == "moe_mlp" else Activation.GELU
+
+
+def _primordia_family_width_range(family: str) -> tuple[int, int]:
+    if family in {"attention", "sparse_attention", "embedding"}:
+        return (64, 192)
+    if family in {"conv2d", "lite_conv2d"}:
+        return (32, 160)
+    if family == "moe_mlp":
+        return (96, 224)
+    return (48, 192)
 
 
 def _sample_learning_rate(config: RunConfig, rng: random.Random) -> float:
@@ -870,6 +1013,7 @@ def _save_budget_metadata(
     scheduler: MutationScheduler,
     parallel_eval: ParallelEvaluator | None = None,
     pool_state: dict[str, object] | None = None,
+    primordia_seeding: dict[str, object] | None = None,
 ) -> None:
     timing_rows = store.load_benchmark_timings(run_id)
     benchmark_results = store.load_benchmark_results(run_id)
@@ -884,9 +1028,13 @@ def _save_budget_metadata(
         default=1,
     )
     occupied = len(map_elites_archive) if map_elites_archive is not None else 0
+    runtime_backend, runtime_version = _runtime_metadata()
     metadata = {
         "evaluation_count": state.total_evaluations,
         "wall_clock_seconds": round(elapsed, 2),
+        "runtime_backend": runtime_backend,
+        "runtime_version": runtime_version,
+        "precision_mode": "mixed" if config.quantization_schedule else "fp16",
         "total_generations": completed_generations,
         "population_size": config.evolution.population_size,
         "benchmark_count": len(state.raw_losses) if state.raw_losses else 1,
@@ -940,6 +1088,7 @@ def _save_budget_metadata(
         "benchmark_cost_seconds": dict((pool_state or {}).get("benchmark_cost_seconds", {})),
         "benchmark_elite_families": _benchmark_elite_family_counts(benchmark_elite_archive),
         "topology_atlas_motif_counts": _topology_atlas_motif_counts(benchmark_elite_archive),
+        "primordia_seeding": primordia_seeding,
         "operator_stats": scheduler.stats_summary(),
     }
     store.save_budget_metadata(run_id, metadata)

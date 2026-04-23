@@ -123,6 +123,7 @@ def is_genome_compatible(
     modality: str,
     task: str = "classification",
 ) -> bool:
+    """Return whether a genome family is compatible with the requested workload."""
     family = genome.family
     if family not in FAMILY_CLASSES:
         return False

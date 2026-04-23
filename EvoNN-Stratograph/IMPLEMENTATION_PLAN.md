@@ -151,8 +151,8 @@ Exit criteria:
 
 ## What This Turn Does Not Finish
 
-- full MLX trainer
-- weight inheritance across training runs
+- full long-horizon hierarchy-specialized trainer optimization
+- long-horizon weight inheritance across training runs
 - advanced novelty/QD scheduling beyond current lightweight archive
 - compare-side orchestration automation
 - final merged-system work across Prism/Topograph/Stratograph

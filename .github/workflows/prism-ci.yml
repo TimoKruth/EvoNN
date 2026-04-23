@@ -32,7 +32,7 @@ jobs:
         run: uv sync --package prism --extra dev
 
       - name: Ruff
-        run: uv run --package prism --extra dev ruff check EvoNN-Prism
+        run: bash scripts/ci/prism-checks.sh ruff
 
       - name: Pytest
-        run: uv run --package prism --extra dev pytest EvoNN-Prism/tests --cov=prism --cov-report=term-missing
+        run: bash scripts/ci/prism-checks.sh pytest

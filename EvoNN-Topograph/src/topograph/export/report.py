@@ -17,6 +17,148 @@ from topograph.storage import RunStore
 # ===========================================================================
 
 
+def load_report_context(run_dir: str | Path) -> dict[str, Any]:
+    """Load the shared Topograph run context used by inspect/report flows."""
+    run_dir = Path(run_dir)
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        run_id = _resolve_run_id(store)
+        latest_gen = store.load_latest_generation(run_id)
+        if latest_gen is None:
+            return {
+                "run_dir": run_dir,
+                "run_id": run_id,
+                "latest_generation": None,
+                "run": {},
+                "population": [],
+                "best_genome": None,
+                "budget_meta": {},
+                "run_state": {},
+                "benchmark_results": [],
+                "ok_results": [],
+                "failed_results": [],
+                "skipped_results": [],
+                "best_results": [],
+                "benchmark_timings": [],
+                "checkpoint_path": run_dir / "checkpoint.json",
+            }
+
+        genome_dicts = store.load_genomes(run_id, latest_gen)
+        population = [dict_to_genome(d) for d in genome_dicts]
+        best_genome = min(
+            population,
+            key=lambda g: g.fitness if g.fitness is not None else float("inf"),
+        ) if population else None
+
+        try:
+            run = store.load_run(run_id)
+        except ValueError:
+            run = {}
+
+        benchmark_results = store.load_benchmark_results(run_id)
+        ok_results = [row for row in benchmark_results if row.get("status") == "ok"]
+        failed_results = [row for row in benchmark_results if row.get("status") == "failed"]
+        skipped_results = [
+            row for row in benchmark_results if row.get("status") not in {None, "ok", "failed"}
+        ]
+
+        return {
+            "run_dir": run_dir,
+            "run_id": run_id,
+            "latest_generation": latest_gen,
+            "run": run,
+            "population": population,
+            "best_genome": best_genome,
+            "budget_meta": store.load_budget_metadata(run_id) or {},
+            "run_state": store.load_run_state(run_id) or {},
+            "benchmark_results": benchmark_results,
+            "ok_results": ok_results,
+            "failed_results": failed_results,
+            "skipped_results": skipped_results,
+            "best_results": store.load_best_benchmark_results(run_id),
+            "benchmark_timings": store.load_benchmark_timings(run_id),
+            "checkpoint_path": run_dir / "checkpoint.json",
+        }
+
+
+def primordia_seeding_rows(seeding: dict[str, Any] | None) -> list[tuple[str, str]]:
+    """Return Topograph seeding metadata rows for inspect/report surfaces."""
+    if not seeding:
+        return []
+
+    rows = [
+        (
+            "Primordia Seeding",
+            f"{seeding.get('selected_family', 'unknown')} -> {seeding.get('target_family', 'unknown')} "
+            f"(rank {seeding.get('selected_rank', 'n/a')})",
+        )
+    ]
+    if seeding.get("seed_path"):
+        rows.append(("Primordia Seed Artifact", str(seeding["seed_path"])))
+    if seeding.get("representative_genome_id"):
+        rows.append(("Primordia Seed Genome", str(seeding["representative_genome_id"])))
+    if seeding.get("representative_architecture_summary"):
+        rows.append(
+            ("Primordia Seed Summary", str(seeding["representative_architecture_summary"]))
+        )
+    return rows
+
+
+def summarize_failure_patterns(non_ok_results: list[dict[str, Any]]) -> list[tuple[str, int]]:
+    """Aggregate non-OK outcomes for shared inspect/report surfaces."""
+    counts = Counter(
+        str(row.get("failure_reason") or row.get("status") or "unknown")
+        for row in non_ok_results
+        if row.get("status") != "ok"
+    )
+    return counts.most_common()
+
+
+def _escape_markdown_cell(value: Any) -> str:
+    """Escape markdown table cell content derived from runtime strings."""
+    return str(value).replace("|", "\\|").replace("\n", "<br>")
+
+
+def run_state_rows(
+    *,
+    run: dict[str, Any],
+    run_state: dict[str, Any],
+    latest_generation: int | None,
+    benchmark_results: list[dict[str, Any]],
+) -> list[tuple[str, str]]:
+    """Return shared run-state rows for Topograph inspect/report surfaces."""
+    rows: list[tuple[str, str]] = []
+
+    created_at = run.get("created_at")
+    if created_at:
+        rows.append(("Created At", str(created_at)))
+
+    if run_state:
+        rows.append(("Run State", "completed" if run_state.get("completed") else "in_progress"))
+
+        next_generation = run_state.get("next_generation")
+        if next_generation is not None:
+            rows.append(("Next Generation", str(next_generation)))
+
+        total_benchmarks = len(benchmark_results)
+        completed_benchmarks = sum(
+            1
+            for row in benchmark_results
+            if row.get("status") in {"ok", "failed", "skipped"}
+        )
+        if total_benchmarks:
+            rows.append(("Completed Benchmarks", f"{completed_benchmarks}/{total_benchmarks}"))
+            rows.append(("Remaining Benchmarks", str(max(total_benchmarks - completed_benchmarks, 0))))
+
+        current_sample = ((run_state.get("pool_state") or {}).get("current_sample") or [])
+        if current_sample:
+            rows.append(("Active Benchmark Sample", ", ".join(map(str, current_sample))))
+
+    elif latest_generation is not None:
+        rows.append(("Run State", "completed"))
+
+    return rows
+
+
 def generate_report(run_dir: str | Path, output_path: str | Path | None = None) -> str:
     """Generate a markdown report for a completed run. Returns the markdown string."""
     run_dir = Path(run_dir)
@@ -43,6 +185,8 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     run_state = store.load_run_state(run_id) or {}
     benchmark_timings = store.load_benchmark_timings(run_id)
     benchmark_results = store.load_benchmark_results(run_id)
+    failed_results = [row for row in benchmark_results if row.get("status") == "failed"]
+    non_ok_results = [row for row in benchmark_results if row.get("status") != "ok"]
     timing_summary = _summarize_benchmark_timings(benchmark_timings)
     benchmark_extremes = _benchmark_quality_extremes(store.load_best_benchmark_results(run_id))
     sampled_orders = _sampled_benchmark_orders(benchmark_timings)
@@ -61,6 +205,16 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     lines.append(f"- **Benchmark:** {config_dict.get('benchmark', 'N/A')}")
     lines.append(f"- **Generations:** {latest_gen + 1}")
     lines.append(f"- **Population Size:** {len(population)}")
+    for label, value in run_state_rows(
+        run=config_dict,
+        run_state=run_state,
+        latest_generation=latest_gen,
+        benchmark_results=benchmark_results,
+    ):
+        lines.append(f"- **{label}:** {value}")
+    lines.append(f"- **Runtime:** {budget.get('runtime_backend', 'unknown')}")
+    lines.append(f"- **Runtime Version:** {budget.get('runtime_version') or 'unknown'}")
+    lines.append(f"- **Precision Mode:** {budget.get('precision_mode') or 'unknown'}")
     if budget.get("wall_clock_seconds"):
         lines.append(f"- **Wall Clock:** {budget['wall_clock_seconds']:.1f}s")
     if budget.get("evaluation_count"):
@@ -95,6 +249,8 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
             f"{family}={count}" for family, count in budget["benchmark_elite_families"].items()
         )
         lines.append(f"- **Atlas Families:** {family_counts}")
+    for label, value in primordia_seeding_rows(budget.get("primordia_seeding")):
+        lines.append(f"- **{label}:** {value}")
     lines.append("")
 
     # --- Best Genome ---
@@ -116,7 +272,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     lines.append("### Layer Details\n")
     lines.append("| Innovation | Width | Activation | W-Bits | A-Bits | Operator | Order |")
     lines.append("|-----------|-------|-----------|--------|--------|----------|-------|")
-    for lg in sorted(best.enabled_layers, key=lambda l: l.order):
+    for lg in sorted(best.enabled_layers, key=lambda layer: layer.order):
         lines.append(
             f"| {lg.innovation} | {lg.width} | {lg.activation.value} "
             f"| {lg.weight_bits.value} | {lg.activation_bits.value} "
@@ -188,6 +344,25 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
             lines.append(
                 f"| {r['benchmark_name']} | {r['metric_name']} "
                 f"| {r['metric_direction']} | {val} | {r['status']} |"
+            )
+        lines.append("")
+
+    failure_patterns = summarize_failure_patterns(non_ok_results)
+    if failure_patterns:
+        lines.append("## Failure Patterns\n")
+        lines.append("| Reason | Count |")
+        lines.append("|--------|-------|")
+        for reason, count in failure_patterns:
+            lines.append(f"| {_escape_markdown_cell(reason)} | {count} |")
+        lines.append("")
+
+        lines.append("## Failure Details\n")
+        lines.append("| Benchmark | Reason |")
+        lines.append("|-----------|--------|")
+        for record in failed_results:
+            lines.append(
+                f"| {_escape_markdown_cell(record.get('benchmark_name') or 'unknown')} | "
+                f"{_escape_markdown_cell(record.get('failure_reason') or 'unknown')} |"
             )
         lines.append("")
 

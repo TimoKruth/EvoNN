@@ -15,7 +15,6 @@ from topograph.config import EarlyStoppingConfig, RunConfig
 from topograph.export import report as report_mod
 from topograph.genome.codec import genome_to_dict
 from topograph.genome.genome import Genome, InnovationCounter
-from topograph.monitor import TerminalMonitor
 from topograph.parallel import ParallelEvaluator
 from topograph.pipeline import coordinator as coordinator_mod
 from topograph.pipeline.archive import BenchmarkEliteArchive, MAPElitesArchive, NoveltyArchive
@@ -158,6 +157,9 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
         store.save_budget_metadata(
             "current",
             {
+                "runtime_backend": "mlx",
+                "runtime_version": "0.17.1",
+                "precision_mode": "mixed",
                 "wall_clock_seconds": 3.2,
                 "evaluation_count": 8,
                 "evals_per_second": 2.5,
@@ -170,6 +172,14 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
                 "requested_parallel_workers": 4,
                 "resolved_parallel_workers_max": 2,
                 "worker_clamp_reason_counts": {"memory": 1},
+                "primordia_seeding": {
+                    "seed_path": "/tmp/primordia/seed_candidates.json",
+                    "target_family": "tabular",
+                    "selected_family": "sparse_mlp",
+                    "selected_rank": 2,
+                    "representative_architecture_summary": "4L/6C sparse",
+                    "representative_genome_id": "prim-g7",
+                },
             },
         )
         store.save_benchmark_results(
@@ -259,6 +269,9 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
         store.save_run_state(
             "current",
             {
+                "next_generation": 1,
+                "completed": False,
+                "pool_state": {"current_sample": ["moons", "iris"]},
                 "benchmark_elite_archive": {
                     "elites": {
                         "moons": {
@@ -284,6 +297,19 @@ def test_generate_report_covers_empty_and_populated_runs(tmp_path: Path):
     assert "Parallel Workers" in report
     assert "Cache Reuse Rate" in report
     assert "Data Cache" in report
+    assert "Precision Mode" in report
+    assert "mixed" in report
+    assert "Run State" in report
+    assert "in_progress" in report
+    assert "Next Generation" in report
+    assert "Completed Benchmarks" in report
+    assert "Remaining Benchmarks" in report
+    assert "Active Benchmark Sample" in report
+    assert "moons, iris" in report
+    assert "Primordia Seeding" in report
+    assert "/tmp/primordia/seed_candidates.json" in report
+    assert "prim-g7" in report
+    assert "4L/6C sparse" in report
     assert "## Sampled Benchmark Order" in report
     assert "## Worst Benchmark Trend" in report
     assert "## Topology Atlas" in report

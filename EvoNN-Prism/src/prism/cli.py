@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -17,6 +18,23 @@ from prism.config import load_config
 
 console = Console()
 app = typer.Typer(name="prism", help="Family-based evolutionary NAS")
+
+
+def _evaluation_status(row: dict) -> str:
+    status = row.get("status")
+    if status:
+        return str(status)
+    return "failed" if row.get("failure_reason") else "ok"
+
+
+def _format_status_mix(evaluations: list[dict]) -> str:
+    counts = Counter(_evaluation_status(row) for row in evaluations)
+    if not counts:
+        return "none"
+
+    ordered_statuses = ["ok"]
+    ordered_statuses.extend(sorted(status for status in counts if status != "ok"))
+    return ", ".join(f"{status}={counts[status]}" for status in ordered_statuses if status in counts)
 
 
 # ===========================================================================
@@ -133,6 +151,7 @@ def inspect(
     run_dir: str = typer.Argument(..., help="Path to run directory"),
 ) -> None:
     """Inspect run metrics."""
+    from prism.export.report import _compute_failure_patterns, _failure_label, _load_runtime_metadata, _resolve_run_id
     from prism.genome import ModelGenome
     from prism.storage import RunStore
 
@@ -145,6 +164,7 @@ def inspect(
 
     store = RunStore(run_path / "metrics.duckdb")
     run_id = _resolve_run_id(store)
+    runtime_meta = _load_runtime_metadata(run_path)
 
     latest_gen = store.latest_generation(run_id)
     evaluations = store.load_evaluations(run_id)
@@ -159,6 +179,9 @@ def inspect(
         except Exception:
             pass
 
+    failed_evaluations = [row for row in evaluations if _failure_label(row) is not None]
+    failure_patterns = _compute_failure_patterns(evaluations)
+
     table = Table(title=f"Run: {run_path.name}")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="green")
@@ -167,6 +190,15 @@ def inspect(
     table.add_row("Genomes", str(len(genomes)))
     table.add_row("Total Evaluations", str(len(evaluations)))
     table.add_row("Benchmarks", str(len(best_per_benchmark)))
+    table.add_row(
+        "Evaluation Status Mix",
+        _format_status_mix(evaluations),
+    )
+    table.add_row("Runtime", runtime_meta["runtime_backend"])
+    table.add_row("Runtime Version", runtime_meta["runtime_version"])
+    table.add_row("Precision Mode", runtime_meta["precision_mode"])
+    if runtime_meta.get("wall_clock_seconds") is not None:
+        table.add_row("Wall Clock Seconds", f"{float(runtime_meta['wall_clock_seconds']):.3f}")
 
     # Best quality per benchmark
     if best_per_benchmark:
@@ -177,7 +209,6 @@ def inspect(
 
     # Family distribution
     if genomes:
-        from collections import Counter
         families = Counter(g.family for g in genomes)
         table.add_row("Families", ", ".join(f"{f}({c})" for f, c in families.most_common()))
 
@@ -199,6 +230,25 @@ def inspect(
                 str(best.get("parameter_count", "?")),
             )
         console.print(bench_table)
+
+    if failure_patterns:
+        failure_table = Table(title="Failure Patterns")
+        failure_table.add_column("Failure", style="cyan")
+        failure_table.add_column("Count", style="green")
+        for reason, count in failure_patterns.items():
+            failure_table.add_row(reason, str(count))
+        console.print(failure_table)
+
+    if failed_evaluations:
+        recent_failure_table = Table(title="Recent Failures")
+        recent_failure_table.add_column("Benchmark", style="cyan")
+        recent_failure_table.add_column("Failure", style="white")
+        for row in failed_evaluations[:8]:
+            recent_failure_table.add_row(
+                str(row.get("benchmark_id") or "unknown"),
+                str(_failure_label(row) or "unknown"),
+            )
+        console.print(recent_failure_table)
 
 
 @app.command("analyze-compare")

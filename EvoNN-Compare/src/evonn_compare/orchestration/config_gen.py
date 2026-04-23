@@ -9,8 +9,8 @@ from typing import Any
 
 import yaml
 
-from evonn_compare.adapters.slots import fallback_native_id
 from evonn_compare.contracts.parity import load_parity_pack
+from evonn_compare.orchestration.benchmark_resolution import resolve_supported_benchmark_ids
 
 
 COMPARE_ROOT = Path(__file__).resolve().parents[3]
@@ -68,7 +68,7 @@ def generate_prism_config(
     budget: int,
 ) -> Path:
     pack = load_parity_pack(pack_path)
-    benchmark_ids = [fallback_native_id(entry, "prism") for entry in pack.benchmarks]
+    benchmark_ids = resolve_supported_benchmark_ids(pack.benchmarks, "prism")
     allowed_families = _prism_allowed_families(pack, budget=budget)
     patch = _prism_budget_patch(
         budget=budget,
@@ -108,7 +108,7 @@ def generate_topograph_config(
     run_dir: Path,
 ) -> Path:
     pack = load_parity_pack(pack_path)
-    benchmark_ids = [fallback_native_id(entry, "topograph") for entry in pack.benchmarks]
+    benchmark_ids = resolve_supported_benchmark_ids(pack.benchmarks, "topograph")
     patch = _topograph_budget_patch(budget=budget, benchmark_count=len(pack.benchmarks))
     payload = {
         "seed": seed,

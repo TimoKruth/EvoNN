@@ -6,6 +6,7 @@ from prism.families.compiler import (
     compatible_families,
     compile_genome,
     count_parameters,
+    is_genome_compatible,
 )
 from prism.families.models import FAMILY_CLASSES
 
@@ -16,4 +17,5 @@ __all__ = [
     "compatible_families",
     "compile_genome",
     "count_parameters",
+    "is_genome_compatible",
 ]

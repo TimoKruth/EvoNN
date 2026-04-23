@@ -12,6 +12,7 @@ def canonical_slot(system: str) -> str:
         "prism": "evonn",
         "topograph": "evonn2",
         "stratograph": "stratograph",
+        "primordia": "primordia",
         "hybrid": "hybrid",
         "contenders": "contenders",
         "evonn": "evonn",
@@ -26,6 +27,7 @@ def system_display_name(system: str) -> str:
         "prism": "Prism",
         "topograph": "Topograph",
         "stratograph": "Stratograph",
+        "primordia": "Primordia",
         "hybrid": "Hybrid",
         "contenders": "Contenders",
         "evonn": "EvoNN",
@@ -54,6 +56,16 @@ def fallback_native_id(benchmark: ParityBenchmark, system: str) -> str:
     if system == "stratograph":
         return (
             native_ids.get("stratograph")
+            or native_ids.get("prism")
+            or native_ids.get("topograph")
+            or native_ids.get("hybrid")
+            or benchmark.benchmark_id
+        )
+    if system == "primordia":
+        return (
+            native_ids.get("primordia")
+            or native_ids.get("contenders")
+            or native_ids.get("stratograph")
             or native_ids.get("prism")
             or native_ids.get("topograph")
             or native_ids.get("hybrid")

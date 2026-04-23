@@ -16,10 +16,19 @@ import random
 from prism.genome import create_seed_genome, apply_random_mutation, crossover
 from prism.config import RunConfig
 from prism.benchmarks.parity import get_canonical_id
-from prism.families import compile_genome, compatible_families
 from prism.benchmarks.datasets import get_benchmark
 from prism.benchmarks.preprocess import Preprocessor
-from prism.runtime.training import train_and_evaluate
+
+try:
+    from prism.families import compile_genome, compatible_families
+    from prism.runtime.training import train_and_evaluate
+except ImportError as exc:  # pragma: no cover - host-dependent MLX runtime availability
+    compile_genome = None
+    compatible_families = None
+    train_and_evaluate = None
+    _MLX_RUNTIME_IMPORT_ERROR = exc
+else:
+    _MLX_RUNTIME_IMPORT_ERROR = None
 
 PACK_PATH = Path(__file__).parent.parent.parent / "shared-benchmarks" / "suites" / "parity" / "shared_33plus5.yaml"
 
@@ -27,21 +36,26 @@ POP_SIZE = 4
 NUM_GENS = 2
 EPOCHS = 2
 BATCH_SIZE = 32
+LM_BATCH_SIZE = 8
 SEED = 42
+LM_TRAIN_CAP = 128
+LM_VAL_CAP = 32
+LM_FAMILIES = ["attention"]
 
 
 def load_pack(path):
-    with open(path) as f:
-        pack = yaml.safe_load(f)
+    with open(path, encoding="utf-8") as f:
+        pack = yaml.safe_load(f) or {}
     benchmarks = []
-    for native in pack["benchmarks"]:
+    for native in pack.get("benchmarks", []):
         spec = get_benchmark(native)
+        metric_name, metric_direction = _metric_contract(spec.task)
         benchmarks.append({
             "canonical_id": get_canonical_id(native),
             "native_id": native,
             "task": spec.task,
-            "metric_name": "perplexity" if spec.task == "language_modeling" else ("mse" if spec.task == "regression" else "accuracy"),
-            "metric_direction": "min" if spec.task in {"language_modeling", "regression"} else "max",
+            "metric_name": metric_name,
+            "metric_direction": metric_direction,
         })
     return benchmarks
 
@@ -56,30 +70,69 @@ def detect_modality(spec):
     return "tabular"
 
 
+def _cap_lm_splits(x_train, y_train, x_val, y_val):
+    return (
+        x_train[:LM_TRAIN_CAP],
+        y_train[:LM_TRAIN_CAP],
+        x_val[:LM_VAL_CAP],
+        y_val[:LM_VAL_CAP],
+    )
+
+
+def _input_shape_from_data(spec, x_train):
+    if getattr(spec, "input_shape", None):
+        return list(spec.input_shape)
+    if x_train.ndim <= 1:
+        return [1]
+    return list(x_train.shape[1:])
+
+
+def _family_pool(modality, task):
+    if task == "language_modeling":
+        return list(LM_FAMILIES)
+    families = compatible_families(modality)
+    return families or ["mlp"]
+
+
+def _metric_contract(task):
+    if task == "language_modeling":
+        return "perplexity", "min"
+    if task == "regression":
+        return "mse", "min"
+    return "accuracy", "max"
+
+
+def _require_runtime_dependencies():
+    if compile_genome is None or compatible_families is None or train_and_evaluate is None:
+        raise RuntimeError("MLX runtime unavailable for smoke_41bench Prism execution") from _MLX_RUNTIME_IMPORT_ERROR
+
+
 def mini_evolve(benchmark_name, task, seed=SEED):
     """Run minimal family-based evolution on one benchmark."""
+    _require_runtime_dependencies()
     spec = get_benchmark(benchmark_name)
     X_train, y_train, X_val, y_val = spec.load_data(seed=seed)
-
-    pp = Preprocessor()
-    X_train = pp.fit_transform(X_train)
-    X_val = pp.transform(X_val)
-
-    input_dim = X_train.shape[1]
     modality = detect_modality(spec)
 
+    if task == "language_modeling":
+        X_train, y_train, X_val, y_val = _cap_lm_splits(X_train, y_train, X_val, y_val)
+    else:
+        pp = Preprocessor()
+        X_train = pp.fit_transform(X_train)
+        X_val = pp.transform(X_val)
+
+    input_shape = _input_shape_from_data(spec, X_train)
     if task == "classification":
         num_classes = len(set(y_train.tolist() if hasattr(y_train, 'tolist') else y_train))
     else:
-        num_classes = 1
+        num_classes = getattr(spec, "output_dim", None) or getattr(spec, "num_classes", None) or 1
 
     rng = random.Random(seed)
     config = RunConfig()
+    batch_size = LM_BATCH_SIZE if task == "language_modeling" else BATCH_SIZE
 
     # Get compatible families
-    families = compatible_families(modality)
-    if not families:
-        families = ["mlp"]
+    families = _family_pool(modality, task)
 
     # Create seed population - one per family, fill rest with mlp
     population = []
@@ -90,7 +143,7 @@ def mini_evolve(benchmark_name, task, seed=SEED):
             g = g.model_copy(update={"learning_rate": 0.001})
         population.append(g)
     while len(population) < POP_SIZE:
-        g = create_seed_genome("mlp", config.evolution, rng)
+        g = create_seed_genome(families[0], config.evolution, rng)
         if task == "regression":
             g = g.model_copy(update={"learning_rate": 0.001})
         population.append(g)
@@ -105,12 +158,11 @@ def mini_evolve(benchmark_name, task, seed=SEED):
         # Evaluate
         for g in population:
             try:
-                input_shape = [input_dim]
-                cm = compile_genome(g, input_shape, num_classes, modality)
+                cm = compile_genome(g, input_shape, num_classes, modality, task=task)
                 lr = g.learning_rate
                 result = train_and_evaluate(
                     cm.model, X_train, y_train, X_val, y_val,
-                    task=task, epochs=EPOCHS, lr=lr, batch_size=BATCH_SIZE,
+                    task=task, epochs=EPOCHS, lr=lr, batch_size=batch_size,
                     parameter_count=cm.parameter_count,
                 )
                 quality = result.quality
@@ -147,9 +199,10 @@ def mini_evolve(benchmark_name, task, seed=SEED):
         population = elites + offspring
 
     if best_result is None:
+        metric_name, metric_direction = _metric_contract(task)
         return {
-            "metric_name": "accuracy" if task == "classification" else "mse",
-            "metric_direction": "max" if task == "classification" else "min",
+            "metric_name": metric_name,
+            "metric_direction": metric_direction,
             "metric_value": None,
             "quality": None,
             "native_fitness": None,
@@ -170,10 +223,16 @@ def mini_evolve(benchmark_name, task, seed=SEED):
     }
 
 
-def main():
+def main() -> int:
     if not PACK_PATH.exists():
         print(f"Pack not found: {PACK_PATH}")
-        sys.exit(1)
+        return 1
+
+    try:
+        _require_runtime_dependencies()
+    except RuntimeError as exc:
+        print(f"Smoke runtime unavailable: {exc}")
+        return 1
 
     benchmarks = load_pack(PACK_PATH)
     print(f"Prism Smoke Test: {len(benchmarks)} benchmarks")
@@ -187,8 +246,6 @@ def main():
         name = bench["native_id"]
         canonical = bench["canonical_id"]
         task = bench["task"]
-        metric = bench["metric_name"]
-        direction = bench["metric_direction"]
 
         print(f"[{i:2d}/{len(benchmarks)}] {canonical:<42s} ({name}) ... ", end="", flush=True)
         t0 = time.time()
@@ -214,9 +271,10 @@ def main():
             status = "failed"
             family = "?"
             layers = 0
+            metric_name, metric_direction = _metric_contract(task)
             outcome = {
-                "metric_name": metric,
-                "metric_direction": direction,
+                "metric_name": metric_name,
+                "metric_direction": metric_direction,
                 "metric_value": None,
                 "quality": None,
                 "native_fitness": None,
@@ -256,6 +314,7 @@ def main():
 
     cls_results = [r for r in ok if r["task"] == "classification"]
     reg_results = [r for r in ok if r["task"] == "regression"]
+    lm_results = [r for r in ok if r["task"] == "language_modeling"]
 
     if cls_results:
         accs = [r["metric_value"] for r in cls_results if r["metric_value"] is not None]
@@ -266,6 +325,11 @@ def main():
         mses = [r["metric_value"] for r in reg_results if r["metric_value"] is not None]
         if mses:
             print(f"Regression ({len(mses)}): mean_mse={np.mean(mses):.4f}")
+
+    if lm_results:
+        ppls = [r["metric_value"] for r in lm_results if r["metric_value"] is not None]
+        if ppls:
+            print(f"LM ({len(ppls)}): mean_ppl={np.mean(ppls):.4f}, min={min(ppls):.4f}, max={max(ppls):.4f}")
 
     # Family distribution
     fam_counts = {}
@@ -278,18 +342,21 @@ def main():
     out_dir = Path(__file__).parent.parent / "runs" / "smoke_41bench"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "results.json"
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump({
             "system": "prism",
             "version": "0.1.0",
-            "pack": "all_shared",
+            "pack": PACK_PATH.stem,
             "config": {"population_size": POP_SIZE, "num_generations": NUM_GENS,
-                       "epochs": EPOCHS, "batch_size": BATCH_SIZE, "seed": SEED},
+                       "epochs": EPOCHS, "batch_size": BATCH_SIZE,
+                       "lm_batch_size": LM_BATCH_SIZE, "lm_train_cap": LM_TRAIN_CAP,
+                       "lm_val_cap": LM_VAL_CAP, "seed": SEED},
             "total_elapsed_seconds": round(total_elapsed, 2),
             "results": results,
         }, f, indent=2)
     print(f"\nResults: {out_path}")
+    return 0 if not failed else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

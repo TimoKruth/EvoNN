@@ -38,6 +38,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     lineage = store.load_lineage(run_id)
     archives = store.load_archives(run_id)
     store.close()
+    runtime_meta = _load_runtime_metadata(run_dir)
 
     # Build sections
     sections: list[str] = []
@@ -59,6 +60,11 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     sections.append(f"| Epochs/Candidate | {config.training.epochs} |")
     sections.append(f"| Genomes Evolved | {len(genomes)} |")
     sections.append(f"| Benchmarks | {len(best_per_benchmark)} |")
+    sections.append(f"| Runtime | {runtime_meta['runtime_backend']} |")
+    sections.append(f"| Runtime Version | {runtime_meta['runtime_version']} |")
+    sections.append(f"| Precision Mode | {runtime_meta['precision_mode']} |")
+    if runtime_meta.get("wall_clock_seconds") is not None:
+        sections.append(f"| Wall Clock Seconds | {float(runtime_meta['wall_clock_seconds']):.3f} |")
     sections.append("")
 
     # Best genome
@@ -350,6 +356,23 @@ def _resolve_run_id(store: RunStore) -> str:
     return "default"
 
 
+def _load_runtime_metadata(run_dir: Path) -> dict[str, Any]:
+    summary_path = run_dir / "summary.json"
+    if summary_path.exists():
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            summary = {}
+    else:
+        summary = {}
+    return {
+        "runtime_backend": str(summary.get("runtime_backend") or "unknown"),
+        "runtime_version": str(summary.get("runtime_version") or "unknown"),
+        "precision_mode": str(summary.get("precision_mode") or "fp32"),
+        "wall_clock_seconds": summary.get("wall_clock_seconds", summary.get("elapsed_seconds")),
+    }
+
+
 def _select_best(
     genomes: list[ModelGenome],
     evaluations: list[dict],
@@ -361,7 +384,7 @@ def _select_best(
     for ev in evaluations:
         gid = ev.get("genome_id", "")
         q = ev.get("quality")
-        if gid and q is not None and ev.get("failure_reason") is None:
+        if gid and q is not None and _is_successful_evaluation(ev):
             genome_qualities.setdefault(gid, []).append(float(q))
 
     if not genome_qualities:
@@ -387,7 +410,7 @@ def _compute_generation_stats(
     for ev in evaluations:
         gen = ev.get("generation")
         q = ev.get("quality")
-        if gen is not None and q is not None and ev.get("failure_reason") is None:
+        if gen is not None and q is not None and _is_successful_evaluation(ev):
             gen_data.setdefault(gen, []).append(float(q))
             gen_counts[gen] = gen_counts.get(gen, 0) + 1
 
@@ -408,6 +431,8 @@ def _compute_family_benchmark_wins(
     genome_families = {genome.genome_id: genome.family for genome in genomes}
     counts = Counter()
     for best in best_per_benchmark.values():
+        if not _is_successful_evaluation(best):
+            continue
         family = genome_families.get(best.get("genome_id", ""))
         if family:
             counts[family] += 1
@@ -423,12 +448,26 @@ def _compute_operator_mix(lineage: list[dict[str, Any]]) -> dict[str, int]:
     return dict(counts.most_common())
 
 
+def _failure_label(row: dict[str, Any]) -> str | None:
+    reason = row.get("failure_reason")
+    if reason:
+        return str(reason)
+    status = row.get("status")
+    if status in {None, "ok"}:
+        return None
+    return str(status)
+
+
+def _is_successful_evaluation(row: dict[str, Any]) -> bool:
+    return _failure_label(row) is None
+
+
 def _compute_failure_patterns(evaluations: list[dict[str, Any]]) -> dict[str, int]:
     counts = Counter()
     for row in evaluations:
-        reason = row.get("failure_reason")
+        reason = _failure_label(row)
         if reason:
-            counts[str(reason)] += 1
+            counts[reason] += 1
     return dict(counts.most_common())
 
 
@@ -444,7 +483,7 @@ def _compute_operator_success(
     }
     grouped: dict[tuple[str, str, str], list[float]] = {}
     for row in evaluations:
-        if row.get("failure_reason") is not None:
+        if not _is_successful_evaluation(row):
             continue
         genome_id = row.get("genome_id", "")
         operator = operator_by_genome.get(genome_id)
@@ -469,11 +508,12 @@ def _compute_operator_success(
 
 
 def _compute_inheritance_summary(evaluations: list[dict[str, Any]]) -> dict[str, Any] | None:
-    total = len(evaluations)
+    valid = [row for row in evaluations if _is_successful_evaluation(row)]
+    total = len(valid)
     if total == 0:
         return None
-    hits = [row for row in evaluations if row.get("inheritance_hit")]
-    misses = [row for row in evaluations if not row.get("inheritance_hit")]
+    hits = [row for row in valid if row.get("inheritance_hit")]
+    misses = [row for row in valid if not row.get("inheritance_hit")]
     hit_qualities = [float(row["quality"]) for row in hits if row.get("quality") is not None]
     miss_qualities = [float(row["quality"]) for row in misses if row.get("quality") is not None]
     return {
@@ -485,7 +525,7 @@ def _compute_inheritance_summary(evaluations: list[dict[str, Any]]) -> dict[str,
 
 
 def _compute_efficiency_summary(evaluations: list[dict[str, Any]]) -> dict[str, float] | None:
-    valid = [row for row in evaluations if row.get("failure_reason") is None]
+    valid = [row for row in evaluations if _is_successful_evaluation(row)]
     if not valid:
         return None
     avg_quality = sum(float(row.get("quality") or 0.0) for row in valid) / len(valid)
@@ -507,7 +547,7 @@ def _compute_family_efficiency(
     family_by_genome = {genome.genome_id: genome.family for genome in genomes}
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in evaluations:
-        if row.get("failure_reason") is not None:
+        if not _is_successful_evaluation(row):
             continue
         family = family_by_genome.get(row.get("genome_id", ""))
         if family is None:
@@ -528,7 +568,7 @@ def _compute_operator_efficiency(
     }
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in evaluations:
-        if row.get("failure_reason") is not None:
+        if not _is_successful_evaluation(row):
             continue
         genome_id = row.get("genome_id", "")
         operator = operator_by_genome.get(genome_id)
@@ -556,6 +596,8 @@ def _compute_family_survival(
     family_by_genome = {genome.genome_id: genome.family for genome in genomes}
     grouped: dict[int, Counter] = {}
     for row in evaluations:
+        if not _is_successful_evaluation(row):
+            continue
         generation = row.get("generation")
         genome_id = row.get("genome_id")
         if generation is None or genome_id not in family_by_genome:
@@ -599,7 +641,7 @@ def _compute_archive_turnover(archives: list[dict[str, Any]]) -> list[dict[str, 
 def _compute_failure_heatmap(evaluations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[str, Counter] = {}
     for row in evaluations:
-        failure = row.get("failure_reason")
+        failure = _failure_label(row)
         benchmark = row.get("benchmark_id")
         if not failure or benchmark is None:
             continue

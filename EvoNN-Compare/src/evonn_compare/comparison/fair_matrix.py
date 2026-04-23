@@ -10,7 +10,8 @@ from evonn_compare.contracts.models import ResultRecord, RunManifest
 from evonn_compare.contracts.parity import ParityPack
 
 
-SYSTEM_ORDER = ("prism", "topograph", "stratograph", "contenders")
+SYSTEM_ORDER = ("prism", "topograph", "stratograph", "primordia", "contenders")
+FOUR_PROJECT_SYSTEM_ORDER = ("prism", "topograph", "stratograph", "primordia")
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class PairParityRow:
 @dataclass(frozen=True)
 class FairMatrixSummary:
     pack_name: str
+    systems: tuple[str, ...]
     fair_rows: list[MatrixBudgetRow]
     reference_rows: list[MatrixBudgetRow]
     parity_rows: list[PairParityRow]
@@ -54,6 +56,7 @@ def summarize_matrix_case(
     seed: int,
     runs: dict[str, tuple[RunManifest, list[ResultRecord]]],
     pair_results: dict[tuple[str, str], tuple[ComparisonResult, Path]],
+    systems: tuple[str, ...] = SYSTEM_ORDER,
 ) -> tuple[MatrixBudgetRow | None, MatrixBudgetRow | None, list[PairParityRow]]:
     parity_rows: list[PairParityRow] = []
     for (left_system, right_system), (result, report_path) in sorted(pair_results.items()):
@@ -79,7 +82,7 @@ def summarize_matrix_case(
         system: manifest.budget.evaluation_count
         for system, (manifest, _results) in runs.items()
     }
-    wins, ties = _winner_table(pack, runs)
+    wins, ties = _winner_table(pack, runs, systems=systems)
     note = _reference_note(pair_results)
     row = MatrixBudgetRow(
         budget=budget,
@@ -101,9 +104,11 @@ def build_matrix_summary(
     fair_rows: list[MatrixBudgetRow],
     reference_rows: list[MatrixBudgetRow],
     parity_rows: list[PairParityRow],
+    systems: tuple[str, ...] = SYSTEM_ORDER,
 ) -> FairMatrixSummary:
     return FairMatrixSummary(
         pack_name=pack_name,
+        systems=systems,
         fair_rows=sorted(fair_rows, key=lambda row: (row.budget, row.seed)),
         reference_rows=sorted(reference_rows, key=lambda row: (row.budget, row.seed)),
         parity_rows=sorted(parity_rows, key=lambda row: (row.budget, row.seed, row.pair_label)),
@@ -113,8 +118,10 @@ def build_matrix_summary(
 def _winner_table(
     pack: ParityPack,
     runs: dict[str, tuple[RunManifest, list[ResultRecord]]],
+    *,
+    systems: tuple[str, ...] = SYSTEM_ORDER,
 ) -> tuple[dict[str, int], int]:
-    wins = {system: 0 for system in SYSTEM_ORDER}
+    wins = {system: 0 for system in systems}
     by_system = {
         system: {record.benchmark_id: record for record in results}
         for system, (_manifest, results) in runs.items()
@@ -122,7 +129,7 @@ def _winner_table(
     ties = 0
     for benchmark in pack.benchmarks:
         contenders: list[tuple[str, float]] = []
-        for system in SYSTEM_ORDER:
+        for system in systems:
             records = by_system.get(system, {})
             record = records.get(benchmark.benchmark_id)
             if record is None or record.status != "ok" or record.metric_value is None:

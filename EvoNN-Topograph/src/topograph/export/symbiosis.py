@@ -7,28 +7,39 @@ EvoNN and EvoNN-2 via the EvoNN-Symbiosis layer.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import math
 import platform
 import shutil
 import subprocess
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median as stat_median
 from typing import Any
 
+try:
+    _MLX_VERSION = importlib.metadata.version("mlx")
+except importlib.metadata.PackageNotFoundError:
+    try:
+        import mlx
+
+        _MLX_VERSION = getattr(mlx, "__version__", None)
+    except ImportError:
+        mlx = None
+        _MLX_VERSION = None
+
 import topograph
 from topograph.benchmarks.parity import (
-    get_benchmark,
     get_canonical_id,
     load_parity_pack,
     resolve_benchmark_pool_names,
 )
 from topograph.benchmarks.spec import BenchmarkSpec
 from topograph.config import RunConfig, load_config
-from topograph.genome.codec import dict_to_genome, genome_to_dict
+from topograph.genome.codec import dict_to_genome
 from topograph.genome.genome import Genome
-from topograph.nn.compiler import estimate_model_bytes
 from topograph.storage import RunStore
 
 
@@ -152,6 +163,7 @@ def export_symbiosis_contract(
 
     # 8. Build manifest
     pack_name = Path(pack_path).stem
+    runtime_meta = _runtime_metadata_from_budget(budget_meta)
 
     budget_manifest = _budget_manifest(config, budget_meta, latest_gen, len(population))
     manifest = {
@@ -167,9 +179,9 @@ def export_symbiosis_contract(
         "budget": budget_manifest,
         "device": {
             "device_name": _detect_device(),
-            "precision_mode": budget_meta.get("precision_mode", "unknown"),
-            "framework": "mlx",
-            "framework_version": None,
+            "precision_mode": runtime_meta["precision_mode"],
+            "framework": runtime_meta["runtime_backend"],
+            "framework_version": runtime_meta["runtime_version"],
         },
         "config_snapshot": config.model_dump(mode="json"),
         "artifacts": _build_artifacts_section(
@@ -335,6 +347,21 @@ def _search_telemetry(
         "family_stage_history": budget_meta.get("family_stage_history"),
         "benchmark_elite_families": budget_meta.get("benchmark_elite_families"),
         "topology_atlas_motif_counts": budget_meta.get("topology_atlas_motif_counts"),
+        "primordia_seeding": budget_meta.get("primordia_seeding"),
+    }
+
+
+def _runtime_metadata_from_budget(budget_meta: dict[str, Any]) -> dict[str, str]:
+    """Normalize recorded runtime metadata for export artifacts.
+
+    Export must describe the runtime that produced the run artifacts, not the
+    exporter host. Missing recorded fields therefore degrade to ``unknown``.
+    """
+
+    return {
+        "runtime_backend": str(budget_meta.get("runtime_backend") or "unknown"),
+        "runtime_version": str(budget_meta.get("runtime_version") or "unknown"),
+        "precision_mode": str(budget_meta.get("precision_mode") or "unknown"),
     }
 
 
@@ -616,8 +643,14 @@ def _write_summary_json(
     median_quality = float(stat_median(qualities)) if qualities else None
 
     failure_count = sum(1 for r in results if r.get("status") != "ok")
+    non_ok_results = [r for r in results if r.get("status") != "ok"]
+    failure_patterns = dict(
+        Counter(str(r.get("failure_reason") or r.get("status") or "unknown") for r in non_ok_results).most_common()
+    )
 
     budget = manifest.get("budget", {})
+    device = manifest.get("device", {})
+    seeding = budget.get("primordia_seeding") if isinstance(budget.get("primordia_seeding"), dict) else None
     summary = {
         "system": "topograph",
         "run_id": manifest["run_id"],
@@ -631,7 +664,20 @@ def _write_summary_json(
         "median_parameter_count": median_param_count,
         "median_benchmark_quality": median_quality,
         "failure_count": failure_count,
+        "failure_patterns": failure_patterns,
         "benchmarks_evaluated": len(best_fitness),
+        "runtime_backend": device.get("framework", "unknown"),
+        "runtime_version": device.get("framework_version", "unknown"),
+        "precision_mode": device.get("precision_mode", "unknown"),
+        "seed_source_system": "primordia" if seeding else None,
+        "seed_source_path": seeding.get("seed_path") if seeding else None,
+        "seed_target_family": seeding.get("target_family") if seeding else None,
+        "seed_selected_family": seeding.get("selected_family") if seeding else None,
+        "seed_selected_rank": seeding.get("selected_rank") if seeding else None,
+        "seed_representative_genome_id": seeding.get("representative_genome_id") if seeding else None,
+        "seed_representative_architecture_summary": (
+            seeding.get("representative_architecture_summary") if seeding else None
+        ),
     }
     (output_dir / "summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8",

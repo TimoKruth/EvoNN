@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import random
 import shutil
+import time
 from collections import Counter
 
 from stratograph.benchmarks import get_benchmark
@@ -25,12 +26,17 @@ from stratograph.genome.models import (
 from stratograph.pipeline.evaluator import (
     EvaluationOutcome,
     EvaluationRecord,
+    RUNTIME_BACKEND,
+    RUNTIME_VERSION,
     TrainingArtifact,
     evaluate_candidate_with_state,
 )
 from stratograph.search import crossover_genomes, descriptor, mutate_genome, niche_key, novelty_score
 from stratograph.search.operators import MOTIF_LIBRARY
 from stratograph.storage import RunStore
+
+
+PRECISION_MODE = "fp32"
 
 
 def run_evolution(
@@ -43,6 +49,7 @@ def run_evolution(
 ) -> Path:
     """Run Stratograph search/evaluation."""
     config = _normalize_config(config)
+    started = time.perf_counter()
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = run_dir / "checkpoint.json"
@@ -245,12 +252,17 @@ def run_evolution(
         )
 
     evaluation_count = config.evolution.population_size * config.evolution.generations * len(benchmark_names)
+    wall_clock_seconds = time.perf_counter() - started
     store.save_budget_metadata(
         run_id=run_id,
         payload={
             "evaluation_count": evaluation_count,
             "effective_training_epochs": config.training.epochs,
+            "wall_clock_seconds": wall_clock_seconds,
             "created_at": created_at,
+            "runtime_backend": RUNTIME_BACKEND,
+            "runtime_version": RUNTIME_VERSION,
+            "precision_mode": PRECISION_MODE,
             "architecture_mode": architecture_mode,
             "allow_clone_mutation": variant_policy["allow_clone_mutation"],
             "motif_bias": variant_policy["motif_bias"],

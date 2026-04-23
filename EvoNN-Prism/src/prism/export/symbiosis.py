@@ -7,6 +7,7 @@ EvoNN, EvoNN-2, and Topograph via the EvoNN-Symbiosis layer.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import platform
 import subprocess
@@ -14,6 +15,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median as stat_median
 from typing import Any
+
+try:
+    _MLX_VERSION = importlib.metadata.version("mlx")
+except importlib.metadata.PackageNotFoundError:
+    try:
+        import mlx
+
+        _MLX_VERSION = getattr(mlx, "__version__", None)
+    except ImportError:
+        mlx = None
+        _MLX_VERSION = None
 
 import prism
 from prism.benchmarks.parity import get_canonical_id, load_parity_pack
@@ -134,6 +146,7 @@ def export_symbiosis_contract(
     store.close()
 
     # 7. Build manifest
+    runtime_meta = _resolved_runtime_metadata(run_dir)
     pack_name = Path(pack_path).stem
     generations = (latest_gen + 1) if latest_gen is not None else 0
     total_evaluations = _intended_evaluation_count(
@@ -160,13 +173,14 @@ def export_symbiosis_contract(
             "epochs_per_candidate": config.training.epochs,
             "generations": generations,
             "population_size": config.evolution.population_size,
+            "wall_clock_seconds": _load_wall_clock_seconds(output_dir),
             "budget_policy_name": "prototype_equal_budget",
         },
         "device": {
             "device_name": _detect_device(),
-            "precision_mode": "fp32",
-            "framework": "mlx",
-            "framework_version": None,
+            "precision_mode": runtime_meta["precision_mode"],
+            "framework": runtime_meta["runtime_backend"],
+            "framework_version": runtime_meta["runtime_version"],
         },
         "config_snapshot": config.model_dump(mode="json"),
         "artifacts": {
@@ -215,6 +229,16 @@ def export_symbiosis_contract(
 # ---------------------------------------------------------------------------
 
 
+def _failure_label(row: dict[str, Any]) -> str | None:
+    reason = row.get("failure_reason")
+    if reason:
+        return str(reason)
+    status = row.get("status")
+    if status in {None, "ok"}:
+        return None
+    return str(status)
+
+
 def _select_representative(
     genomes: list[ModelGenome],
     evaluations: list[dict],
@@ -227,11 +251,11 @@ def _select_representative(
     for ev in evaluations:
         gid = ev.get("genome_id", "")
         q = ev.get("quality")
-        if gid and q is not None and ev.get("failure_reason") is None:
+        if gid and q is not None and _failure_label(ev) is None:
             genome_qualities.setdefault(gid, []).append(float(q))
 
     if not genome_qualities:
-        return genomes[0] if genomes else None
+        return genomes[0]
 
     best_id = max(
         genome_qualities,
@@ -305,6 +329,39 @@ def _detect_device() -> str:
     if system == "Darwin":
         return "apple_silicon" if "arm" in machine.lower() else "apple_intel"
     return f"{system.lower()}_{machine}"
+
+
+def _load_runtime_metadata(run_dir: Path) -> dict[str, str | None]:
+    summary_path = run_dir / "summary.json"
+    if summary_path.exists():
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            summary = {}
+    else:
+        summary = {}
+    return {
+        "runtime_backend": summary.get("runtime_backend") or "unknown",
+        "runtime_version": summary.get("runtime_version") or "unknown",
+        "precision_mode": summary.get("precision_mode") or "fp32",
+    }
+
+
+def _resolved_runtime_metadata(run_dir: Path) -> dict[str, str]:
+    runtime_meta = _load_runtime_metadata(run_dir)
+    backend = runtime_meta["runtime_backend"]
+    if backend == "unknown":
+        backend = "mlx"
+
+    runtime_version = runtime_meta["runtime_version"]
+    if runtime_version == "unknown" and backend == "mlx":
+        runtime_version = _MLX_VERSION or "unknown"
+
+    return {
+        "runtime_backend": backend,
+        "runtime_version": runtime_version,
+        "precision_mode": runtime_meta["precision_mode"] or "fp32",
+    }
 
 
 def _load_run_config(run_dir: Path) -> RunConfig:
@@ -387,6 +444,23 @@ def _intended_evaluation_count(
     return config.evolution.population_size * generations * benchmark_count
 
 
+def _load_wall_clock_seconds(run_dir: Path) -> float | None:
+    summary_path = run_dir / "summary.json"
+    if not summary_path.exists():
+        return None
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    value = payload.get("wall_clock_seconds", payload.get("elapsed_seconds"))
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _write_summary_json(
     output_dir: Path,
     manifest: dict[str, Any],
@@ -414,15 +488,25 @@ def _write_summary_json(
 
     failure_count = sum(1 for r in results if r.get("status") != "ok")
     budget = manifest.get("budget", {})
+    device = manifest.get("device", {})
+    runtime_defaults = {
+        "framework": "mlx",
+        "framework_version": _MLX_VERSION or "unknown",
+        "precision_mode": "fp32",
+    }
 
     summary = {
         "system": "prism",
         "run_id": manifest["run_id"],
         "status": "complete",
         "total_evaluations": budget.get("evaluation_count", 0),
+        "wall_clock_seconds": budget.get("wall_clock_seconds"),
         "generations_completed": (latest_gen + 1) if latest_gen is not None else 0,
         "epochs_per_candidate": config.training.epochs,
         "population_size": config.evolution.population_size,
+        "runtime_backend": device.get("framework") or runtime_defaults["framework"],
+        "runtime_version": device.get("framework_version") or runtime_defaults["framework_version"],
+        "precision_mode": device.get("precision_mode") or runtime_defaults["precision_mode"],
         "best_fitness": best_fitness,
         "median_parameter_count": median_param_count,
         "median_benchmark_quality": median_quality,
@@ -454,6 +538,8 @@ def _family_benchmark_wins(
     genome_families = {genome.genome_id: genome.family for genome in genomes}
     counts: dict[str, int] = {}
     for best in best_per_benchmark.values():
+        if _failure_label(best) is not None:
+            continue
         family = genome_families.get(best.get("genome_id", ""))
         if family is None:
             continue

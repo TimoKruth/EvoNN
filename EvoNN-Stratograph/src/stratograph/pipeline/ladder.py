@@ -7,14 +7,13 @@ from pathlib import Path
 
 import yaml
 
-from stratograph.benchmarks.parity import load_parity_pack
-from stratograph.config import RunConfig, load_config
+from stratograph.benchmarks.parity import fallback_native_id, load_parity_pack
+from stratograph.config import load_config
 from stratograph.export import export_symbiosis_contract
 from stratograph.pipeline.coordinator import run_evolution
 
-
-_SUPERPROJECT_ROOT = Path(__file__).resolve().parents[4]
-_COMPARE_ROOT = _SUPERPROJECT_ROOT / "EvoNN-Compare"
+_SHARED_FULL_PACK = "shared_33plus5"
+_FULL_LADDER_BUDGETS = [38, 76, 152, 304, 608]
 
 
 @dataclass(frozen=True)
@@ -34,19 +33,10 @@ def build_execution_ladder(workspace: str | Path) -> list[LadderCase]:
     configs_dir.mkdir(parents=True, exist_ok=True)
     runs_dir.mkdir(parents=True, exist_ok=True)
 
-    full_pack_paths = {
-        38: _COMPARE_ROOT / "manual_compare_runs" / "20260416_budget38_seed42_smoke_valid" / "packs" / "working_33_plus_5_lm_compare_eval38.yaml",
-        76: _COMPARE_ROOT / "manual_compare_runs" / "20260416_budget76_seed42_smoke_valid" / "packs" / "working_33_plus_5_lm_compare_eval76.yaml",
-        152: _COMPARE_ROOT / "manual_compare_runs" / "20260416_budget152_seed42_campaign" / "packs" / "working_33_plus_5_lm_compare_eval152.yaml",
-        304: _COMPARE_ROOT / "manual_compare_runs" / "20260416_budget304_seed42_broad_clean" / "packs" / "working_33_plus_5_lm_compare_broad_304_eval304.yaml",
-        608: _COMPARE_ROOT / "manual_compare_runs" / "20260417_budget608_seed42_broad_w2_retry" / "packs" / "working_33_plus_5_lm_compare_broad_608_w2_r2_eval608.yaml",
-    }
-
     cases: list[LadderCase] = []
     cases.extend(
         [
             _single_case(
-                workspace=workspace,
                 packs_dir=packs_dir,
                 configs_dir=configs_dir,
                 runs_dir=runs_dir,
@@ -54,7 +44,6 @@ def build_execution_ladder(workspace: str | Path) -> list[LadderCase]:
                 benchmark_names=["moons"],
             ),
             _single_case(
-                workspace=workspace,
                 packs_dir=packs_dir,
                 configs_dir=configs_dir,
                 runs_dir=runs_dir,
@@ -62,7 +51,6 @@ def build_execution_ladder(workspace: str | Path) -> list[LadderCase]:
                 benchmark_names=["digits"],
             ),
             _single_case(
-                workspace=workspace,
                 packs_dir=packs_dir,
                 configs_dir=configs_dir,
                 runs_dir=runs_dir,
@@ -70,7 +58,6 @@ def build_execution_ladder(workspace: str | Path) -> list[LadderCase]:
                 benchmark_names=["tiny_lm_synthetic"],
             ),
             _single_case(
-                workspace=workspace,
                 packs_dir=packs_dir,
                 configs_dir=configs_dir,
                 runs_dir=runs_dir,
@@ -85,12 +72,13 @@ def build_execution_ladder(workspace: str | Path) -> list[LadderCase]:
             ),
         ]
     )
-    for budget, pack_path in full_pack_paths.items():
+    for budget in _FULL_LADDER_BUDGETS:
         cases.append(
             _full_pack_case(
+                packs_dir=packs_dir,
                 configs_dir=configs_dir,
                 runs_dir=runs_dir,
-                pack_path=pack_path,
+                source_pack_name=_SHARED_FULL_PACK,
                 budget=budget,
             )
         )
@@ -110,14 +98,12 @@ def run_execution_ladder(workspace: str | Path) -> list[Path]:
 
 def _single_case(
     *,
-    workspace: Path,
     packs_dir: Path,
     configs_dir: Path,
     runs_dir: Path,
     case_name: str,
     benchmark_names: list[str],
 ) -> LadderCase:
-    del workspace
     pack_path = packs_dir / f"{case_name}.yaml"
     config_path = configs_dir / f"{case_name}.yaml"
     run_dir = runs_dir / case_name
@@ -126,21 +112,23 @@ def _single_case(
     return LadderCase(name=case_name, config_path=config_path, pack_path=pack_path, run_dir=run_dir)
 
 
-def _full_pack_case(*, configs_dir: Path, runs_dir: Path, pack_path: Path, budget: int) -> LadderCase:
-    pack = load_parity_pack(pack_path)
-    benchmark_names = []
-    for entry in pack.benchmarks:
-        native_ids = entry.native_ids or {}
-        benchmark_names.append(
-            native_ids.get("stratograph")
-            or native_ids.get("topograph")
-            or native_ids.get("prism")
-            or entry.benchmark_id
-        )
-    config_path = configs_dir / f"{pack.name}_seed42.yaml"
-    run_dir = runs_dir / f"{pack.name}_seed42"
-    _write_config(config_path, pack.name, benchmark_names, evaluation_count=budget)
-    return LadderCase(name=pack.name, config_path=config_path, pack_path=pack_path, run_dir=run_dir)
+def _full_pack_case(
+    *,
+    packs_dir: Path,
+    configs_dir: Path,
+    runs_dir: Path,
+    source_pack_name: str,
+    budget: int,
+) -> LadderCase:
+    pack = load_parity_pack(source_pack_name)
+    benchmark_names = [fallback_native_id(entry) for entry in pack.benchmarks]
+    case_name = f"{source_pack_name}_eval{budget}"
+    pack_path = packs_dir / f"{case_name}.yaml"
+    config_path = configs_dir / f"{case_name}_seed42.yaml"
+    run_dir = runs_dir / f"{case_name}_seed42"
+    _write_pack(pack_path, case_name, benchmark_names, evaluation_count=budget)
+    _write_config(config_path, case_name, benchmark_names, evaluation_count=budget)
+    return LadderCase(name=case_name, config_path=config_path, pack_path=pack_path, run_dir=run_dir)
 
 
 def _write_pack(path: Path, name: str, benchmark_names: list[str], evaluation_count: int) -> None:

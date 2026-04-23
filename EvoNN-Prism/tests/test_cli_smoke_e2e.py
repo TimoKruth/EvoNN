@@ -20,6 +20,8 @@ def test_cli_tiny_smoke_end_to_end(tmp_path: Path):
 
     inspect = runner.invoke(app, ["inspect", str(run_dir)])
     assert inspect.exit_code == 0, inspect.stdout
+    assert "Runtime" in inspect.stdout
+    assert "Precision Mode" in inspect.stdout
 
     report = runner.invoke(app, ["report", str(run_dir)])
     assert report.exit_code == 0, report.stdout

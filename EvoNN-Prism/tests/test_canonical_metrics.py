@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from prism.runtime.training import _compute_metric, _metric_name
 
@@ -34,6 +36,21 @@ class _DummyBenchmark:
     def load_data(seed=42):
         X = np.array([[0.0, 0.0], [1.0, 1.0], [0.2, 0.1], [0.8, 0.9]], dtype=np.float32)
         y = np.array([0, 1, 0, 1], dtype=np.int32)
+        return X, y, X, y
+
+
+class _DummyLanguageModelBenchmark:
+    id = "tiny_lm_synthetic"
+    modality = "text"
+    task = "language_modeling"
+    input_shape = [4]
+    output_dim = 11
+    num_classes = 11
+
+    @staticmethod
+    def load_data(seed=42):
+        X = np.arange(40, dtype=np.int64).reshape(10, 4)
+        y = np.arange(40, dtype=np.int64).reshape(10, 4)
         return X, y, X, y
 
 
@@ -119,7 +136,7 @@ def test_mini_evolve_returns_canonical_contract(monkeypatch):
     monkeypatch.setattr(
         smoke,
         "compile_genome",
-        lambda genome, input_shape, num_classes, modality: SimpleNamespace(
+        lambda genome, input_shape, num_classes, modality, task="classification": SimpleNamespace(
             model=object(),
             parameter_count=123,
         ),
@@ -164,7 +181,7 @@ def test_mini_evolve_returns_missing_contract_when_all_evals_fail(monkeypatch):
     monkeypatch.setattr(
         smoke,
         "compile_genome",
-        lambda genome, input_shape, num_classes, modality: SimpleNamespace(
+        lambda genome, input_shape, num_classes, modality, task="classification": SimpleNamespace(
             model=object(),
             parameter_count=123,
         ),
@@ -182,4 +199,195 @@ def test_mini_evolve_returns_missing_contract_when_all_evals_fail(monkeypatch):
     assert outcome["metric_value"] is None
     assert outcome["quality"] is None
     assert outcome["native_fitness"] is None
+    assert outcome["failure_reason"] == "no_valid_result"
+
+
+def test_main_fails_fast_when_runtime_unavailable(monkeypatch, capsys):
+    smoke = _load_smoke_module()
+
+    monkeypatch.setattr(
+        smoke,
+        "_require_runtime_dependencies",
+        lambda: (_ for _ in ()).throw(RuntimeError("runtime unavailable")),
+    )
+    monkeypatch.setattr(smoke, "PACK_PATH", SimpleNamespace(exists=lambda: True))
+    monkeypatch.setattr(smoke, "load_pack", lambda path: pytest.fail("load_pack should not run"))
+
+    exit_code = smoke.main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "runtime unavailable" in captured.out
+
+
+
+def test_main_records_pack_name_from_pack_path(monkeypatch, tmp_path):
+    smoke = _load_smoke_module()
+    script_root = tmp_path / "EvoNN-Prism" / "scripts"
+    script_root.mkdir(parents=True)
+    fake_script_path = script_root / "smoke_41bench.py"
+    fake_script_path.write_text("# test shim\n", encoding="utf-8")
+    pack_path = tmp_path / "custom_pack.yaml"
+    pack_path.write_text("benchmarks: []\n", encoding="utf-8")
+
+    monkeypatch.setattr(smoke, "__file__", str(fake_script_path))
+    monkeypatch.setattr(smoke, "PACK_PATH", pack_path)
+    monkeypatch.setattr(smoke, "_require_runtime_dependencies", lambda: None)
+    monkeypatch.setattr(smoke, "load_pack", lambda path: [])
+
+    exit_code = smoke.main()
+
+    out_path = tmp_path / "EvoNN-Prism" / "runs" / "smoke_41bench" / "results.json"
+    assert exit_code == 0
+    assert out_path.exists()
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["pack"] == "custom_pack"
+    assert payload["config"]["lm_batch_size"] == smoke.LM_BATCH_SIZE
+    assert payload["config"]["lm_train_cap"] == smoke.LM_TRAIN_CAP
+    assert payload["config"]["lm_val_cap"] == smoke.LM_VAL_CAP
+
+
+def test_load_pack_maps_language_modeling_metrics(monkeypatch, tmp_path):
+    smoke = _load_smoke_module()
+    pack_path = tmp_path / "lm_pack.yaml"
+    pack_path.write_text("benchmarks:\n  - tiny_lm_synthetic\n", encoding="utf-8")
+
+    monkeypatch.setattr(smoke, "get_benchmark", lambda name: _DummyLanguageModelBenchmark())
+    monkeypatch.setattr(smoke, "get_canonical_id", lambda name: f"canon::{name}")
+
+    assert smoke.load_pack(pack_path) == [
+        {
+            "canonical_id": "canon::tiny_lm_synthetic",
+            "native_id": "tiny_lm_synthetic",
+            "task": "language_modeling",
+            "metric_name": "perplexity",
+            "metric_direction": "min",
+        }
+    ]
+
+
+def test_load_pack_tolerates_empty_yaml_and_missing_benchmarks(tmp_path):
+    smoke = _load_smoke_module()
+
+    empty_pack = tmp_path / "empty.yaml"
+    empty_pack.write_text("{}\n", encoding="utf-8")
+    assert smoke.load_pack(empty_pack) == []
+
+    missing_list_pack = tmp_path / "missing.yaml"
+    missing_list_pack.write_text("name: demo\n", encoding="utf-8")
+    assert smoke.load_pack(missing_list_pack) == []
+
+
+def test_mini_evolve_language_modeling_uses_lm_contract(monkeypatch):
+    smoke = _load_smoke_module()
+    smoke.POP_SIZE = 1
+    smoke.NUM_GENS = 1
+    smoke.EPOCHS = 1
+    smoke.LM_TRAIN_CAP = 3
+    smoke.LM_VAL_CAP = 2
+    smoke.LM_BATCH_SIZE = 5
+
+    monkeypatch.setattr(smoke, "get_benchmark", lambda name: _DummyLanguageModelBenchmark())
+    monkeypatch.setattr(
+        smoke,
+        "Preprocessor",
+        lambda: pytest.fail("Preprocessor should not run for language_modeling smoke benchmarks"),
+    )
+    monkeypatch.setattr(smoke, "compatible_families", lambda modality: pytest.fail("LM smoke should use LM family pool"))
+    monkeypatch.setattr(
+        smoke,
+        "create_seed_genome",
+        lambda fam, evolution, rng: _DummyGenome(family=fam),
+    )
+
+    compile_calls = {}
+    train_calls = {}
+
+    def _compile(genome, input_shape, output_dim, modality, task="classification"):
+        compile_calls.update(
+            {
+                "family": genome.family,
+                "input_shape": input_shape,
+                "output_dim": output_dim,
+                "modality": modality,
+                "task": task,
+            }
+        )
+        return SimpleNamespace(model=object(), parameter_count=321)
+
+    def _train(model, x_train, y_train, x_val, y_val, **kwargs):
+        train_calls.update(
+            {
+                "x_train_shape": tuple(x_train.shape),
+                "y_train_shape": tuple(y_train.shape),
+                "x_val_shape": tuple(x_val.shape),
+                "y_val_shape": tuple(y_val.shape),
+                **kwargs,
+            }
+        )
+        return SimpleNamespace(
+            metric_name="perplexity",
+            metric_value=1.5,
+            quality=-1.5,
+            train_seconds=0.25,
+            failure_reason=None,
+        )
+
+    monkeypatch.setattr(smoke, "compile_genome", _compile)
+    monkeypatch.setattr(smoke, "train_and_evaluate", _train)
+
+    outcome = smoke.mini_evolve("tiny_lm_synthetic", "language_modeling", seed=42)
+
+    assert outcome["metric_name"] == "perplexity"
+    assert outcome["metric_direction"] == "min"
+    assert compile_calls == {
+        "family": "attention",
+        "input_shape": [4],
+        "output_dim": 11,
+        "modality": "text",
+        "task": "language_modeling",
+    }
+    assert train_calls["x_train_shape"] == (3, 4)
+    assert train_calls["y_train_shape"] == (3, 4)
+    assert train_calls["x_val_shape"] == (2, 4)
+    assert train_calls["y_val_shape"] == (2, 4)
+    assert train_calls["task"] == "language_modeling"
+    assert train_calls["batch_size"] == 5
+
+
+def test_mini_evolve_language_modeling_failure_uses_perplexity_contract(monkeypatch):
+    smoke = _load_smoke_module()
+    smoke.POP_SIZE = 1
+    smoke.NUM_GENS = 1
+
+    monkeypatch.setattr(smoke, "get_benchmark", lambda name: _DummyLanguageModelBenchmark())
+    monkeypatch.setattr(
+        smoke,
+        "Preprocessor",
+        lambda: pytest.fail("Preprocessor should not run for language_modeling smoke benchmarks"),
+    )
+    monkeypatch.setattr(smoke, "compatible_families", lambda modality: ["attention"])
+    monkeypatch.setattr(
+        smoke,
+        "create_seed_genome",
+        lambda fam, evolution, rng: _DummyGenome(family=fam),
+    )
+    monkeypatch.setattr(
+        smoke,
+        "compile_genome",
+        lambda genome, input_shape, num_classes, modality, task="classification": SimpleNamespace(
+            model=object(),
+            parameter_count=123,
+        ),
+    )
+    monkeypatch.setattr(
+        smoke,
+        "train_and_evaluate",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("lm boom")),
+    )
+
+    outcome = smoke.mini_evolve("tiny_lm_synthetic", "language_modeling", seed=42)
+
+    assert outcome["metric_name"] == "perplexity"
+    assert outcome["metric_direction"] == "min"
     assert outcome["failure_reason"] == "no_valid_result"

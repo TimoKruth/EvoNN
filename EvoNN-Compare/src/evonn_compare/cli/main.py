@@ -12,7 +12,7 @@ from evonn_compare.cli.validate import validate
 
 app = typer.Typer(
     name="evonn-compare",
-    help="Compare Prism, Topograph, and fused hybrid runs via normalized export contracts.",
+    help="Compare Prism, Topograph, Stratograph, Primordia, and baselines via normalized export contracts.",
 )
 
 app.command("compare")(compare)

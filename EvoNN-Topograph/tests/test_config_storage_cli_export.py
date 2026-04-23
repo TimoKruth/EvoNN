@@ -228,7 +228,21 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     monkeypatch.setattr(sym.platform, "machine", lambda: "arm64")
     assert sym._detect_device() == "apple_silicon"
 
-    manifest = {"run_id": "demo", "budget": {"evaluation_count": 5, "wall_clock_seconds": 2.0}}
+    manifest = {
+        "run_id": "demo",
+        "budget": {
+            "evaluation_count": 5,
+            "wall_clock_seconds": 2.0,
+            "primordia_seeding": {
+                "seed_path": "/tmp/primordia/seed_candidates.json",
+                "target_family": "tabular",
+                "selected_family": "sparse_mlp",
+                "selected_rank": 2,
+                "representative_genome_id": "prim-g7",
+                "representative_architecture_summary": "4L/6C sparse",
+            },
+        },
+    }
     results = [
         {"benchmark_id": "moons", "metric_value": 0.91, "status": "ok"},
         {"benchmark_id": "iris", "metric_value": 0.87, "status": "ok"},
@@ -240,6 +254,13 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     assert summary["system"] == "topograph"
     assert summary["failure_count"] == 1
     assert summary["benchmarks_evaluated"] == 2
+    assert summary["seed_source_system"] == "primordia"
+    assert summary["seed_source_path"] == "/tmp/primordia/seed_candidates.json"
+    assert summary["seed_target_family"] == "tabular"
+    assert summary["seed_selected_family"] == "sparse_mlp"
+    assert summary["seed_selected_rank"] == 2
+    assert summary["seed_representative_genome_id"] == "prim-g7"
+    assert summary["seed_representative_architecture_summary"] == "4L/6C sparse"
 
 
 def test_load_run_config_and_resolve_run_id_from_store(tmp_path: Path):
@@ -308,10 +329,52 @@ def test_symbiosis_export_preserves_failed_benchmarks(tmp_path: Path, monkeypatc
 
     _, results_path = sym.export_symbiosis_contract(run_dir=run_dir, pack_path=pack_path)
     rows = json.loads(results_path.read_text(encoding="utf-8"))
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
 
     assert rows[0]["status"] == "failed"
     assert rows[0]["metric_value"] is None
     assert rows[0]["failure_reason"] == "lm backend blew up"
+    assert manifest["device"]["framework"] == "unknown"
+    assert manifest["device"]["framework_version"] == "unknown"
+    assert manifest["device"]["precision_mode"] == "unknown"
+
+
+def test_export_symbiosis_uses_recorded_runtime_metadata_in_manifest_and_summary(tmp_path: Path):
+    output_dir = tmp_path / "export"
+    output_dir.mkdir()
+
+    manifest = {
+        "run_id": "demo",
+        "budget": {"evaluation_count": 4, "population_size": 2},
+        "device": {
+            "framework": "numpy-fallback",
+            "framework_version": "fallback-1.2.3",
+            "precision_mode": "bf16",
+        },
+    }
+    results = [
+        {
+            "benchmark_id": "iris",
+            "metric_value": 0.91,
+            "status": "ok",
+        },
+        {
+            "benchmark_id": "moons",
+            "metric_value": None,
+            "status": "failed",
+        },
+    ]
+    population = [Genome.create_seed(InnovationCounter(), random.Random(1))]
+    config = RunConfig()
+
+    sym._write_summary_json(output_dir, manifest, results, population, latest_gen=0, config=config)
+
+    summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["runtime_backend"] == "numpy-fallback"
+    assert summary["runtime_version"] == "fallback-1.2.3"
+    assert summary["precision_mode"] == "bf16"
+    assert summary["failure_patterns"] == {"failed": 1}
+
 
 
 def test_cli_benchmarks_and_symbiosis_export(monkeypatch, tmp_path: Path):
@@ -340,6 +403,199 @@ def test_cli_benchmarks_and_symbiosis_export(monkeypatch, tmp_path: Path):
     assert result.exit_code == 0
     assert called["pack_path"] == "tier1_core"
     assert "manifest" in result.stdout
+
+
+def test_load_report_context_and_inspect_surface_best_benchmarks_and_failures(tmp_path: Path):
+    run_dir = tmp_path / "inspect-run"
+    run_dir.mkdir()
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run("current", {"seed": 7})
+        store.save_budget_metadata(
+            "current",
+            {
+                "evaluation_count": 3,
+                "wall_clock_seconds": 1.5,
+                "effective_training_epochs": 2,
+                "runtime_backend": "mlx",
+                "runtime_version": "0.17.1",
+                "precision_mode": "bf16",
+                "novelty_score_mean": 0.125,
+                "map_elites_occupied_niches": 4,
+                "primordia_seeding": {
+                    "seed_path": "/tmp/primordia/seed_candidates.json",
+                    "target_family": "tabular",
+                    "selected_family": "sparse_mlp",
+                    "selected_rank": 2,
+                    "representative_architecture_summary": "4L/6C sparse",
+                    "representative_genome_id": "prim-g7",
+                },
+            },
+        )
+        genome = Genome.create_seed(InnovationCounter(), random.Random(3))
+        genome.fitness = 0.25
+        genome.param_count = 42
+        genome.model_bytes = 96
+        store.save_genomes("current", 0, [genome_to_dict(genome)])
+        store.save_run_state(
+            "current",
+            {
+                "next_generation": 1,
+                "pool_state": {"current_sample": ["moons", "iris"]},
+                "completed": False,
+            },
+        )
+        store.save_benchmark_results(
+            "current",
+            0,
+            [
+                {
+                    "benchmark_name": "moons",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": 0.91,
+                    "quality": 0.91,
+                    "parameter_count": 42,
+                    "train_seconds": 0.2,
+                    "architecture_summary": "2L/3C",
+                    "genome_id": "g0",
+                    "genome_idx": 0,
+                    "status": "ok",
+                    "failure_reason": None,
+                },
+                {
+                    "benchmark_name": "iris",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": None,
+                    "quality": None,
+                    "parameter_count": None,
+                    "train_seconds": 0.1,
+                    "architecture_summary": "failed",
+                    "genome_id": "g1",
+                    "genome_idx": 0,
+                    "status": "failed",
+                    "failure_reason": "bad dataset",
+                },
+            ],
+        )
+
+    context = report_mod.load_report_context(run_dir)
+    assert context["latest_generation"] == 0
+    assert len(context["best_results"]) == 2
+    assert len(context["failed_results"]) == 1
+    assert context["failed_results"][0]["failure_reason"] == "bad dataset"
+
+    result = runner.invoke(app, ["inspect", str(run_dir)])
+    assert result.exit_code == 0
+    assert "Run Overview" in result.stdout
+    assert "Best Benchmarks" in result.stdout
+    assert "Failure Patterns" in result.stdout
+    assert "Failure Details" in result.stdout
+    assert "Run State" in result.stdout
+    assert "in_progress" in result.stdout
+    assert "Next Generation" in result.stdout
+    assert "Completed Benchmarks" in result.stdout
+    assert "Remaining Benchmarks" in result.stdout
+    assert "Active Benchmark Sample" in result.stdout
+    assert "moons, iris" in result.stdout
+    assert "Precision Mode" in result.stdout
+    assert "bf16" in result.stdout
+    assert "Primordia Seeding" in result.stdout
+    assert "sparse_mlp -> tabular (rank 2)" in result.stdout
+    assert "Primordia Seed Artifact" in result.stdout
+    assert "/tmp/primordia/seed_candidates.json" in result.stdout
+    assert "Primordia Seed Genome" in result.stdout
+    assert "prim-g7" in result.stdout
+    assert "Primordia Seed Summary" in result.stdout
+    assert "4L/6C sparse" in result.stdout
+    assert "bad dataset" in result.stdout
+
+
+def test_generate_report_surfaces_failure_patterns_and_escaped_details(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run("current", {"run_id": "current", "seed": 7, "benchmark": "multi_pack"})
+        genome = Genome.create_seed(InnovationCounter(), random.Random(3))
+        genome.fitness = 0.12
+        store.save_genomes("current", 0, [genome_to_dict(genome)])
+        store.save_budget_metadata(
+            "current",
+            {
+                "runtime_backend": "mlx",
+                "runtime_version": "0.31.0",
+                "precision_mode": "bf16",
+            },
+        )
+        store.save_benchmark_results(
+            "current",
+            0,
+            [
+                {
+                    "benchmark_name": "moons",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": 0.9,
+                    "quality": 0.9,
+                    "parameter_count": 42,
+                    "train_seconds": 0.2,
+                    "architecture_summary": "2L/3C",
+                    "genome_id": "g0",
+                    "genome_idx": 0,
+                    "status": "ok",
+                    "failure_reason": None,
+                },
+                {
+                    "benchmark_name": "lm|pack",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": None,
+                    "quality": None,
+                    "parameter_count": None,
+                    "train_seconds": 0.1,
+                    "architecture_summary": "failed",
+                    "genome_id": "g1",
+                    "genome_idx": 0,
+                    "status": "failed",
+                    "failure_reason": "compile_error|oom\nretry exhausted",
+                },
+                {
+                    "benchmark_name": "iris",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": None,
+                    "quality": None,
+                    "parameter_count": None,
+                    "train_seconds": 0.1,
+                    "architecture_summary": "failed",
+                    "genome_id": "g2",
+                    "genome_idx": 0,
+                    "status": "failed",
+                    "failure_reason": "compile_error|oom\nretry exhausted",
+                },
+            ],
+        )
+
+    report = report_mod.generate_report(run_dir)
+
+    assert "## Failure Patterns" in report
+    assert "| compile_error\\|oom<br>retry exhausted | 2 |" in report
+    assert "## Failure Details" in report
+    assert "| lm\\|pack | compile_error\\|oom<br>retry exhausted |" in report
+
+
+def test_summarize_failure_patterns_counts_non_ok_status_fallbacks():
+    patterns = report_mod.summarize_failure_patterns(
+        [
+            {"status": "failed", "failure_reason": "compile_error"},
+            {"status": "skipped", "failure_reason": None},
+            {"status": "missing", "failure_reason": None},
+            {"status": "ok", "failure_reason": "should_be_ignored"},
+        ]
+    )
+
+    assert patterns == [("compile_error", 1), ("skipped", 1), ("missing", 1)]
 
 
 def test_evaluate_pool_namespaces_weight_cache_by_benchmark(monkeypatch):

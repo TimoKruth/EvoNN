@@ -5,17 +5,20 @@ import random
 from pathlib import Path
 from types import SimpleNamespace
 
-import mlx.core as mx
 import numpy as np
+import pytest
 import yaml
 from typer.testing import CliRunner
 
+try:
+    import mlx.core as mx
+except ImportError:  # pragma: no cover - host-dependent MLX runtime availability
+    mx = None
+
 from prism.cli import app
 from prism.benchmarks.datasets import get_benchmark
-from prism.pipeline import coordinator
 from prism.config import RunConfig, load_config
 from prism.export import symbiosis as sym
-from prism.families.compiler import compile_genome
 from prism.genome import ModelGenome
 from prism.runtime import cache as cache_mod
 from prism.runtime.cache import WeightCache
@@ -24,6 +27,23 @@ from prism.storage import RunStore
 
 
 runner = CliRunner()
+
+
+def _import_coordinator_or_skip():
+    return pytest.importorskip(
+        "prism.pipeline.coordinator",
+        reason="MLX runtime unavailable on this host",
+        exc_type=ImportError,
+    )
+
+
+def _import_compile_genome_or_skip():
+    module = pytest.importorskip(
+        "prism.families.compiler",
+        reason="MLX runtime unavailable on this host",
+        exc_type=ImportError,
+    )
+    return module.compile_genome
 
 
 def _sample_genome(family: str = "mlp", widths: list[int] | None = None) -> ModelGenome:
@@ -61,16 +81,30 @@ def test_run_store_roundtrip_and_best_per_benchmark(tmp_path: Path):
     db_path = tmp_path / "metrics.duckdb"
     genome_a = _sample_genome("mlp", [16, 8])
     genome_b = _sample_genome("conv2d", [32, 16])
+    genome_c = _sample_genome("attention", [24, 12])
 
     with RunStore(db_path) as store:
         store.save_run("run-1", {"seed": 42})
         store.save_genome("run-1", genome_a)
         store.save_genome("run-1", genome_b)
+        store.save_genome("run-1", genome_c)
         store.save_evaluation(
             "run-1", genome_a.genome_id, 0, "moons", "accuracy", 0.8, 0.8, 100, 0.5
         )
         store.save_evaluation(
             "run-1", genome_b.genome_id, 1, "moons", "accuracy", 0.9, 0.9, 120, 0.6
+        )
+        store.save_evaluation(
+            "run-1",
+            genome_c.genome_id,
+            1,
+            "iris",
+            "accuracy",
+            float("nan"),
+            float("nan"),
+            140,
+            0.4,
+            status="missing",
         )
         store.save_lineage("run-1", genome_b.genome_id, genome_a.genome_id, 1, "mut")
         store.save_archive("run-1", 1, "pareto", "moons", genome_b.genome_id, 0.9)
@@ -82,11 +116,16 @@ def test_run_store_roundtrip_and_best_per_benchmark(tmp_path: Path):
         best = store.load_best_per_benchmark("run-1")
         latest = store.latest_generation("run-1")
 
-    assert [row["_family"] for row in loaded] == ["mlp", "conv2d"]
-    assert len(evals) == 2
+    assert [row["_family"] for row in loaded] == ["mlp", "conv2d", "attention"]
+    assert len(evals) == 3
     assert lineage[0]["mutation_summary"] == "mut"
     assert archives[0]["generation"] == 1
+    assert {row["benchmark_id"]: row["status"] for row in evals} == {
+        "moons": "ok",
+        "iris": "missing",
+    }
     assert best["moons"]["genome_id"] == genome_b.genome_id
+    assert "iris" not in best
     assert best["moons"]["metric_value"] == 0.9
     assert latest == 1
 
@@ -129,7 +168,7 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
         fallback=0,
     ) == 304
 
-    manifest = {"run_id": "demo", "budget": {"evaluation_count": 3}}
+    manifest = {"run_id": "demo", "budget": {"evaluation_count": 3, "wall_clock_seconds": 12.5}}
     results = [
         {"benchmark_id": "moons", "metric_value": 0.91, "status": "ok"},
         {"benchmark_id": "iris", "metric_value": 0.95, "status": "ok"},
@@ -157,9 +196,12 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
 
     assert summary["system"] == "prism"
     assert summary["total_evaluations"] == 3
+    assert summary["wall_clock_seconds"] == 12.5
     assert summary["generations_completed"] == 2
     assert summary["failure_count"] == 1
     assert summary["benchmarks_evaluated"] == 2
+    assert summary["runtime_backend"] == "mlx"
+    assert summary["precision_mode"] == "fp32"
     assert summary["operator_mix"]["mutation:width"] == 1
     assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
     assert summary["failure_patterns"]["failed"] == 1
@@ -203,6 +245,7 @@ def test_cli_benchmarks_and_symbiosis_export(monkeypatch, tmp_path: Path):
 
 
 def test_cli_evolve_loads_pack_and_calls_coordinator(monkeypatch, tmp_path: Path):
+    coordinator = _import_coordinator_or_skip()
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         yaml.safe_dump(
@@ -227,7 +270,7 @@ def test_cli_evolve_loads_pack_and_calls_coordinator(monkeypatch, tmp_path: Path
         called["run_dir"] = run_dir
         called["resume"] = resume
 
-    monkeypatch.setattr("prism.pipeline.coordinator.run_evolution", fake_run_evolution)
+    monkeypatch.setattr(coordinator, "run_evolution", fake_run_evolution)
 
     run_dir = tmp_path / "run"
     result = runner.invoke(app, ["evolve", "-c", str(config_path), "--run-dir", str(run_dir)])
@@ -239,6 +282,7 @@ def test_cli_evolve_loads_pack_and_calls_coordinator(monkeypatch, tmp_path: Path
 
 
 def test_create_seed_population_keeps_unique_genome_ids():
+    coordinator = _import_coordinator_or_skip()
     evolution = RunConfig.model_validate(
         {
             "evolution": {
@@ -253,6 +297,7 @@ def test_create_seed_population_keeps_unique_genome_ids():
 
 
 def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_path: Path):
+    coordinator = _import_coordinator_or_skip()
     cfg = RunConfig.model_validate(
         {
             "seed": 3,
@@ -283,6 +328,9 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
     run_dir = tmp_path / "run"
     state = coordinator.run_evolution(cfg, [benchmark], run_dir=str(run_dir))
     assert state.total_evaluations == 1
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["runtime_backend"] == "mlx"
+    assert summary["precision_mode"] == "fp32"
 
     with RunStore(run_dir / "metrics.duckdb") as store:
         evals = store.load_evaluations(run_dir.name)
@@ -295,6 +343,9 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
 
     report = generate_report(run_dir)
     assert "Total Evaluations | 1" in report
+    assert "| Runtime | mlx |" in report
+    assert "| Precision Mode | fp32 |" in report
+    assert "| Wall Clock Seconds |" in report
     assert "## Family Benchmark Wins" in report
     assert "## Operator Mix" in report
     assert "## Operator Success" in report
@@ -306,6 +357,90 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
     assert "| moons | 0.910000 | accuracy | 123 | 0.20 |" in report
 
 
+def test_inspect_surfaces_failure_patterns_and_recent_failures(tmp_path: Path):
+    run_dir = tmp_path / "inspect-run"
+    run_dir.mkdir()
+    (run_dir / "config.json").write_text(json.dumps({"seed": 17}, indent=2), encoding="utf-8")
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "runtime_backend": "mlx",
+                "runtime_version": "0.0-test",
+                "precision_mode": "fp32",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    genome = _sample_genome("mlp", [16, 8])
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run(run_dir.name, {"seed": 17})
+        store.save_genome(run_dir.name, genome)
+        store.save_evaluation(run_dir.name, genome.genome_id, 0, "moons", "accuracy", 0.91, 0.91, 101, 0.2)
+        store.save_evaluation(
+            run_dir.name,
+            genome.genome_id,
+            0,
+            "iris",
+            "accuracy",
+            float("nan"),
+            float("nan"),
+            101,
+            0.1,
+            failure_reason="compile_timeout",
+        )
+
+    result = runner.invoke(app, ["inspect", str(run_dir)])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Evaluation Status Mix" in result.stdout
+    assert "ok=1, failed=1" in result.stdout
+    assert "Failure Patterns" in result.stdout
+    assert "compile_timeout" in result.stdout
+    assert "Recent Failures" in result.stdout
+    assert "iris" in result.stdout
+
+
+def test_coordinator_summary_persists_failure_patterns(monkeypatch, tmp_path: Path):
+    coordinator = _import_coordinator_or_skip()
+    cfg = RunConfig.model_validate(
+        {
+            "seed": 9,
+            "training": {"epochs": 1},
+            "evolution": {
+                "population_size": 1,
+                "offspring_per_generation": 1,
+                "num_generations": 1,
+                "allowed_families": ["mlp"],
+            },
+        }
+    )
+    benchmark = SimpleNamespace(id="iris", name="iris")
+
+    monkeypatch.setattr(
+        "prism.pipeline.evaluate._evaluate_single",
+        lambda genome, spec, training, epoch_scale, cache, parent_ids=None: EvaluationResult(
+            metric_name="accuracy",
+            metric_value=float("nan"),
+            quality=float("nan"),
+            parameter_count=77,
+            train_seconds=0.05,
+            failure_reason="compile_timeout",
+            inherited_from=parent_ids[0] if parent_ids else None,
+        ),
+    )
+
+    run_dir = tmp_path / "failing-run"
+    state = coordinator.run_evolution(cfg, [benchmark], run_dir=str(run_dir))
+    assert state.total_evaluations == 1
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["benchmarks_evaluated"] == 1
+    assert summary["failure_count"] == 1
+    assert summary["failure_patterns"] == {"compile_timeout": 1}
+
+
 def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -315,6 +450,18 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
                 "seed": 17,
                 "training": {"epochs": 3},
                 "evolution": {"population_size": 2},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "elapsed_seconds": 7.25,
+                "runtime_backend": "mlx",
+                "runtime_version": "0.0-test",
+                "precision_mode": "fp32",
             },
             indent=2,
         ),
@@ -375,13 +522,22 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
     assert manifest["fairness"]["code_version"] == "deadbeef"
     assert manifest["fairness"]["benchmark_pack_id"] == "demo_pack"
     assert manifest["artifacts"]["canonical_benchmarks"] == ["canon::moons", "canon::iris"]
+    assert manifest["device"]["framework"] == "mlx"
+    assert manifest["device"]["precision_mode"] == "fp32"
+    assert manifest["device"]["framework_version"] == "0.0-test"
+    assert manifest["budget"]["wall_clock_seconds"] == 7.25
     assert len(results) == 2
+    assert summary["runtime_backend"] == manifest["device"]["framework"]
+    assert summary["precision_mode"] == manifest["device"]["precision_mode"]
+    assert summary["wall_clock_seconds"] == manifest["budget"]["wall_clock_seconds"]
     assert summary["operator_mix"]["crossover"] == 1
     assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
     assert summary["failure_patterns"] == {}
 
 
+@pytest.mark.skipif(mx is None, reason="MLX runtime unavailable on this host")
 def test_language_modeling_specs_load_and_compile():
+    compile_genome = _import_compile_genome_or_skip()
     tiny = get_benchmark("tiny_lm_synthetic")
     assert tiny.task == "language_modeling"
     x_train, y_train, x_val, y_val = tiny.load_data(seed=7)
@@ -409,6 +565,7 @@ def test_language_modeling_specs_load_and_compile():
     assert probs.shape == (2, 8, 32)
 
 
+@pytest.mark.skipif(mx is None, reason="MLX runtime unavailable on this host")
 def test_weight_cache_skips_missing_parameter_paths():
     class DummyModel:
         def trainable_parameters(self):
@@ -464,6 +621,7 @@ def test_smoke_pack_contains_33_plus_5_lm():
 
 
 def test_load_prior_run_memory_and_seed_population(tmp_path: Path):
+    coordinator = _import_coordinator_or_skip()
     run_dir = tmp_path / "prior-run"
     run_dir.mkdir()
     genome = _sample_genome("attention", [32, 16])

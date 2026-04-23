@@ -173,6 +173,159 @@ def test_run_evolution_resume_preserves_pool_rotation_state(tmp_path: Path, monk
     assert (run_dir / "topology_atlas_summary.json").exists()
 
 
+def test_run_evolution_resume_preserves_existing_primordia_seeding_metadata(tmp_path: Path, monkeypatch):
+    cfg = RunConfig(
+        benchmark="moons",
+        evolution={"population_size": 1, "num_generations": 2, "elite_count": 1},
+        benchmark_elite_archive=False,
+    )
+    genome = _seed_genome(13)
+    run_dir = tmp_path / "seeded-resume-run"
+    run_dir.mkdir()
+
+    original_seeding = {
+        "seed_path": "/tmp/seed_candidates.json",
+        "target_family": "tabular",
+        "selected_family": "sparse_mlp",
+        "selected_rank": 1,
+        "representative_architecture_summary": "sparse_mlp[64x64]",
+        "representative_genome_id": "sparse-1",
+    }
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run("current", cfg.model_dump(mode="json"))
+        store.save_budget_metadata("current", {"primordia_seeding": original_seeding})
+        store.save_run_state(
+            "current",
+            {
+                "next_generation": 1,
+                "population": [genome_to_dict(genome)],
+                "innovation_counter": 9,
+                "fitness_history": [0.1],
+                "scheduler": {"stats": {}},
+                "pool_state": {
+                    "current_sample": [],
+                    "rotation_counter": 0,
+                    "benchmark_best_fitness": {},
+                },
+                "pending_outcomes": [],
+                "elapsed_seconds": 0.5,
+                "total_evaluations": 1,
+                "novelty_score_sum": 0.0,
+                "novelty_score_count": 0,
+                "novelty_score_max": 0.0,
+                "map_elites_insertions": 0,
+                "completed": False,
+            },
+        )
+
+    def fake_evaluate(
+        state,
+        config,
+        benchmark_spec,
+        cache=None,
+        multi_fidelity_schedule=None,
+        data_cache=None,
+        evaluation_memo=None,
+        parallel_eval=None,
+        progress_callback=None,
+    ):
+        state.fitnesses = [0.2]
+        state.model_bytes = [16]
+        state.behaviors = [np.zeros(8, dtype=np.float32)]
+        state.raw_losses = {"moons": [0.2]}
+        state.benchmark_results = []
+        state.total_evaluations += 1
+        return state
+
+    monkeypatch.setattr(coordinator_mod, "evaluate", fake_evaluate)
+    monkeypatch.setattr(coordinator_mod, "score", lambda state, config: state)
+
+    coordinator_mod.run_evolution(
+        cfg,
+        benchmark_spec=SimpleNamespace(name="moons", task="classification", input_dim=2, num_classes=2),
+        run_dir=str(run_dir),
+        resume=True,
+    )
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        budget_meta = store.load_budget_metadata("current")
+
+    assert budget_meta["primordia_seeding"] == original_seeding
+
+
+def test_run_evolution_resume_ignores_non_mapping_primordia_seeding_metadata(tmp_path: Path, monkeypatch):
+    cfg = RunConfig(
+        benchmark="moons",
+        evolution={"population_size": 1, "num_generations": 2, "elite_count": 1},
+        benchmark_elite_archive=False,
+    )
+    genome = _seed_genome(17)
+    run_dir = tmp_path / "bad-seeding-resume-run"
+    run_dir.mkdir()
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run("current", cfg.model_dump(mode="json"))
+        store.save_budget_metadata("current", {"primordia_seeding": "not-a-dict"})
+        store.save_run_state(
+            "current",
+            {
+                "next_generation": 1,
+                "population": [genome_to_dict(genome)],
+                "innovation_counter": 9,
+                "fitness_history": [0.1],
+                "scheduler": {"stats": {}},
+                "pool_state": {
+                    "current_sample": [],
+                    "rotation_counter": 0,
+                    "benchmark_best_fitness": {},
+                },
+                "pending_outcomes": [],
+                "elapsed_seconds": 0.5,
+                "total_evaluations": 1,
+                "novelty_score_sum": 0.0,
+                "novelty_score_count": 0,
+                "novelty_score_max": 0.0,
+                "map_elites_insertions": 0,
+                "completed": False,
+            },
+        )
+
+    def fake_evaluate(
+        state,
+        config,
+        benchmark_spec,
+        cache=None,
+        multi_fidelity_schedule=None,
+        data_cache=None,
+        evaluation_memo=None,
+        parallel_eval=None,
+        progress_callback=None,
+    ):
+        state.fitnesses = [0.2]
+        state.model_bytes = [16]
+        state.behaviors = [np.zeros(8, dtype=np.float32)]
+        state.raw_losses = {"moons": [0.2]}
+        state.benchmark_results = []
+        state.total_evaluations += 1
+        return state
+
+    monkeypatch.setattr(coordinator_mod, "evaluate", fake_evaluate)
+    monkeypatch.setattr(coordinator_mod, "score", lambda state, config: state)
+
+    coordinator_mod.run_evolution(
+        cfg,
+        benchmark_spec=SimpleNamespace(name="moons", task="classification", input_dim=2, num_classes=2),
+        run_dir=str(run_dir),
+        resume=True,
+    )
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        budget_meta = store.load_budget_metadata("current")
+
+    assert budget_meta["primordia_seeding"] is None
+
+
 def test_weight_cache_partial_lookup_and_fifo_eviction():
     genome = _seed_genome(3)
     variant = copy.deepcopy(genome)

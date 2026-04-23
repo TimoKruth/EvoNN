@@ -1,0 +1,42 @@
+default_install_hook_types:
+  - pre-commit
+  - pre-push
+
+repos:
+  - repo: local
+    hooks:
+      - id: prism-ruff
+        name: Prism Ruff
+        entry: bash scripts/ci/prism-checks.sh ruff
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Prism/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-commit
+
+      - id: topograph-ruff
+        name: Topograph Ruff
+        entry: bash scripts/ci/topograph-checks.sh ruff
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Topograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-commit
+
+      - id: prism-pytest
+        name: Prism Pytest
+        entry: bash scripts/ci/prism-checks.sh pytest
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Prism/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-push
+
+      - id: topograph-pytest
+        name: Topograph Pytest
+        entry: bash scripts/ci/topograph-checks.sh pytest
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Topograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-push

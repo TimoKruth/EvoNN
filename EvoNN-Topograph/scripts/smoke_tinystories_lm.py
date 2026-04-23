@@ -10,21 +10,27 @@ THIS_DIR = Path(__file__).resolve().parent
 if str(THIS_DIR) not in sys.path:
     sys.path.insert(0, str(THIS_DIR))
 
-from smoke_tiny_lm import build_parser as _base_parser, main as _base_main
-
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "configs" / "tinystories_lm_smoke.yaml"
 
 
+def _load_base():
+    from smoke_tiny_lm import build_parser, main
+
+    return build_parser, main
+
+
 def build_parser():
-    parser = _base_parser()
+    build_base_parser, _ = _load_base()
+    parser = build_base_parser()
     parser.set_defaults(config=DEFAULT_CONFIG)
     return parser
 
 
 def main() -> int:
-    return _base_main(parser_factory=build_parser)
+    _, base_main = _load_base()
+    return base_main(parser_factory=build_parser)
 
 
 if __name__ == "__main__":

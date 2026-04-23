@@ -107,7 +107,7 @@ def evolve(
             encoding="utf-8",
         )
 
-    console.print(f"[bold cyan]Topograph Evolution[/bold cyan]")
+    console.print("[bold cyan]Topograph Evolution[/bold cyan]")
     console.print(f"  Config: {config}")
     console.print(f"  Run dir: {run_path}")
     console.print(f"  Seed: {cfg.seed}")
@@ -154,30 +154,50 @@ def inspect(
     run_dir: str = typer.Argument(..., help="Path to run directory"),
 ) -> None:
     """Inspect run metrics."""
-    from topograph.genome.codec import dict_to_genome
-    from topograph.storage import RunStore
+    from topograph.export.report import (
+        dag_summary,
+        load_report_context,
+        primordia_seeding_rows,
+        run_state_rows,
+        summarize_failure_patterns,
+    )
 
     run_path = Path(run_dir)
-    store = RunStore(run_path / "metrics.duckdb")
-    run_id = _resolve_run_id(store)
-
-    latest_gen = store.load_latest_generation(run_id)
+    context = load_report_context(run_path)
+    latest_gen = context["latest_generation"]
     if latest_gen is None:
         console.print("[yellow]No generations found.[/yellow]")
-        store.close()
         return
 
-    genome_dicts = store.load_genomes(run_id, latest_gen)
-    population = [dict_to_genome(d) for d in genome_dicts]
-    best = min(population, key=lambda g: g.fitness if g.fitness is not None else float("inf"))
-    budget = store.load_budget_metadata(run_id) or {}
+    run = context["run"]
+    population = context["population"]
+    best = context["best_genome"]
+    budget = context["budget_meta"]
+    best_results = context["best_results"]
+    failed_results = context["failed_results"]
+    skipped_results = context["skipped_results"]
+    ok_results = context["ok_results"]
+    checkpoint_path = context["checkpoint_path"]
+    benchmark_results = context["benchmark_results"]
+    run_state = context["run_state"]
+    non_ok_results = [row for row in benchmark_results if row.get("status") != "ok"]
+    failure_patterns = summarize_failure_patterns(non_ok_results)
 
-    table = Table(title=f"Run: {run_path.name}")
+    table = Table(title="Run Overview")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="green")
 
+    table.add_row("Run ID", str(run.get("run_id") or context["run_id"] or run_path.name))
+    table.add_row("Seed", str(run.get("seed", "unknown")))
     table.add_row("Generation", str(latest_gen))
     table.add_row("Population", str(len(population)))
+    for label, value in run_state_rows(
+        run=run,
+        run_state=run_state,
+        latest_generation=latest_gen,
+        benchmark_results=benchmark_results,
+    ):
+        table.add_row(label, value)
     table.add_row(
         "Best Fitness",
         f"{best.fitness:.6f}" if best.fitness is not None else "N/A",
@@ -186,14 +206,85 @@ def inspect(
     table.add_row("Best Connections", str(len(best.enabled_connections)))
     table.add_row("Best Params", str(best.param_count))
     table.add_row("Best Model Bytes", str(best.model_bytes))
+    table.add_row("Evaluated Benchmarks", str(len(best_results)))
+    table.add_row(
+        "Status Mix",
+        f"ok={len(ok_results)}, skipped={len(skipped_results)}, failed={len(failed_results)}",
+    )
+
+    summary = dag_summary(best)
+    table.add_row("Best DAG Depth", str(summary["depth"]))
+    table.add_row("Best Skip Connections", str(summary["skip_connections"]))
+    table.add_row("Best Connectivity", f"{summary['connectivity_ratio']:.4f}")
 
     if budget.get("wall_clock_seconds"):
         table.add_row("Wall Clock", f"{budget['wall_clock_seconds']:.1f}s")
     if budget.get("evaluation_count"):
         table.add_row("Total Evaluations", str(budget["evaluation_count"]))
+    if budget.get("effective_training_epochs") is not None:
+        table.add_row("Effective Training Epochs", str(budget["effective_training_epochs"]))
+    if budget.get("runtime_backend"):
+        table.add_row("Runtime", str(budget["runtime_backend"]))
+    if budget.get("runtime_version") is not None:
+        table.add_row("Runtime Version", str(budget.get("runtime_version") or "unknown"))
+    if budget.get("precision_mode") is not None:
+        table.add_row("Precision Mode", str(budget.get("precision_mode") or "unknown"))
+    if budget.get("novelty_score_mean") is not None:
+        table.add_row("Novelty Mean", f"{float(budget['novelty_score_mean']):.4f}")
+    if budget.get("map_elites_occupied_niches") is not None:
+        table.add_row("Occupied Niches", str(budget.get("map_elites_occupied_niches", 0)))
+    for label, value in primordia_seeding_rows(budget.get("primordia_seeding")):
+        table.add_row(label, value)
+    if checkpoint_path.exists():
+        table.add_row("Checkpoint", str(checkpoint_path))
 
     console.print(table)
-    store.close()
+
+    best_table = Table(title="Best Benchmarks")
+    best_table.add_column("Benchmark", style="cyan")
+    best_table.add_column("Metric", style="white")
+    best_table.add_column("Value", style="green")
+    best_table.add_column("Quality", style="green")
+    best_table.add_column("Genome", style="white")
+    best_table.add_column("Architecture", style="white")
+    if best_results:
+        for record in best_results:
+            metric_value = record.get("metric_value")
+            quality = record.get("quality")
+            best_table.add_row(
+                str(record["benchmark_name"]),
+                str(record["metric_name"]),
+                "---" if metric_value is None else f"{float(metric_value):.6f}",
+                "---" if quality is None else f"{float(quality):.4f}",
+                str(record.get("genome_id") or "—"),
+                str(record.get("architecture_summary") or "—"),
+            )
+    else:
+        best_table.add_row("none", "—", "---", "---", "—", "—")
+    console.print(best_table)
+
+    failure_pattern_table = Table(title="Failure Patterns")
+    failure_pattern_table.add_column("Reason", style="white")
+    failure_pattern_table.add_column("Count", style="green")
+    if failure_patterns:
+        for reason, count in failure_patterns:
+            failure_pattern_table.add_row(reason, str(count))
+    else:
+        failure_pattern_table.add_row("none", "0")
+    console.print(failure_pattern_table)
+
+    failure_table = Table(title="Failure Details")
+    failure_table.add_column("Benchmark", style="cyan")
+    failure_table.add_column("Reason", style="white")
+    if failed_results:
+        for record in failed_results:
+            failure_table.add_row(
+                str(record["benchmark_name"]),
+                str(record.get("failure_reason") or "unknown"),
+            )
+    else:
+        failure_table.add_row("none", "no failed benchmarks")
+    console.print(failure_table)
 
 
 @app.command("export")

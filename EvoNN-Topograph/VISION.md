@@ -120,6 +120,52 @@ That should remain central.
 
 Long run, Topograph should not live in isolation. It should be one participant in a broader comparative search ecosystem where runs can be exported, audited, reproduced, and compared against EvoNN, EvoNN-2, and future systems using a shared contract.
 
+## Seeding Strategy Options
+
+Topograph should explicitly support two distinct upstream seeding stories and
+keep them separable in reports and compare artifacts.
+
+### Option A: Direct Primordia Seeding
+
+In this mode, Topograph accepts low-level priors directly from `Primordia`.
+
+This is the shortest inheritance path and tests whether primitive-level motifs
+are already informative enough to bias flat topology search usefully.
+
+Questions:
+- do primitive motifs map cleanly into topology/operator priors?
+- does direct primitive seeding improve search speed or final quality?
+- does it blur the distinction between primitive-first and topology-first search
+  too much to remain scientifically useful?
+
+### Option B: Staged Stratograph Seeding
+
+In this mode, Topograph is seeded by `Stratograph`, which has already consumed
+primitive motifs and translated them into hierarchical structure.
+
+This tests whether Topograph benefits more from already-organized architectural
+priors than from raw primitive priors.
+
+Questions:
+- does hierarchy produce better topology priors than direct primitive motifs?
+- does staged inheritance improve reuse while preserving cleaner abstraction
+  boundaries?
+- are topology-level wins more interpretable when they descend from
+  Stratograph-style motifs instead of direct primitive injection?
+
+### Topograph Rule
+
+Topograph should not collapse these two options into one hidden mechanism.
+
+It should:
+- label the seeding source explicitly
+- preserve an unseeded baseline
+- treat direct and staged seeding as comparable experimental regimes
+- make it easy to inspect which seed source shaped a run
+
+This matters because Topograph is supposed to test flat-topology search as a
+separate idea. Seeding should enrich that test, not erase it.
+
 ## What Topograph Should Become
 
 ### Horizon 1: Reliable Search Engine
@@ -184,6 +230,8 @@ Why this matters:
 - custom graph experimentation is easier when compile/deploy loop is tight
 
 But long run, the architecture concepts should remain portable. Apple-first should be execution strategy, not lock-in doctrine.
+
+That portability should become concrete, not merely rhetorical. Topograph should grow a Linux-capable execution path that can at minimum run smoke tests, regression tests, and compare-grade small-budget studies under the same benchmark packs and export contracts. Full scientific comparison should not depend on MLX being importable on the validation host.
 
 ### Topology Motifs Over Giant Search Spaces
 
@@ -289,11 +337,12 @@ The path from current codebase to long-run vision likely looks like:
 
 1. harden runtime, telemetry, and test coverage
 2. make benchmark timing and archive behavior visible
-3. improve hardware-aware objectives and budget controls
-4. deepen quality-diversity and topology analytics
-5. expand interop and comparison workflows
-6. turn archives into reusable model-family assets
-7. connect search output to real deployment targets
+3. add a portable Linux-capable execution path for smoke, regression, and compare-style small-budget validation
+4. improve hardware-aware objectives and budget controls without breaking cross-platform comparability
+5. deepen quality-diversity and topology analytics
+6. expand interop and comparison workflows
+7. turn archives into reusable model-family assets
+8. connect search output to real deployment targets
 
 ## Final Statement
 

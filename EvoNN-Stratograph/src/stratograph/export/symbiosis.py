@@ -1,4 +1,4 @@
-"""Symbiosis-style export contract for Stratograph prototype runs."""
+"""Symbiosis-style export contract for Stratograph MLX runs."""
 
 from __future__ import annotations
 
@@ -8,13 +8,19 @@ import platform
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from statistics import median as stat_median
 from typing import Any
 
 import stratograph
 from stratograph.benchmarks import get_benchmark
 from stratograph.benchmarks.parity import fallback_native_id, load_parity_pack
 from stratograph.config import load_config
-from stratograph.export.report import write_report
+from stratograph.export.report import (
+    load_report_context,
+    load_runtime_metadata,
+    summarize_failure_patterns,
+    write_report,
+)
 from stratograph.storage import RunStore
 
 
@@ -42,14 +48,16 @@ def export_symbiosis_contract(
     store.close()
 
     report_path = write_report(run_dir)
+    report_context = load_report_context(run_dir)
     _write_summary_json(output_dir / "genome_summary.json", genomes)
     _write_summary_json(output_dir / "model_summary.json", results)
     dataset_manifest = []
+    runtime_meta = load_runtime_metadata(budget_meta)
 
     manifest_benchmarks: list[dict[str, Any]] = []
     result_records: list[dict[str, Any]] = []
     for entry in pack.benchmarks:
-        native_name = fallback_native_id(entry)
+        native_name = _resolve_native_name(entry, available_results=results)
         spec = get_benchmark(native_name)
         result = results.get(native_name)
         status = result["status"] if result else "missing"
@@ -107,15 +115,16 @@ def export_symbiosis_contract(
             "evaluation_count": budget_meta.get("evaluation_count", len(result_records)),
             "epochs_per_candidate": config.training.epochs,
             "effective_training_epochs": budget_meta.get("effective_training_epochs"),
+            "wall_clock_seconds": budget_meta.get("wall_clock_seconds"),
             "generations": config.evolution.generations,
             "population_size": config.evolution.population_size,
             "budget_policy_name": "prototype_equal_budget",
         },
         "device": {
             "device_name": platform.machine(),
-            "precision_mode": "float32",
-            "framework": "numpy",
-            "framework_version": None,
+            "precision_mode": runtime_meta["precision_mode"],
+            "framework": runtime_meta["runtime_backend"],
+            "framework_version": runtime_meta["runtime_version"],
         },
         "artifacts": {
             "config_snapshot": "config.yaml",
@@ -126,6 +135,7 @@ def export_symbiosis_contract(
             "raw_database": "metrics.duckdb",
         },
         "search_telemetry": {
+            "architecture_mode": budget_meta.get("architecture_mode", config.evolution.architecture_mode),
             "qd_enabled": bool(budget_meta.get("qd_enabled", False)),
             "effective_training_epochs": budget_meta.get("effective_training_epochs"),
             "novelty_score_mean": budget_meta.get("novelty_score_mean"),
@@ -149,11 +159,112 @@ def export_symbiosis_contract(
     results_path = output_dir / "results.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     results_path.write_text(json.dumps(result_records, indent=2), encoding="utf-8")
+    _write_contract_summary_json(
+        output_dir,
+        manifest,
+        result_records,
+        config=config,
+        report_context=report_context,
+    )
     return manifest_path, results_path
+
+
+def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]]) -> str:
+    native_ids = entry.native_ids or {}
+    candidates: list[str] = []
+    for candidate in [
+        native_ids.get("stratograph"),
+        fallback_native_id(entry),
+        *native_ids.values(),
+        entry.benchmark_id,
+    ]:
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    for candidate in candidates:
+        if candidate in available_results:
+            return candidate
+    for candidate in candidates:
+        try:
+            get_benchmark(candidate)
+            return candidate
+        except Exception:
+            continue
+    return candidates[0]
 
 
 def _write_summary_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _write_contract_summary_json(
+    output_dir: Path,
+    manifest: dict[str, Any],
+    results: list[dict[str, Any]],
+    *,
+    config,
+    report_context: dict[str, Any],
+) -> None:
+    """Write cross-system summary.json for Stratograph exports."""
+    best_fitness: dict[str, float] = {}
+    ok_param_counts: list[int] = []
+    quality_values: list[float] = []
+    for record in results:
+        if record.get("status") != "ok":
+            continue
+        benchmark_id = str(record.get("benchmark_id") or "")
+        metric_value = record.get("metric_value")
+        if benchmark_id and metric_value is not None:
+            best_fitness[benchmark_id] = float(metric_value)
+        parameter_count = record.get("parameter_count")
+        if parameter_count is not None:
+            ok_param_counts.append(int(parameter_count))
+        quality = record.get("quality")
+        if quality is not None:
+            quality_values.append(float(quality))
+
+    failure_count = sum(1 for record in results if record.get("status") != "ok")
+    budget = manifest.get("budget", {})
+    device = manifest.get("device", {})
+    status_payload = report_context.get("status", {})
+    representative_genome = report_context.get("representative_genome")
+    non_ok_results = report_context.get("non_ok_results", [])
+
+    summary: dict[str, Any] = {
+        "system": "stratograph",
+        "run_id": manifest["run_id"],
+        "status": status_payload.get("state", "complete"),
+        "total_evaluations": budget.get("evaluation_count", 0),
+        "generations_completed": budget.get("generations", config.evolution.generations),
+        "epochs_per_candidate": budget.get("epochs_per_candidate", config.training.epochs),
+        "population_size": budget.get("population_size", config.evolution.population_size),
+        "wall_clock_seconds": budget.get("wall_clock_seconds"),
+        "architecture_mode": manifest.get("search_telemetry", {}).get("architecture_mode")
+        or config.evolution.architecture_mode,
+        "runtime_backend": device.get("framework", "unknown"),
+        "runtime_version": device.get("framework_version") or "unknown",
+        "precision_mode": device.get("precision_mode", "unknown"),
+        "best_fitness": best_fitness,
+        "median_parameter_count": int(stat_median(ok_param_counts)) if ok_param_counts else 0,
+        "median_benchmark_quality": float(stat_median(quality_values)) if quality_values else None,
+        "failure_count": failure_count,
+        "benchmarks_evaluated": len(best_fitness),
+        "failure_patterns": dict(summarize_failure_patterns(non_ok_results)),
+        "completed_benchmarks": status_payload.get("completed_count", len(results)),
+        "remaining_benchmarks": status_payload.get("remaining_count", 0),
+        "novelty_mean": manifest.get("search_telemetry", {}).get("novelty_score_mean"),
+        "occupied_niches": manifest.get("search_telemetry", {}).get("map_elites_occupied_niches"),
+    }
+    if representative_genome is not None:
+        summary["hierarchy_summary"] = {
+            "representative_genome_id": representative_genome.genome_id,
+            "macro_nodes": len(representative_genome.macro_nodes),
+            "enabled_macro_edges": sum(1 for edge in representative_genome.macro_edges if edge.enabled),
+            "cell_library_size": len(representative_genome.cell_library),
+            "macro_depth": representative_genome.macro_depth,
+            "avg_cell_depth": float(representative_genome.average_cell_depth),
+            "reuse_ratio": float(representative_genome.reuse_ratio),
+        }
+    (output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
 
 def _fairness_manifest(
@@ -179,7 +290,15 @@ def _benchmark_signature(pack_name: str, benchmark_entries: list[dict[str, Any]]
     payload = json.dumps(
         {
             "pack_name": pack_name,
-            "benchmarks": benchmark_entries,
+            "benchmarks": [
+                {
+                    "benchmark_id": entry.get("benchmark_id"),
+                    "task_kind": entry.get("task_kind"),
+                    "metric_name": entry.get("metric_name"),
+                    "metric_direction": entry.get("metric_direction"),
+                }
+                for entry in benchmark_entries
+            ],
         },
         sort_keys=True,
         separators=(",", ":"),

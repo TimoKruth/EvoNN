@@ -24,7 +24,11 @@ class WeightCache:
         self.max_size = max_size
 
     def store(self, genome_id: str, model, family: str | None = None) -> None:
-        """Snapshot all trainable parameters from an MLX model."""
+        """Snapshot all trainable parameters from an MLX model.
+
+        The optional ``family`` argument is accepted for compatibility with
+        callers that annotate cache entries by family.
+        """
         import mlx.utils
 
         snapshot: dict[str, np.ndarray] = {}
