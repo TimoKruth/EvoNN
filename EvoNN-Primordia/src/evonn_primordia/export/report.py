@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any
 
 
+def _escape_markdown_cell(value: Any) -> str:
+    return str(value).replace("|", "\\|").replace("\n", "<br>")
+
+
 def load_runtime_metadata(summary: dict[str, Any]) -> dict[str, str]:
     """Return normalized runtime metadata from run summary artifacts."""
 
@@ -309,7 +313,7 @@ def write_report(run_dir: str | Path) -> Path:
         ])
         if failure_patterns:
             for reason, count in failure_patterns:
-                lines.append(f"| {reason} | {count} |")
+                lines.append(f"| {_escape_markdown_cell(reason)} | {count} |")
         else:
             lines.append("| none | 0 |")
         lines.extend([

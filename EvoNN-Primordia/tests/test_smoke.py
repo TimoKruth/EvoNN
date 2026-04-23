@@ -780,6 +780,49 @@ def test_report_includes_grouped_failure_patterns_with_status_fallback(tmp_path:
 
 
 
+def test_report_escapes_failure_pattern_markdown_cells(tmp_path: Path) -> None:
+    run_dir = tmp_path / "escaped_failure_pattern_report"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "escaped_failure_pattern_report",
+                "runtime": "numpy-fallback",
+                "runtime_version": "fallback-1.0",
+                "evaluation_count": 1,
+                "target_evaluation_count": 1,
+                "benchmark_count": 1,
+                "budget_policy_name": "prototype_equal_budget",
+                "failure_count": 1,
+                "primitive_usage": {"mlp": 1},
+                "group_counts": {"tabular": 1},
+                "wall_clock_seconds": 1.0,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "trial_records.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "iris",
+                    "primitive_name": "mlp",
+                    "status": "failed",
+                    "failure_reason": "shape|mismatch\nretry",
+                }
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    report = write_report(run_dir).read_text(encoding="utf-8")
+
+    assert "| shape\\|mismatch<br>retry | 1 |" in report
+
+
+
 def test_report_refresh_overwrites_existing_report_with_current_summary_data(tmp_path: Path) -> None:
     run_dir = tmp_path / "refresh_report"
     run_dir.mkdir()
