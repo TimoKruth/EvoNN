@@ -581,6 +581,19 @@ def test_generate_report_surfaces_failure_patterns_and_escaped_details(tmp_path:
     assert "| lm\\|pack | compile_error\\|oom<br>retry exhausted |" in report
 
 
+def test_summarize_failure_patterns_counts_non_ok_status_fallbacks():
+    patterns = report_mod.summarize_failure_patterns(
+        [
+            {"status": "failed", "failure_reason": "compile_error"},
+            {"status": "skipped", "failure_reason": None},
+            {"status": "missing", "failure_reason": None},
+            {"status": "ok", "failure_reason": "should_be_ignored"},
+        ]
+    )
+
+    assert patterns == [("compile_error", 1), ("skipped", 1), ("missing", 1)]
+
+
 def test_evaluate_pool_namespaces_weight_cache_by_benchmark(monkeypatch):
     state = GenerationState(
         generation=0,

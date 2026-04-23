@@ -103,9 +103,13 @@ def primordia_seeding_rows(seeding: dict[str, Any] | None) -> list[tuple[str, st
     return rows
 
 
-def summarize_failure_patterns(failed_results: list[dict[str, Any]]) -> list[tuple[str, int]]:
-    """Aggregate failure reasons for shared inspect/report surfaces."""
-    counts = Counter(str(row.get("failure_reason") or "unknown") for row in failed_results)
+def summarize_failure_patterns(non_ok_results: list[dict[str, Any]]) -> list[tuple[str, int]]:
+    """Aggregate non-OK outcomes for shared inspect/report surfaces."""
+    counts = Counter(
+        str(row.get("failure_reason") or row.get("status") or "unknown")
+        for row in non_ok_results
+        if row.get("status") != "ok"
+    )
     return counts.most_common()
 
 
@@ -182,6 +186,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     benchmark_timings = store.load_benchmark_timings(run_id)
     benchmark_results = store.load_benchmark_results(run_id)
     failed_results = [row for row in benchmark_results if row.get("status") == "failed"]
+    non_ok_results = [row for row in benchmark_results if row.get("status") != "ok"]
     timing_summary = _summarize_benchmark_timings(benchmark_timings)
     benchmark_extremes = _benchmark_quality_extremes(store.load_best_benchmark_results(run_id))
     sampled_orders = _sampled_benchmark_orders(benchmark_timings)
@@ -342,7 +347,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
             )
         lines.append("")
 
-    failure_patterns = summarize_failure_patterns(failed_results)
+    failure_patterns = summarize_failure_patterns(non_ok_results)
     if failure_patterns:
         lines.append("## Failure Patterns\n")
         lines.append("| Reason | Count |")

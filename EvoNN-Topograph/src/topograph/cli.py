@@ -180,7 +180,8 @@ def inspect(
     checkpoint_path = context["checkpoint_path"]
     benchmark_results = context["benchmark_results"]
     run_state = context["run_state"]
-    failure_patterns = summarize_failure_patterns(failed_results)
+    non_ok_results = [row for row in benchmark_results if row.get("status") != "ok"]
+    failure_patterns = summarize_failure_patterns(non_ok_results)
 
     table = Table(title="Run Overview")
     table.add_column("Metric", style="cyan")
