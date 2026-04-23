@@ -230,17 +230,72 @@ def test_report_context_keeps_best_result_per_benchmark(tmp_path) -> None:
 
 
 def test_summarize_failure_patterns_groups_duplicate_reasons() -> None:
-    failed_results = [
-        {"failure_reason": "compile_error"},
-        {"failure_reason": "compile_error"},
-        {"failure_reason": "oom"},
-        {"failure_reason": None},
+    non_ok_results = [
+        {"status": "failed", "failure_reason": "compile_error"},
+        {"status": "failed", "failure_reason": "compile_error"},
+        {"status": "failed", "failure_reason": "oom"},
+        {"status": "skipped", "failure_reason": None},
+        {"status": "error", "failure_reason": None},
     ]
 
-    assert summarize_failure_patterns(failed_results) == [
+    assert summarize_failure_patterns(non_ok_results) == [
         ("compile_error", 2),
+        ("error", 1),
         ("oom", 1),
-        ("unknown", 1),
+        ("skipped", 1),
+    ]
+
+
+def test_report_context_exposes_non_ok_failure_patterns(tmp_path) -> None:
+    run_dir = tmp_path / "non_ok_patterns_run"
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.record_run(
+            run_id="non_ok_patterns_run",
+            run_name="non_ok_patterns_run",
+            created_at="2026-04-22T00:00:00",
+            seed=7,
+            config={},
+        )
+        store.save_budget_metadata(run_id="non_ok_patterns_run", payload={"runtime_backend": "numpy-fallback"})
+        store.record_result(
+            run_id="non_ok_patterns_run",
+            benchmark_name="moons",
+            record={
+                "metric_name": "accuracy",
+                "metric_direction": "max",
+                "metric_value": 0.0,
+                "quality": None,
+                "parameter_count": None,
+                "train_seconds": 0.0,
+                "architecture_summary": None,
+                "genome_id": None,
+                "status": "failed",
+                "failure_reason": "compile_error",
+            },
+        )
+        store.record_result(
+            run_id="non_ok_patterns_run",
+            benchmark_name="tiny_lm_synthetic",
+            record={
+                "metric_name": "perplexity",
+                "metric_direction": "min",
+                "metric_value": None,
+                "quality": None,
+                "parameter_count": None,
+                "train_seconds": None,
+                "architecture_summary": None,
+                "genome_id": None,
+                "status": "skipped",
+                "failure_reason": None,
+            },
+        )
+
+    context = load_report_context(run_dir)
+
+    assert [record["status"] for record in context["non_ok_results"]] == ["failed", "skipped"]
+    assert summarize_failure_patterns(context["non_ok_results"]) == [
+        ("compile_error", 1),
+        ("skipped", 1),
     ]
 
 

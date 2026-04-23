@@ -227,7 +227,7 @@ def _write_contract_summary_json(
     device = manifest.get("device", {})
     status_payload = report_context.get("status", {})
     representative_genome = report_context.get("representative_genome")
-    failed_results = report_context.get("failed_results", [])
+    non_ok_results = report_context.get("non_ok_results", [])
 
     summary: dict[str, Any] = {
         "system": "stratograph",
@@ -248,7 +248,7 @@ def _write_contract_summary_json(
         "median_benchmark_quality": float(stat_median(quality_values)) if quality_values else None,
         "failure_count": failure_count,
         "benchmarks_evaluated": len(best_fitness),
-        "failure_patterns": dict(summarize_failure_patterns(failed_results)),
+        "failure_patterns": dict(summarize_failure_patterns(non_ok_results)),
         "completed_benchmarks": status_payload.get("completed_count", len(results)),
         "remaining_benchmarks": status_payload.get("remaining_count", 0),
         "novelty_mean": manifest.get("search_telemetry", {}).get("novelty_score_mean"),

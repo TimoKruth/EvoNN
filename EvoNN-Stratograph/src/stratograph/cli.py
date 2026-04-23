@@ -97,6 +97,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     budget_meta = context["budget_meta"]
     status_payload = context["status"]
     runtime_meta = load_runtime_metadata(budget_meta)
+    non_ok_results = context["non_ok_results"]
     failed_results = context["failed_results"]
     skipped_results = context["skipped_results"]
     best_results = context["best_results"]
@@ -165,7 +166,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
         best_table.add_row("none", "—", "---", "---", "—", "—")
     console.print(best_table)
 
-    failure_patterns = summarize_failure_patterns(failed_results)
+    failure_patterns = summarize_failure_patterns(non_ok_results)
 
     failure_table = Table(title="Failure Patterns")
     failure_table.add_column("Reason", style="white")

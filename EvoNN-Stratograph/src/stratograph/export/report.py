@@ -37,6 +37,7 @@ def load_report_context(run_dir: str | Path) -> dict[str, Any]:
         budget_meta = store.load_budget_metadata(run["run_id"])
 
     ok_results = [record for record in results if record["status"] == "ok"]
+    non_ok_results = [record for record in results if record["status"] != "ok"]
     failed_results = [record for record in results if record["status"] == "failed"]
     skipped_results = [record for record in results if record["status"] == "skipped"]
 
@@ -63,6 +64,7 @@ def load_report_context(run_dir: str | Path) -> dict[str, Any]:
         "status_path": status_path,
         "checkpoint_path": checkpoint_path,
         "ok_results": ok_results,
+        "non_ok_results": non_ok_results,
         "failed_results": failed_results,
         "skipped_results": skipped_results,
         "best_results": best_results,
@@ -129,9 +131,12 @@ def _escape_markdown_cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", "<br>")
 
 
-def summarize_failure_patterns(failed_results: list[dict[str, Any]]) -> list[tuple[str, int]]:
+def summarize_failure_patterns(non_ok_results: list[dict[str, Any]]) -> list[tuple[str, int]]:
     """Return compact failure-pattern counts for inspect/report parity."""
-    counts = Counter(str(record.get("failure_reason") or "unknown") for record in failed_results)
+    counts = Counter(
+        str(record.get("failure_reason") or record.get("status") or "unknown")
+        for record in non_ok_results
+    )
     return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
 
 
@@ -147,11 +152,12 @@ def write_report(run_dir: str | Path) -> Path:
     status_payload = context["status"]
     runtime_meta = load_runtime_metadata(budget_meta)
     ok_results = context["ok_results"]
+    non_ok_results = context["non_ok_results"]
     failed_results = context["failed_results"]
     skipped_results = context["skipped_results"]
     best_results = context["best_results"]
     representative_genome = context["representative_genome"]
-    failure_patterns = summarize_failure_patterns(failed_results)
+    failure_patterns = summarize_failure_patterns(non_ok_results)
 
     lines = [
         "# Stratograph Prototype Report",
