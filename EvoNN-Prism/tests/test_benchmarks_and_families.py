@@ -10,11 +10,19 @@ from typer.testing import CliRunner
 from prism.benchmarks.datasets import load_image, load_openml, load_sklearn
 from prism.benchmarks.spec import BenchmarkSpec
 from prism.cli import app
-from prism.families.compiler import compile_genome, is_genome_compatible
 from prism.genome import ModelGenome, _sanitize_for_family
 
 
 runner = CliRunner()
+
+
+def _import_compiler_or_skip():
+    module = pytest.importorskip(
+        "prism.families.compiler",
+        reason="MLX runtime unavailable on this host",
+        exc_type=ImportError,
+    )
+    return module.compile_genome, module.is_genome_compatible
 
 
 def _genome(family: str, widths: list[int], **updates) -> ModelGenome:
@@ -140,12 +148,16 @@ def test_load_image_digits_and_unknown_name():
     ],
 )
 def test_compile_genome_covers_more_families(genome, input_shape, output_dim, modality, task):
+    compile_genome, _ = _import_compiler_or_skip()
+
     compiled = compile_genome(genome, input_shape, output_dim, modality, task=task)
     assert compiled.family == genome.family
     assert compiled.parameter_count > 0
 
 
 def test_is_genome_compatible_respects_modality_and_lm_constraints():
+    _, is_genome_compatible = _import_compiler_or_skip()
+
     image_genome = _genome("conv2d", [8, 8])
     lm_genome = _genome("attention", [16, 16], embedding_dim=16)
     tabular_genome = _genome("mlp", [16, 16])
