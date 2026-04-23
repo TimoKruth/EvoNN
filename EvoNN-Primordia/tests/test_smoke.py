@@ -823,6 +823,92 @@ def test_report_escapes_failure_pattern_markdown_cells(tmp_path: Path) -> None:
 
 
 
+def test_report_escapes_runtime_markdown_cells_across_tables(tmp_path: Path) -> None:
+    run_dir = tmp_path / "escaped_runtime_cells_report"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "escaped_runtime_cells_report",
+                "runtime": "numpy-fallback",
+                "runtime_version": "fallback-1.0",
+                "evaluation_count": 1,
+                "target_evaluation_count": 1,
+                "benchmark_count": 1,
+                "budget_policy_name": "prototype_equal_budget",
+                "failure_count": 0,
+                "primitive_usage": {"mlp|family\nv2": 1},
+                "group_counts": {"tab|ular\nset": 1},
+                "wall_clock_seconds": 1.0,
+                "best_results": [
+                    {
+                        "benchmark_name": "iris|variant\nv2",
+                        "primitive_name": "mlp|wide",
+                        "metric_name": "acc\nrate",
+                        "metric_value": 0.78,
+                        "status": "ok|seed",
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "trial_records.json").write_text("[]", encoding="utf-8")
+    (run_dir / "primitive_bank_summary.json").write_text(
+        json.dumps(
+            {
+                "system": "primordia",
+                "run_id": "escaped_runtime_cells_report",
+                "run_name": "escaped_runtime_cells_report",
+                "runtime": "numpy-fallback",
+                "runtime_version": "fallback-1.0",
+                "primitive_families": [
+                    {
+                        "family": "mlp|family\nv2",
+                        "evaluation_count": 1,
+                        "benchmark_wins": 1,
+                        "benchmarks_won": ["iris|variant\nv2"],
+                        "best_metric_name": "acc\nrate",
+                        "best_metric_value": 0.78,
+                        "representative_genome_id": "gen|1",
+                        "representative_architecture_summary": "mlp|deep\n64x64",
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "seed_candidates.json").write_text(
+        json.dumps(
+            {
+                "seed_candidates": [
+                    {
+                        "seed_rank": 1,
+                        "family": "attention|seed",
+                        "benchmark_groups": ["group|1", "group\n2"],
+                        "benchmark_wins": 2,
+                        "representative_genome_id": "seed|gen",
+                        "representative_architecture_summary": "seed\narch|v1",
+                    }
+                ],
+                "benchmark_seeds": [],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    report = write_report(run_dir).read_text(encoding="utf-8")
+
+    assert "| mlp\\|family<br>v2 | 1 |" in report
+    assert "| mlp\\|family<br>v2 | 1 | 1 | iris\\|variant<br>v2 | acc<br>rate | 0.780000 | gen\\|1 | mlp\\|deep<br>64x64 |" in report
+    assert "| 1 | attention\\|seed | group\\|1, group<br>2 | 2 | seed\\|gen | seed<br>arch\\|v1 |" in report
+    assert "| tab\\|ular<br>set | 1 |" in report
+    assert "| iris\\|variant<br>v2 | mlp\\|wide | acc<br>rate | 0.780000 | ok\\|seed |" in report
+
+
 def test_report_refresh_overwrites_existing_report_with_current_summary_data(tmp_path: Path) -> None:
     run_dir = tmp_path / "refresh_report"
     run_dir.mkdir()

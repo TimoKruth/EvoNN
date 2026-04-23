@@ -11,6 +11,12 @@ def _escape_markdown_cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", "<br>")
 
 
+def _render_markdown_cell(value: Any, missing: str = "—") -> str:
+    if value is None or value == "":
+        return missing
+    return _escape_markdown_cell(value)
+
+
 def load_runtime_metadata(summary: dict[str, Any]) -> dict[str, str]:
     """Return normalized runtime metadata from run summary artifacts."""
 
@@ -234,7 +240,7 @@ def write_report(run_dir: str | Path) -> Path:
         primitive_usage = summary.get("primitive_usage", {})
         if primitive_usage:
             for family, count in primitive_usage.items():
-                lines.append(f"| {family} | {count} |")
+                lines.append(f"| {_render_markdown_cell(family, missing='none')} | {count} |")
         else:
             lines.append("| none | 0 |")
         lines.extend([
@@ -252,14 +258,14 @@ def write_report(run_dir: str | Path) -> Path:
                 rendered_value = "---" if best_value is None else f"{float(best_value):.6f}"
                 lines.append(
                     "| {family} | {evaluation_count} | {benchmark_wins} | {won} | {best_metric} | {best_value} | {genome} | {architecture} |".format(
-                        family=row.get("family", "unknown"),
+                        family=_render_markdown_cell(row.get("family"), missing="unknown"),
                         evaluation_count=int(row.get("evaluation_count", 0)),
                         benchmark_wins=int(row.get("benchmark_wins", 0)),
-                        won=won,
-                        best_metric=row.get("best_metric_name") or "—",
+                        won=_render_markdown_cell(won),
+                        best_metric=_render_markdown_cell(row.get("best_metric_name")),
                         best_value=rendered_value,
-                        genome=row.get("representative_genome_id") or "—",
-                        architecture=row.get("representative_architecture_summary") or "—",
+                        genome=_render_markdown_cell(row.get("representative_genome_id")),
+                        architecture=_render_markdown_cell(row.get("representative_architecture_summary")),
                     )
                 )
         else:
@@ -277,11 +283,11 @@ def write_report(run_dir: str | Path) -> Path:
                 lines.append(
                     "| {rank} | {family} | {groups} | {wins} | {genome} | {architecture} |".format(
                         rank=int(row.get("seed_rank", 0)),
-                        family=row.get("family", "unknown"),
-                        groups=", ".join(row.get("benchmark_groups") or []) or "—",
+                        family=_render_markdown_cell(row.get("family"), missing="unknown"),
+                        groups=_render_markdown_cell(", ".join(row.get("benchmark_groups") or [])),
                         wins=int(row.get("benchmark_wins", 0)),
-                        genome=row.get("representative_genome_id") or "—",
-                        architecture=row.get("representative_architecture_summary") or "—",
+                        genome=_render_markdown_cell(row.get("representative_genome_id")),
+                        architecture=_render_markdown_cell(row.get("representative_architecture_summary")),
                     )
                 )
         else:
@@ -296,7 +302,7 @@ def write_report(run_dir: str | Path) -> Path:
         group_counts = summary.get("group_counts", {})
         if group_counts:
             for group, count in group_counts.items():
-                lines.append(f"| {group} | {count} |")
+                lines.append(f"| {_render_markdown_cell(group, missing='none')} | {count} |")
         else:
             lines.append("| none | 0 |")
         failure_patterns = summarize_failure_patterns(trial_records)
@@ -326,7 +332,13 @@ def write_report(run_dir: str | Path) -> Path:
         for record in best_results:
             value = "---" if record.get("metric_value") is None else f"{float(record['metric_value']):.6f}"
             lines.append(
-                f"| {record['benchmark_name']} | {record['primitive_name']} | {record['metric_name']} | {value} | {record['status']} |"
+                "| {benchmark} | {primitive} | {metric} | {value} | {status} |".format(
+                    benchmark=_render_markdown_cell(record.get("benchmark_name"), missing="unknown"),
+                    primitive=_render_markdown_cell(record.get("primitive_name"), missing="unknown"),
+                    metric=_render_markdown_cell(record.get("metric_name")),
+                    value=value,
+                    status=_render_markdown_cell(record.get("status"), missing="unknown"),
+                )
             )
         report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return report_path
@@ -345,7 +357,13 @@ def write_report(run_dir: str | Path) -> Path:
     for record in records:
         value = "---" if record.get("metric_value") is None else f"{float(record['metric_value']):.6f}"
         lines.append(
-            f"| {record['benchmark_name']} | {record['primitive_name']} | {record['metric_name']} | {value} | {record['status']} |"
+            "| {benchmark} | {primitive} | {metric} | {value} | {status} |".format(
+                benchmark=_render_markdown_cell(record.get("benchmark_name"), missing="unknown"),
+                primitive=_render_markdown_cell(record.get("primitive_name"), missing="unknown"),
+                metric=_render_markdown_cell(record.get("metric_name")),
+                value=value,
+                status=_render_markdown_cell(record.get("status"), missing="unknown"),
+            )
         )
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return report_path
