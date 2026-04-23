@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from prism.runtime.training import _compute_metric, _metric_name
 
@@ -183,3 +184,21 @@ def test_mini_evolve_returns_missing_contract_when_all_evals_fail(monkeypatch):
     assert outcome["quality"] is None
     assert outcome["native_fitness"] is None
     assert outcome["failure_reason"] == "no_valid_result"
+
+
+def test_main_fails_fast_when_runtime_unavailable(monkeypatch, capsys):
+    smoke = _load_smoke_module()
+
+    monkeypatch.setattr(
+        smoke,
+        "_require_runtime_dependencies",
+        lambda: (_ for _ in ()).throw(RuntimeError("runtime unavailable")),
+    )
+    monkeypatch.setattr(smoke, "PACK_PATH", SimpleNamespace(exists=lambda: True))
+    monkeypatch.setattr(smoke, "load_pack", lambda path: pytest.fail("load_pack should not run"))
+
+    exit_code = smoke.main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "runtime unavailable" in captured.out

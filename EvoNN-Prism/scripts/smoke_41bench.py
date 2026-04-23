@@ -185,10 +185,16 @@ def mini_evolve(benchmark_name, task, seed=SEED):
     }
 
 
-def main():
+def main() -> int:
     if not PACK_PATH.exists():
         print(f"Pack not found: {PACK_PATH}")
-        sys.exit(1)
+        return 1
+
+    try:
+        _require_runtime_dependencies()
+    except RuntimeError as exc:
+        print(f"Smoke runtime unavailable: {exc}")
+        return 1
 
     benchmarks = load_pack(PACK_PATH)
     print(f"Prism Smoke Test: {len(benchmarks)} benchmarks")
@@ -304,7 +310,8 @@ def main():
             "results": results,
         }, f, indent=2)
     print(f"\nResults: {out_path}")
+    return 0 if not failed else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
