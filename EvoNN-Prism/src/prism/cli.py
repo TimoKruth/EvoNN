@@ -20,8 +20,15 @@ console = Console()
 app = typer.Typer(name="prism", help="Family-based evolutionary NAS")
 
 
+def _evaluation_status(row: dict) -> str:
+    status = row.get("status")
+    if status:
+        return str(status)
+    return "failed" if row.get("failure_reason") else "ok"
+
+
 def _format_status_mix(evaluations: list[dict]) -> str:
-    counts = Counter(str(row.get("status") or "unknown") for row in evaluations)
+    counts = Counter(_evaluation_status(row) for row in evaluations)
     if not counts:
         return "none"
 
@@ -202,7 +209,6 @@ def inspect(
 
     # Family distribution
     if genomes:
-        from collections import Counter
         families = Counter(g.family for g in genomes)
         table.add_row("Families", ", ".join(f"{f}({c})" for f, c in families.most_common()))
 

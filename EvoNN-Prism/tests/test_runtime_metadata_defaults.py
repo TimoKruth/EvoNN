@@ -90,8 +90,59 @@ def test_report_failure_helpers_count_non_ok_status_without_failure_reason():
     ]
 
 
-def test_inspect_counts_and_lists_non_ok_status_rows(monkeypatch, tmp_path):
+def test_inspect_status_mix_falls_back_to_failure_reason_when_status_is_missing(monkeypatch, tmp_path):
     run_dir = tmp_path / "inspect-status-fallback"
+    run_dir.mkdir()
+
+    class FakeRunStore:
+        def __init__(self, _db_path):
+            pass
+
+        def latest_generation(self, _run_id):
+            return 0
+
+        def load_evaluations(self, _run_id):
+            return [
+                {"benchmark_id": "moons", "failure_reason": None},
+                {"benchmark_id": "digits", "failure_reason": "compile_timeout:mlx"},
+            ]
+
+        def load_genomes(self, _run_id):
+            return []
+
+        def load_best_per_benchmark(self, _run_id):
+            return {"moons": {"quality": 0.91, "metric_name": "accuracy", "parameter_count": 12}}
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("prism.storage.RunStore", FakeRunStore)
+    monkeypatch.setattr("prism.export.report._resolve_run_id", lambda _store: "run-1")
+    monkeypatch.setattr(
+        "prism.export.report._load_runtime_metadata",
+        lambda _run_dir: {
+            "runtime_backend": "unknown",
+            "runtime_version": "unknown",
+            "precision_mode": "fp32",
+            "wall_clock_seconds": 12.5,
+        },
+    )
+
+    result = runner.invoke(app, ["inspect", str(run_dir)])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Evaluation Status Mix" in result.stdout
+    assert "ok=1, failed=1" in result.stdout
+    assert "Wall Clock Seconds" in result.stdout
+    assert "12.500" in result.stdout
+    assert "Failure Patterns" in result.stdout
+    assert "compile_timeout:mlx" in result.stdout
+    assert "Recent Failures" in result.stdout
+    assert "digits" in result.stdout
+
+
+def test_inspect_counts_and_lists_non_ok_status_rows(monkeypatch, tmp_path):
+    run_dir = tmp_path / "inspect-status-mix"
     run_dir.mkdir()
 
     class FakeRunStore:
