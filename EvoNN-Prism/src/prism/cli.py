@@ -179,6 +179,8 @@ def inspect(
     table.add_row("Runtime", runtime_meta["runtime_backend"])
     table.add_row("Runtime Version", runtime_meta["runtime_version"])
     table.add_row("Precision Mode", runtime_meta["precision_mode"])
+    if runtime_meta.get("wall_clock_seconds") is not None:
+        table.add_row("Wall Clock Seconds", f"{float(runtime_meta['wall_clock_seconds']):.3f}")
 
     # Best quality per benchmark
     if best_per_benchmark:

@@ -81,7 +81,7 @@ def test_inspect_counts_and_lists_non_ok_status_rows(monkeypatch, tmp_path):
             "runtime_backend": "unknown",
             "runtime_version": "unknown",
             "precision_mode": "fp32",
-            "wall_clock_seconds": None,
+            "wall_clock_seconds": 12.5,
         },
     )
 
@@ -90,6 +90,8 @@ def test_inspect_counts_and_lists_non_ok_status_rows(monkeypatch, tmp_path):
     assert result.exit_code == 0, result.stdout
     assert "Evaluation Status Mix" in result.stdout
     assert "ok=1, failed=2" in result.stdout
+    assert "Wall Clock Seconds" in result.stdout
+    assert "12.500" in result.stdout
     assert "Failure Patterns" in result.stdout
     assert "missing" in result.stdout
     assert "compile_timeout:mlx" in result.stdout
