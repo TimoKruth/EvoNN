@@ -114,6 +114,7 @@ def export_symbiosis_contract(
     evaluation_count = int(summary.get("evaluation_count", len(trial_records)))
     compare_summary = _build_compare_summary(summary=summary, results=result_records, evaluation_count=evaluation_count)
     _write_summary_json(output_dir / "compare_summary.json", compare_summary)
+    _write_summary_json(output_dir / "summary.json", compare_summary)
 
     manifest = {
         "schema_version": "1.0",

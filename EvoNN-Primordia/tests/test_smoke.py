@@ -236,6 +236,7 @@ seed_policy:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     results = json.loads(results_path.read_text(encoding="utf-8"))
     compare_summary = json.loads((run_dir / "compare_summary.json").read_text(encoding="utf-8"))
+    export_summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     primitive_bank = json.loads((run_dir / "primitive_bank_summary.json").read_text(encoding="utf-8"))
     seed_candidates = json.loads((run_dir / "seed_candidates.json").read_text(encoding="utf-8"))
     assert manifest["system"] == "primordia"
@@ -254,6 +255,7 @@ seed_policy:
     assert compare_summary["run_id"] == summary["run_id"]
     assert compare_summary["runtime_backend"] == summary["runtime"]
     assert compare_summary["precision_mode"] == summary["precision_mode"]
+    assert export_summary == compare_summary
     assert compare_summary["benchmarks_evaluated"] == 2
     assert compare_summary["wall_clock_seconds"] == summary["wall_clock_seconds"]
     assert compare_summary["primitive_usage"] == summary["primitive_usage"]
@@ -503,6 +505,9 @@ seed_policy:
     assert (output_dir / "config.yaml").exists()
     assert (output_dir / "report.md").exists()
     assert (output_dir / "compare_summary.json").exists()
+    assert json.loads((output_dir / "summary.json").read_text(encoding="utf-8")) == json.loads(
+        (output_dir / "compare_summary.json").read_text(encoding="utf-8")
+    )
     assert (output_dir / "primitive_summary.json").exists()
     assert (output_dir / "primitive_trials.json").exists()
 
