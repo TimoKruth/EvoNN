@@ -12,6 +12,7 @@ def test_runtime_metadata_defaults_to_unknown_when_summary_is_missing(tmp_path):
         "runtime_backend": "unknown",
         "runtime_version": "unknown",
         "precision_mode": "fp32",
+        "wall_clock_seconds": None,
     }
     assert sym._load_runtime_metadata(run_dir) == {
         "runtime_backend": "unknown",

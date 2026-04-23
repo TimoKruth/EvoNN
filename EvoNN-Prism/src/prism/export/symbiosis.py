@@ -173,6 +173,7 @@ def export_symbiosis_contract(
             "epochs_per_candidate": config.training.epochs,
             "generations": generations,
             "population_size": config.evolution.population_size,
+            "wall_clock_seconds": _load_wall_clock_seconds(output_dir),
             "budget_policy_name": "prototype_equal_budget",
         },
         "device": {
@@ -416,6 +417,23 @@ def _intended_evaluation_count(
     return config.evolution.population_size * generations * benchmark_count
 
 
+def _load_wall_clock_seconds(run_dir: Path) -> float | None:
+    summary_path = run_dir / "summary.json"
+    if not summary_path.exists():
+        return None
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    value = payload.get("wall_clock_seconds", payload.get("elapsed_seconds"))
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _write_summary_json(
     output_dir: Path,
     manifest: dict[str, Any],
@@ -450,6 +468,7 @@ def _write_summary_json(
         "run_id": manifest["run_id"],
         "status": "complete",
         "total_evaluations": budget.get("evaluation_count", 0),
+        "wall_clock_seconds": budget.get("wall_clock_seconds"),
         "generations_completed": (latest_gen + 1) if latest_gen is not None else 0,
         "epochs_per_candidate": config.training.epochs,
         "population_size": config.evolution.population_size,

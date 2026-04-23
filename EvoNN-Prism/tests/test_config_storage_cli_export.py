@@ -128,7 +128,7 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
         fallback=0,
     ) == 304
 
-    manifest = {"run_id": "demo", "budget": {"evaluation_count": 3}}
+    manifest = {"run_id": "demo", "budget": {"evaluation_count": 3, "wall_clock_seconds": 12.5}}
     results = [
         {"benchmark_id": "moons", "metric_value": 0.91, "status": "ok"},
         {"benchmark_id": "iris", "metric_value": 0.95, "status": "ok"},
@@ -156,6 +156,7 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
 
     assert summary["system"] == "prism"
     assert summary["total_evaluations"] == 3
+    assert summary["wall_clock_seconds"] == 12.5
     assert summary["generations_completed"] == 2
     assert summary["failure_count"] == 1
     assert summary["benchmarks_evaluated"] == 2
@@ -301,6 +302,7 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
     assert "Total Evaluations | 1" in report
     assert "| Runtime | mlx |" in report
     assert "| Precision Mode | fp32 |" in report
+    assert "| Wall Clock Seconds |" in report
     assert "## Family Benchmark Wins" in report
     assert "## Operator Mix" in report
     assert "## Operator Success" in report
@@ -409,6 +411,18 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
         ),
         encoding="utf-8",
     )
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "elapsed_seconds": 7.25,
+                "runtime_backend": "mlx",
+                "runtime_version": "0.0-test",
+                "precision_mode": "fp32",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     genome_a = _sample_genome("mlp", [16, 8])
     genome_b = _sample_genome("conv2d", [32, 16])
@@ -468,9 +482,11 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
     assert manifest["device"]["framework"] == "mlx"
     assert manifest["device"]["precision_mode"] == "fp32"
     assert manifest["device"]["framework_version"] == sym._MLX_VERSION
+    assert manifest["budget"]["wall_clock_seconds"] == 7.25
     assert len(results) == 2
     assert summary["runtime_backend"] == manifest["device"]["framework"]
     assert summary["precision_mode"] == manifest["device"]["precision_mode"]
+    assert summary["wall_clock_seconds"] == manifest["budget"]["wall_clock_seconds"]
     assert summary["operator_mix"]["crossover"] == 1
     assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
     assert summary["failure_patterns"] == {}

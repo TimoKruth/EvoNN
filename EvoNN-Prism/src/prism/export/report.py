@@ -63,6 +63,8 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     sections.append(f"| Runtime | {runtime_meta['runtime_backend']} |")
     sections.append(f"| Runtime Version | {runtime_meta['runtime_version']} |")
     sections.append(f"| Precision Mode | {runtime_meta['precision_mode']} |")
+    if runtime_meta.get("wall_clock_seconds") is not None:
+        sections.append(f"| Wall Clock Seconds | {float(runtime_meta['wall_clock_seconds']):.3f} |")
     sections.append("")
 
     # Best genome
@@ -354,7 +356,7 @@ def _resolve_run_id(store: RunStore) -> str:
     return "default"
 
 
-def _load_runtime_metadata(run_dir: Path) -> dict[str, str]:
+def _load_runtime_metadata(run_dir: Path) -> dict[str, Any]:
     summary_path = run_dir / "summary.json"
     if summary_path.exists():
         try:
@@ -367,6 +369,7 @@ def _load_runtime_metadata(run_dir: Path) -> dict[str, str]:
         "runtime_backend": str(summary.get("runtime_backend") or "unknown"),
         "runtime_version": str(summary.get("runtime_version") or "unknown"),
         "precision_mode": str(summary.get("precision_mode") or "fp32"),
+        "wall_clock_seconds": summary.get("wall_clock_seconds", summary.get("elapsed_seconds")),
     }
 
 
