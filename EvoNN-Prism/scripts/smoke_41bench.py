@@ -16,10 +16,19 @@ import random
 from prism.genome import create_seed_genome, apply_random_mutation, crossover
 from prism.config import RunConfig
 from prism.benchmarks.parity import get_canonical_id
-from prism.families import compile_genome, compatible_families
 from prism.benchmarks.datasets import get_benchmark
 from prism.benchmarks.preprocess import Preprocessor
-from prism.runtime.training import train_and_evaluate
+
+try:
+    from prism.families import compile_genome, compatible_families
+    from prism.runtime.training import train_and_evaluate
+except ImportError as exc:  # pragma: no cover - host-dependent MLX runtime availability
+    compile_genome = None
+    compatible_families = None
+    train_and_evaluate = None
+    _MLX_RUNTIME_IMPORT_ERROR = exc
+else:
+    _MLX_RUNTIME_IMPORT_ERROR = None
 
 PACK_PATH = Path(__file__).parent.parent.parent / "shared-benchmarks" / "suites" / "parity" / "shared_33plus5.yaml"
 
@@ -56,8 +65,14 @@ def detect_modality(spec):
     return "tabular"
 
 
+def _require_runtime_dependencies():
+    if compile_genome is None or compatible_families is None or train_and_evaluate is None:
+        raise RuntimeError("MLX runtime unavailable for smoke_41bench Prism execution") from _MLX_RUNTIME_IMPORT_ERROR
+
+
 def mini_evolve(benchmark_name, task, seed=SEED):
     """Run minimal family-based evolution on one benchmark."""
+    _require_runtime_dependencies()
     spec = get_benchmark(benchmark_name)
     X_train, y_train, X_val, y_val = spec.load_data(seed=seed)
 
