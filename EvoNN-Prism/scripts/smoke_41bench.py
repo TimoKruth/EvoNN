@@ -246,8 +246,6 @@ def main() -> int:
         name = bench["native_id"]
         canonical = bench["canonical_id"]
         task = bench["task"]
-        metric = bench["metric_name"]
-        direction = bench["metric_direction"]
 
         print(f"[{i:2d}/{len(benchmarks)}] {canonical:<42s} ({name}) ... ", end="", flush=True)
         t0 = time.time()
