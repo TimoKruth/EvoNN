@@ -73,6 +73,29 @@ def test_resolved_runtime_metadata_falls_back_to_host_version_when_recorded_unkn
     }
 
 
+def test_symbiosis_representative_ignores_non_ok_status_without_failure_reason():
+    genome_ok = type("Genome", (), {"genome_id": "genome-ok", "family": "mlp"})()
+    genome_missing = type("Genome", (), {"genome_id": "genome-missing", "family": "attention"})()
+    evaluations = [
+        {
+            "genome_id": "genome-ok",
+            "quality": 0.8,
+            "failure_reason": None,
+            "status": "ok",
+        },
+        {
+            "genome_id": "genome-missing",
+            "quality": 0.99,
+            "failure_reason": None,
+            "status": "missing",
+        },
+    ]
+
+    representative = sym._select_representative([genome_ok, genome_missing], evaluations)
+
+    assert representative is genome_ok
+
+
 def test_report_failure_helpers_count_non_ok_status_without_failure_reason():
     evaluations = [
         {"benchmark_id": "moons", "status": "ok", "failure_reason": None},

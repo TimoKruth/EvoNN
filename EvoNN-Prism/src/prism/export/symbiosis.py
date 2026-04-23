@@ -229,6 +229,16 @@ def export_symbiosis_contract(
 # ---------------------------------------------------------------------------
 
 
+def _failure_label(row: dict[str, Any]) -> str | None:
+    reason = row.get("failure_reason")
+    if reason:
+        return str(reason)
+    status = row.get("status")
+    if status in {None, "ok"}:
+        return None
+    return str(status)
+
+
 def _select_representative(
     genomes: list[ModelGenome],
     evaluations: list[dict],
@@ -241,11 +251,11 @@ def _select_representative(
     for ev in evaluations:
         gid = ev.get("genome_id", "")
         q = ev.get("quality")
-        if gid and q is not None and ev.get("failure_reason") is None:
+        if gid and q is not None and _failure_label(ev) is None:
             genome_qualities.setdefault(gid, []).append(float(q))
 
     if not genome_qualities:
-        return genomes[0] if genomes else None
+        return genomes[0]
 
     best_id = max(
         genome_qualities,
