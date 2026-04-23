@@ -228,7 +228,19 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     monkeypatch.setattr(sym.platform, "machine", lambda: "arm64")
     assert sym._detect_device() == "apple_silicon"
 
-    manifest = {"run_id": "demo", "budget": {"evaluation_count": 5, "wall_clock_seconds": 2.0}}
+    manifest = {
+        "run_id": "demo",
+        "budget": {
+            "evaluation_count": 5,
+            "wall_clock_seconds": 2.0,
+            "primordia_seeding": {
+                "seed_path": "/tmp/primordia/seed_candidates.json",
+                "target_family": "tabular",
+                "selected_family": "sparse_mlp",
+                "selected_rank": 2,
+            },
+        },
+    }
     results = [
         {"benchmark_id": "moons", "metric_value": 0.91, "status": "ok"},
         {"benchmark_id": "iris", "metric_value": 0.87, "status": "ok"},
@@ -240,6 +252,11 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     assert summary["system"] == "topograph"
     assert summary["failure_count"] == 1
     assert summary["benchmarks_evaluated"] == 2
+    assert summary["seed_source_system"] == "primordia"
+    assert summary["seed_source_path"] == "/tmp/primordia/seed_candidates.json"
+    assert summary["seed_target_family"] == "tabular"
+    assert summary["seed_selected_family"] == "sparse_mlp"
+    assert summary["seed_selected_rank"] == 2
 
 
 def test_load_run_config_and_resolve_run_id_from_store(tmp_path: Path):

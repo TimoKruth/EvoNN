@@ -645,6 +645,7 @@ def _write_summary_json(
 
     budget = manifest.get("budget", {})
     device = manifest.get("device", {})
+    seeding = budget.get("primordia_seeding") if isinstance(budget.get("primordia_seeding"), dict) else None
     summary = {
         "system": "topograph",
         "run_id": manifest["run_id"],
@@ -662,6 +663,11 @@ def _write_summary_json(
         "runtime_backend": device.get("framework", "unknown"),
         "runtime_version": device.get("framework_version", "unknown"),
         "precision_mode": device.get("precision_mode", "unknown"),
+        "seed_source_system": "primordia" if seeding else None,
+        "seed_source_path": seeding.get("seed_path") if seeding else None,
+        "seed_target_family": seeding.get("target_family") if seeding else None,
+        "seed_selected_family": seeding.get("selected_family") if seeding else None,
+        "seed_selected_rank": seeding.get("selected_rank") if seeding else None,
     }
     (output_dir / "summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8",
