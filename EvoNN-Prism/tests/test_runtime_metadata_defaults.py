@@ -27,6 +27,50 @@ def test_runtime_metadata_defaults_to_unknown_when_summary_is_missing(tmp_path):
     }
 
 
+def test_resolved_runtime_metadata_prefers_recorded_version_over_host_default(monkeypatch, tmp_path):
+    run_dir = tmp_path / "runtime-metadata-recorded-version"
+    run_dir.mkdir()
+
+    monkeypatch.setattr(
+        sym,
+        "_load_runtime_metadata",
+        lambda _run_dir: {
+            "runtime_backend": "mlx",
+            "runtime_version": "0.9.1-recorded",
+            "precision_mode": "fp16",
+        },
+    )
+    monkeypatch.setattr(sym, "_MLX_VERSION", "9.9.9-host")
+
+    assert sym._resolved_runtime_metadata(run_dir) == {
+        "runtime_backend": "mlx",
+        "runtime_version": "0.9.1-recorded",
+        "precision_mode": "fp16",
+    }
+
+
+def test_resolved_runtime_metadata_falls_back_to_host_version_when_recorded_unknown(monkeypatch, tmp_path):
+    run_dir = tmp_path / "runtime-metadata-unknown-version"
+    run_dir.mkdir()
+
+    monkeypatch.setattr(
+        sym,
+        "_load_runtime_metadata",
+        lambda _run_dir: {
+            "runtime_backend": "unknown",
+            "runtime_version": "unknown",
+            "precision_mode": None,
+        },
+    )
+    monkeypatch.setattr(sym, "_MLX_VERSION", "9.9.9-host")
+
+    assert sym._resolved_runtime_metadata(run_dir) == {
+        "runtime_backend": "mlx",
+        "runtime_version": "9.9.9-host",
+        "precision_mode": "fp32",
+    }
+
+
 def test_report_failure_helpers_count_non_ok_status_without_failure_reason():
     evaluations = [
         {"benchmark_id": "moons", "status": "ok", "failure_reason": None},

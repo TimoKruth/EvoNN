@@ -343,9 +343,13 @@ def _resolved_runtime_metadata(run_dir: Path) -> dict[str, str]:
     if backend == "unknown":
         backend = "mlx"
 
+    runtime_version = runtime_meta["runtime_version"]
+    if runtime_version == "unknown":
+        runtime_version = _MLX_VERSION or "unknown"
+
     return {
         "runtime_backend": backend,
-        "runtime_version": _MLX_VERSION or runtime_meta["runtime_version"] or "unknown",
+        "runtime_version": runtime_version,
         "precision_mode": runtime_meta["precision_mode"] or "fp32",
     }
 
