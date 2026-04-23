@@ -167,6 +167,7 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Benchmarks: `{len(results)}`",
         f"- Genomes Stored: `{len(genomes)}`",
         f"- Effective Training Epochs: `{budget_meta.get('effective_training_epochs', 'unknown')}`",
+        f"- Wall Clock Seconds: `{_render_seconds(budget_meta.get('wall_clock_seconds'))}`",
         f"- Status Mix: `ok={len(ok_results)}, skipped={len(skipped_results)}, failed={len(failed_results)}`",
         f"- Completed Benchmarks: `{status_payload.get('completed_count', len(ok_results) + len(skipped_results) + len(failed_results))}/{status_payload.get('total_benchmarks', len(results))}`",
         f"- Remaining Benchmarks: `{status_payload.get('remaining_count', 0)}`",

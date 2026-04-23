@@ -117,6 +117,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_row("Architecture Mode", str(budget_meta.get("architecture_mode", "unknown")))
     overview.add_row("Evaluation Count", str(budget_meta.get("evaluation_count", 0)))
     overview.add_row("Effective Training Epochs", str(budget_meta.get("effective_training_epochs", "unknown")))
+    overview.add_row("Wall Clock Seconds", f"{float(budget_meta.get('wall_clock_seconds', 0.0)):.3f}")
     overview.add_row(
         "Completed Benchmarks",
         f"{status_payload.get('completed_count', len(context['ok_results']) + len(skipped_results) + len(failed_results))}/{status_payload.get('total_benchmarks', len(results))}",

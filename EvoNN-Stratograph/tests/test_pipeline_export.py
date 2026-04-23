@@ -68,6 +68,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert budget_meta["runtime_backend"] in {"mlx", "numpy-fallback"}
     assert "runtime_version" in budget_meta
     assert budget_meta["precision_mode"] == "fp32"
+    assert budget_meta["wall_clock_seconds"] >= 0.0
 
     manifest_path, results_path = export_symbiosis_contract(
         run_dir,
@@ -86,6 +87,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert summary["runtime_backend"] == budget_meta["runtime_backend"]
     assert summary["runtime_version"] == (budget_meta["runtime_version"] or "unknown")
     assert summary["precision_mode"] == budget_meta["precision_mode"]
+    assert summary["wall_clock_seconds"] == budget_meta["wall_clock_seconds"]
     assert summary["completed_benchmarks"] == status["completed_count"]
     assert summary["remaining_benchmarks"] == status["remaining_count"]
     assert summary["failure_count"] == sum(1 for record in exported_results if record["status"] != "ok")
@@ -94,6 +96,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["artifacts"]["config_snapshot"] == "config.yaml"
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
+    assert manifest["budget"]["wall_clock_seconds"] == budget_meta["wall_clock_seconds"]
     assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
     assert manifest["device"]["framework_version"] == (budget_meta["runtime_version"] or "unknown")
     assert manifest["device"]["precision_mode"] == budget_meta["precision_mode"]
@@ -110,6 +113,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert "- Status Artifact: `status.json`" in report
     assert "- Checkpoint Artifact: `checkpoint.json`" in report
     assert f"- Effective Training Epochs: `{budget_meta['effective_training_epochs']}`" in report
+    assert f"- Wall Clock Seconds: `{budget_meta['wall_clock_seconds']:.3f}`" in report
     assert f"- Architecture Mode: `{budget_meta['architecture_mode']}`" in report
     assert "## Hierarchy Summary" in report
     assert "| Property | Value |" in report
@@ -152,6 +156,7 @@ def test_inspect_command_surfaces_rich_run_summary(repo_root, tmp_path) -> None:
     assert "Run State" in result.stdout
     assert "Runtime Version" in result.stdout
     assert "Precision Mode" in result.stdout
+    assert "Wall Clock Seconds" in result.stdout
     assert "Completed Benchmarks" in result.stdout
     assert "Remaining Benchmarks" in result.stdout
     assert "Status Artifact" in result.stdout
