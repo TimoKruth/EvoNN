@@ -446,12 +446,22 @@ def _compute_operator_mix(lineage: list[dict[str, Any]]) -> dict[str, int]:
     return dict(counts.most_common())
 
 
+def _failure_label(row: dict[str, Any]) -> str | None:
+    reason = row.get("failure_reason")
+    if reason:
+        return str(reason)
+    status = row.get("status")
+    if status in {None, "ok"}:
+        return None
+    return str(status)
+
+
 def _compute_failure_patterns(evaluations: list[dict[str, Any]]) -> dict[str, int]:
     counts = Counter()
     for row in evaluations:
-        reason = row.get("failure_reason")
+        reason = _failure_label(row)
         if reason:
-            counts[str(reason)] += 1
+            counts[reason] += 1
     return dict(counts.most_common())
 
 
@@ -622,7 +632,7 @@ def _compute_archive_turnover(archives: list[dict[str, Any]]) -> list[dict[str, 
 def _compute_failure_heatmap(evaluations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[str, Counter] = {}
     for row in evaluations:
-        failure = row.get("failure_reason")
+        failure = _failure_label(row)
         benchmark = row.get("benchmark_id")
         if not failure or benchmark is None:
             continue
