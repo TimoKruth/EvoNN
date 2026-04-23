@@ -238,6 +238,8 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
                 "target_family": "tabular",
                 "selected_family": "sparse_mlp",
                 "selected_rank": 2,
+                "representative_genome_id": "prim-g7",
+                "representative_architecture_summary": "4L/6C sparse",
             },
         },
     }
@@ -257,6 +259,8 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     assert summary["seed_target_family"] == "tabular"
     assert summary["seed_selected_family"] == "sparse_mlp"
     assert summary["seed_selected_rank"] == 2
+    assert summary["seed_representative_genome_id"] == "prim-g7"
+    assert summary["seed_representative_architecture_summary"] == "4L/6C sparse"
 
 
 def test_load_run_config_and_resolve_run_id_from_store(tmp_path: Path):

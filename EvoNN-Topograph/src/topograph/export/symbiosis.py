@@ -674,6 +674,10 @@ def _write_summary_json(
         "seed_target_family": seeding.get("target_family") if seeding else None,
         "seed_selected_family": seeding.get("selected_family") if seeding else None,
         "seed_selected_rank": seeding.get("selected_rank") if seeding else None,
+        "seed_representative_genome_id": seeding.get("representative_genome_id") if seeding else None,
+        "seed_representative_architecture_summary": (
+            seeding.get("representative_architecture_summary") if seeding else None
+        ),
     }
     (output_dir / "summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8",
