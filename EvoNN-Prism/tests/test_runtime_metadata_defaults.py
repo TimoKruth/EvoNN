@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from typer.testing import CliRunner
 
 from prism.cli import app
@@ -101,6 +103,7 @@ def test_report_success_helpers_ignore_non_ok_status_without_failure_reason():
             "parameter_count": 120,
             "failure_reason": None,
             "status": "ok",
+            "inheritance_hit": True,
         },
         {
             "genome_id": "genome-missing",
@@ -111,6 +114,7 @@ def test_report_success_helpers_ignore_non_ok_status_without_failure_reason():
             "parameter_count": 999,
             "failure_reason": None,
             "status": "missing",
+            "inheritance_hit": False,
         },
     ]
     genomes = [
@@ -128,6 +132,8 @@ def test_report_success_helpers_ignore_non_ok_status_without_failure_reason():
     operator_success_rows = report._compute_operator_success(evaluations, genomes, lineage)
     gen_stats = report._compute_generation_stats(evaluations, latest_gen=0)
     best = report._select_best(genomes, evaluations)
+    inheritance_summary = report._compute_inheritance_summary(evaluations)
+    family_survival = report._compute_family_survival(evaluations, genomes)
 
     assert summary == {
         "avg_quality": 0.9,
@@ -167,6 +173,18 @@ def test_report_success_helpers_ignore_non_ok_status_without_failure_reason():
         }
     ]
     assert gen_stats == {0: {"best": 0.9, "avg": 0.9, "count": 1}}
+    assert inheritance_summary is not None
+    assert inheritance_summary["hits"] == 1
+    assert inheritance_summary["rate"] == 100.0
+    assert inheritance_summary["avg_quality_hit"] == 0.9
+    assert math.isnan(inheritance_summary["avg_quality_miss"])
+    assert family_survival == [
+        {
+            "generation": 0,
+            "active_families": 1,
+            "breakdown": "mlp(1)",
+        }
+    ]
     assert best is not None
     assert best.genome_id == "genome-ok"
 

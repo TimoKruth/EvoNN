@@ -506,11 +506,12 @@ def _compute_operator_success(
 
 
 def _compute_inheritance_summary(evaluations: list[dict[str, Any]]) -> dict[str, Any] | None:
-    total = len(evaluations)
+    valid = [row for row in evaluations if _is_successful_evaluation(row)]
+    total = len(valid)
     if total == 0:
         return None
-    hits = [row for row in evaluations if row.get("inheritance_hit")]
-    misses = [row for row in evaluations if not row.get("inheritance_hit")]
+    hits = [row for row in valid if row.get("inheritance_hit")]
+    misses = [row for row in valid if not row.get("inheritance_hit")]
     hit_qualities = [float(row["quality"]) for row in hits if row.get("quality") is not None]
     miss_qualities = [float(row["quality"]) for row in misses if row.get("quality") is not None]
     return {
@@ -593,6 +594,8 @@ def _compute_family_survival(
     family_by_genome = {genome.genome_id: genome.family for genome in genomes}
     grouped: dict[int, Counter] = {}
     for row in evaluations:
+        if not _is_successful_evaluation(row):
+            continue
         generation = row.get("generation")
         genome_id = row.get("genome_id")
         if generation is None or genome_id not in family_by_genome:
