@@ -115,7 +115,7 @@ def prepare_fair_matrix_cases(
         logs_dir=workspace / "logs",
         manifest_path=workspace / "matrix.yaml",
     )
-    for directory in (
+    required_dirs = [
         paths.workspace,
         paths.packs_dir,
         paths.run_roots_dir,
@@ -123,10 +123,12 @@ def prepare_fair_matrix_cases(
         paths.topograph_configs_dir,
         paths.stratograph_configs_dir,
         paths.primordia_configs_dir,
-        paths.contender_configs_dir,
         paths.reports_dir,
         paths.logs_dir,
-    ):
+    ]
+    if include_contenders:
+        required_dirs.append(paths.contender_configs_dir)
+    for directory in required_dirs:
         directory.mkdir(parents=True, exist_ok=True)
 
     base_payload = yaml.safe_load(base_pack_path.read_text(encoding="utf-8"))

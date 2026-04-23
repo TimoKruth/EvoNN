@@ -350,7 +350,7 @@ def test_prepare_fair_matrix_cases_writes_all_system_configs(tmp_path: Path) -> 
 
 def test_prepare_fair_matrix_cases_can_skip_contenders(tmp_path: Path) -> None:
     base_pack = Path(__file__).resolve().parents[1] / "parity_packs" / "tier1_core.yaml"
-    _paths, cases = prepare_fair_matrix_cases(
+    paths, cases = prepare_fair_matrix_cases(
         pack_name="tier1_core",
         base_pack_path=base_pack,
         seeds=[42],
@@ -369,3 +369,4 @@ def test_prepare_fair_matrix_cases_can_skip_contenders(tmp_path: Path) -> None:
     assert case.stratograph_config_path.exists()
     assert case.contender_config_path is None
     assert case.contender_run_dir is None
+    assert not paths.contender_configs_dir.exists()
