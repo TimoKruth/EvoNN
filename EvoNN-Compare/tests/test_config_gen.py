@@ -346,3 +346,26 @@ def test_prepare_fair_matrix_cases_writes_all_system_configs(tmp_path: Path) -> 
     assert case.topograph_config_path.exists()
     assert case.stratograph_config_path.exists()
     assert case.contender_config_path.exists()
+
+
+def test_prepare_fair_matrix_cases_can_skip_contenders(tmp_path: Path) -> None:
+    base_pack = Path(__file__).resolve().parents[1] / "parity_packs" / "tier1_core.yaml"
+    _paths, cases = prepare_fair_matrix_cases(
+        pack_name="tier1_core",
+        base_pack_path=base_pack,
+        seeds=[42],
+        budgets=[64],
+        workspace=tmp_path / "matrix",
+        prism_root=tmp_path / "Prism",
+        topograph_root=tmp_path / "Topograph",
+        stratograph_root=tmp_path / "Stratograph",
+        contenders_root=tmp_path / "Contenders",
+        include_contenders=False,
+    )
+
+    case = cases[0]
+    assert case.prism_config_path.exists()
+    assert case.topograph_config_path.exists()
+    assert case.stratograph_config_path.exists()
+    assert case.contender_config_path is None
+    assert case.contender_run_dir is None

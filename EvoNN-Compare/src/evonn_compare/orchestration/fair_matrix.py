@@ -40,6 +40,7 @@ DEFAULT_STRATOGRAPH_ROOT = WORKSPACE_ROOT / "EvoNN-Stratograph"
 DEFAULT_PRIMORDIA_ROOT = WORKSPACE_ROOT / "EvoNN-Primordia"
 DEFAULT_CONTENDERS_ROOT = WORKSPACE_ROOT / "EvoNN-Contenders"
 SYSTEM_ORDER = ("prism", "topograph", "stratograph", "primordia", "contenders")
+FOUR_PROJECT_SYSTEM_ORDER = ("prism", "topograph", "stratograph", "primordia")
 
 
 @dataclass(frozen=True)
@@ -67,15 +68,16 @@ class MatrixCase:
     topograph_config_path: Path
     stratograph_config_path: Path
     primordia_config_path: Path
-    contender_config_path: Path
+    contender_config_path: Path | None
     prism_run_dir: Path
     topograph_run_dir: Path
     stratograph_run_dir: Path
     primordia_run_dir: Path
-    contender_run_dir: Path
+    contender_run_dir: Path | None
     report_dir: Path
     summary_output_path: Path
     log_dir: Path
+    systems: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -97,6 +99,7 @@ def prepare_fair_matrix_cases(
     stratograph_root: Path = DEFAULT_STRATOGRAPH_ROOT,
     primordia_root: Path = DEFAULT_PRIMORDIA_ROOT,
     contenders_root: Path = DEFAULT_CONTENDERS_ROOT,
+    include_contenders: bool = True,
 ) -> tuple[MatrixPaths, list[MatrixCase]]:
     workspace = workspace.resolve()
     paths = MatrixPaths(
@@ -127,6 +130,7 @@ def prepare_fair_matrix_cases(
         directory.mkdir(parents=True, exist_ok=True)
 
     base_payload = yaml.safe_load(base_pack_path.read_text(encoding="utf-8"))
+    systems = SYSTEM_ORDER if include_contenders else FOUR_PROJECT_SYSTEM_ORDER
     cases: list[MatrixCase] = []
     for budget in budgets:
         pack_path = generate_budget_pack(
@@ -148,15 +152,16 @@ def prepare_fair_matrix_cases(
                 topograph_config_path=paths.topograph_configs_dir / f"{case_name}.yaml",
                 stratograph_config_path=paths.stratograph_configs_dir / f"{case_name}.yaml",
                 primordia_config_path=paths.primordia_configs_dir / f"{case_name}.yaml",
-                contender_config_path=paths.contender_configs_dir / f"{case_name}.yaml",
+                contender_config_path=(paths.contender_configs_dir / f"{case_name}.yaml") if include_contenders else None,
                 prism_run_dir=paths.run_roots_dir / "prism" / case_name,
                 topograph_run_dir=paths.run_roots_dir / "topograph" / case_name,
                 stratograph_run_dir=paths.run_roots_dir / "stratograph" / case_name,
                 primordia_run_dir=paths.run_roots_dir / "primordia" / case_name,
-                contender_run_dir=paths.run_roots_dir / "contenders" / case_name,
+                contender_run_dir=(paths.run_roots_dir / "contenders" / case_name) if include_contenders else None,
                 report_dir=report_dir,
                 summary_output_path=report_dir / "fair_matrix_summary.md",
                 log_dir=paths.logs_dir / case_name,
+                systems=systems,
             )
             generate_prism_config(
                 output_path=case.prism_config_path,
@@ -184,19 +189,21 @@ def prepare_fair_matrix_cases(
                 budget=budget,
                 run_name=case_name,
             )
-            generate_contender_config(
-                output_path=case.contender_config_path,
-                pack_path=pack_path,
-                seed=seed,
-                budget=budget,
-                run_name=case_name,
-            )
+            if include_contenders:
+                generate_contender_config(
+                    output_path=case.contender_config_path,
+                    pack_path=pack_path,
+                    seed=seed,
+                    budget=budget,
+                    run_name=case_name,
+                )
             cases.append(case)
 
     payload = {
         "pack_name": pack_name,
         "seeds": seeds,
         "budgets": budgets,
+        "systems": list(systems),
         "cases": [
             {
                 key: str(value) if isinstance(value, Path) else value
@@ -437,25 +444,28 @@ def run_fair_matrix_case(
         output_dir=case.primordia_run_dir,
         log_dir=case.log_dir,
     )
-    ensure_contender_export(
-        contenders_root=contenders_root.resolve(),
-        config_path=case.contender_config_path,
-        pack_path=case.pack_path,
-        run_dir=case.contender_run_dir,
-        output_dir=case.contender_run_dir,
-        log_dir=case.log_dir,
-    )
+    if case.contender_config_path is not None and case.contender_run_dir is not None:
+        ensure_contender_export(
+            contenders_root=contenders_root.resolve(),
+            config_path=case.contender_config_path,
+            pack_path=case.pack_path,
+            run_dir=case.contender_run_dir,
+            output_dir=case.contender_run_dir,
+            log_dir=case.log_dir,
+        )
 
     pack = load_parity_pack(case.pack_path)
+    run_dirs = {
+        "prism": case.prism_run_dir,
+        "topograph": case.topograph_run_dir,
+        "stratograph": case.stratograph_run_dir,
+        "primordia": case.primordia_run_dir,
+    }
+    if case.contender_run_dir is not None:
+        run_dirs["contenders"] = case.contender_run_dir
     ingestors = {
         system: SystemIngestor(run_dir)
-        for system, run_dir in {
-            "prism": case.prism_run_dir,
-            "topograph": case.topograph_run_dir,
-            "stratograph": case.stratograph_run_dir,
-            "primordia": case.primordia_run_dir,
-            "contenders": case.contender_run_dir,
-        }.items()
+        for system, run_dir in run_dirs.items()
     }
     runs = {
         system: (ingestor.load_manifest(), ingestor.load_results())
@@ -463,7 +473,7 @@ def run_fair_matrix_case(
     }
 
     pair_results: dict[tuple[str, str], tuple[Any, Path]] = {}
-    for left_system, right_system in itertools.combinations(SYSTEM_ORDER, 2):
+    for left_system, right_system in itertools.combinations(case.systems, 2):
         left_manifest, left_results = runs[left_system]
         right_manifest, right_results = runs[right_system]
         result = ComparisonEngine().compare(
@@ -487,12 +497,14 @@ def run_fair_matrix_case(
         seed=case.seed,
         runs=runs,
         pair_results=pair_results,
+        systems=case.systems,
     )
     summary = build_matrix_summary(
         pack_name=case.pack_name,
         fair_rows=[fair_row] if fair_row is not None else [],
         reference_rows=[reference_row] if reference_row is not None else [],
         parity_rows=parity_rows,
+        systems=case.systems,
     )
     case.summary_output_path.write_text(render_fair_matrix_markdown(summary), encoding="utf-8")
     case.summary_output_path.with_suffix(".json").write_text(

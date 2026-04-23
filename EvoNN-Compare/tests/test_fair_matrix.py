@@ -99,6 +99,54 @@ def test_fair_matrix_reference_row_for_nonfair_pair(tmp_path: Path) -> None:
     assert "prism/contenders" in reference_row.note
 
 
+def test_fair_matrix_markdown_omits_contenders_when_not_requested(tmp_path: Path) -> None:
+    pack = load_parity_pack(PACK_PATH)
+    systems = {
+        "prism": tmp_path / "prism",
+        "topograph": tmp_path / "topograph",
+        "stratograph": tmp_path / "stratograph",
+        "primordia": tmp_path / "primordia",
+    }
+    for system, run_dir in systems.items():
+        _write_run(run_dir, system=system)
+
+    ingestors = {system: SystemIngestor(path) for system, path in systems.items()}
+    runs = {
+        system: (ingestor.load_manifest(), ingestor.load_results())
+        for system, ingestor in ingestors.items()
+    }
+    pair_results = {}
+    for left, right in (("prism", "topograph"), ("prism", "stratograph"), ("prism", "primordia")):
+        result = ComparisonEngine().compare(
+            left_manifest=runs[left][0],
+            left_results=runs[left][1],
+            right_manifest=runs[right][0],
+            right_results=runs[right][1],
+            pack=pack,
+        )
+        pair_results[(left, right)] = (result, Path(f"{left}_vs_{right}.md"))
+
+    fair_row, reference_row, parity_rows = summarize_matrix_case(
+        pack=pack,
+        budget=64,
+        seed=42,
+        runs=runs,
+        pair_results=pair_results,
+        systems=("prism", "topograph", "stratograph", "primordia"),
+    )
+    summary = build_matrix_summary(
+        pack_name=pack.name,
+        fair_rows=[fair_row] if fair_row is not None else [],
+        reference_rows=[reference_row] if reference_row is not None else [],
+        parity_rows=parity_rows,
+        systems=("prism", "topograph", "stratograph", "primordia"),
+    )
+    markdown = render_fair_matrix_markdown(summary)
+
+    assert "Contenders Evals" not in markdown
+    assert "Contenders Wins" not in markdown
+
+
 def test_native_runtime_available_checks_target_project_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[dict[str, object]] = []
 
