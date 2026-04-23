@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -170,6 +171,18 @@ def build_primitive_bank_summary(
 
 
 
+def summarize_failure_patterns(non_ok_results: list[dict[str, Any]]) -> list[tuple[str, int]]:
+    """Aggregate non-OK trial outcomes for shared inspect/report surfaces."""
+
+    counts = Counter(
+        str(record.get("failure_reason") or record.get("status") or "unknown")
+        for record in non_ok_results
+        if record.get("status") != "ok"
+    )
+    return counts.most_common()
+
+
+
 def write_report(run_dir: str | Path) -> Path:
     """Write or refresh the Primordia report from run artifacts when possible."""
 
@@ -282,11 +295,24 @@ def write_report(run_dir: str | Path) -> Path:
                 lines.append(f"| {group} | {count} |")
         else:
             lines.append("| none | 0 |")
+        failure_patterns = summarize_failure_patterns(trial_records)
         lines.extend([
             "",
             "## Failure Summary",
             "",
             f"- Failure Count: `{int(summary.get('failure_count', 0))}`",
+            "",
+            "## Failure Patterns",
+            "",
+            "| Reason | Count |",
+            "|---|---:|",
+        ])
+        if failure_patterns:
+            for reason, count in failure_patterns:
+                lines.append(f"| {reason} | {count} |")
+        else:
+            lines.append("| none | 0 |")
+        lines.extend([
             "",
             "## Best Primitive Per Benchmark",
             "",

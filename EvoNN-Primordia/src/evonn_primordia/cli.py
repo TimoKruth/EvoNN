@@ -14,6 +14,7 @@ from evonn_primordia.export.report import (
     enrich_best_results,
     load_best_results,
     load_runtime_metadata,
+    summarize_failure_patterns,
 )
 from evonn_primordia.pipeline import run_search
 
@@ -139,6 +140,14 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
 
     if summary.get("failure_count", 0) and trial_records_path.exists():
         failures = [record for record in trial_records if record.get("status") != "ok"]
+        failure_patterns = summarize_failure_patterns(failures)
+        if failure_patterns:
+            pattern_table = Table(title="Failure Patterns")
+            pattern_table.add_column("Reason", style="cyan")
+            pattern_table.add_column("Count", style="green")
+            for reason, count in failure_patterns:
+                pattern_table.add_row(str(reason), str(count))
+            console.print(pattern_table)
         if failures:
             failure_table = Table(title="Recent Failures")
             failure_table.add_column("Benchmark", style="cyan")
@@ -148,7 +157,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
                 failure_table.add_row(
                     str(record.get("benchmark_name", "unknown")),
                     str(record.get("primitive_name", "unknown")),
-                    str(record.get("failure_reason") or "unknown"),
+                    str(record.get("failure_reason") or record.get("status") or "unknown"),
                 )
             console.print(failure_table)
 

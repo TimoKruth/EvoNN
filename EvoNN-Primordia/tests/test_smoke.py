@@ -719,6 +719,65 @@ primitive_pool:
     assert "| tabular | 1 |" in report
     assert "## Failure Summary" in report
     assert "- Failure Count: `0`" in report
+    assert "## Failure Patterns" in report
+    assert "| none | 0 |" in report
+
+
+def test_report_includes_grouped_failure_patterns_with_status_fallback(tmp_path: Path) -> None:
+    run_dir = tmp_path / "failure_pattern_report"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "failure_pattern_report",
+                "runtime": "numpy-fallback",
+                "runtime_version": "fallback-1.0",
+                "evaluation_count": 3,
+                "target_evaluation_count": 3,
+                "benchmark_count": 3,
+                "budget_policy_name": "prototype_equal_budget",
+                "failure_count": 2,
+                "primitive_usage": {"mlp": 3},
+                "group_counts": {"tabular": 2, "language_modeling": 1},
+                "wall_clock_seconds": 4.5,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "trial_records.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "iris",
+                    "primitive_name": "mlp",
+                    "metric_name": "accuracy",
+                    "metric_value": 0.9,
+                    "status": "ok",
+                },
+                {
+                    "benchmark_name": "tiny_lm_synthetic",
+                    "primitive_name": "embedding",
+                    "status": "skipped",
+                },
+                {
+                    "benchmark_name": "cifar10_mini",
+                    "primitive_name": "conv",
+                    "status": "failed",
+                    "failure_reason": "oom",
+                },
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    report = write_report(run_dir).read_text(encoding="utf-8")
+
+    assert "## Failure Patterns" in report
+    assert "| oom | 1 |" in report
+    assert "| skipped | 1 |" in report
+
 
 
 def test_report_refresh_overwrites_existing_report_with_current_summary_data(tmp_path: Path) -> None:

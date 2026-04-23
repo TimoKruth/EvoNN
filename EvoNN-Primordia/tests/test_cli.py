@@ -103,12 +103,58 @@ def test_inspect_renders_compact_run_summary(tmp_path: Path) -> None:
     assert "Benchmark Wins" in result.output
     assert "Representative" in result.output
     assert "Architecture" in result.output
+    assert "Failure Patterns" in result.output
     assert "Recent Failures" in result.output
     assert "OOM during token embedding warmup" in result.output
     assert "Best Benchmarks" in result.output
     assert "moons" in result.output
     assert "iris" in result.output
     assert "mlp[64,32]" in result.output
+
+
+def test_inspect_handles_status_only_failures_in_grouped_patterns_and_recent_rows(tmp_path: Path) -> None:
+    run_dir = tmp_path / "status_only_failure_run"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "status_only_failure_run",
+                "runtime": "numpy-fallback",
+                "evaluation_count": 2,
+                "benchmark_count": 2,
+                "failure_count": 2,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "trial_records.json").write_text(
+        json.dumps(
+            [
+                {
+                    "benchmark_name": "tiny_lm_synthetic",
+                    "primitive_name": "embedding",
+                    "status": "skipped",
+                },
+                {
+                    "benchmark_name": "cifar10_mini",
+                    "primitive_name": "conv",
+                    "status": "failed",
+                },
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["inspect", "--run-dir", str(run_dir)])
+
+    assert result.exit_code == 0
+    assert "Failure Patterns" in result.output
+    assert "skipped" in result.output
+    assert "failed" in result.output
+    assert "Recent Failures" in result.output
+
 
 
 def test_inspect_rebuilds_primitive_bank_from_summary_and_trials_when_bank_artifact_is_missing(tmp_path: Path) -> None:
