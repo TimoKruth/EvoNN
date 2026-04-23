@@ -133,7 +133,7 @@ def inspect(
     run_dir: str = typer.Argument(..., help="Path to run directory"),
 ) -> None:
     """Inspect run metrics."""
-    from prism.export.report import _compute_failure_patterns, _load_runtime_metadata, _resolve_run_id
+    from prism.export.report import _compute_failure_patterns, _failure_label, _load_runtime_metadata, _resolve_run_id
     from prism.genome import ModelGenome
     from prism.storage import RunStore
 
@@ -161,7 +161,7 @@ def inspect(
         except Exception:
             pass
 
-    failed_evaluations = [row for row in evaluations if row.get("failure_reason")]
+    failed_evaluations = [row for row in evaluations if _failure_label(row) is not None]
     failure_patterns = _compute_failure_patterns(evaluations)
 
     table = Table(title=f"Run: {run_path.name}")
@@ -227,7 +227,7 @@ def inspect(
         for row in failed_evaluations[:8]:
             recent_failure_table.add_row(
                 str(row.get("benchmark_id") or "unknown"),
-                str(row.get("failure_reason") or "unknown"),
+                str(_failure_label(row) or "unknown"),
             )
         console.print(recent_failure_table)
 
