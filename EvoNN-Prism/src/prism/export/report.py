@@ -384,7 +384,7 @@ def _select_best(
     for ev in evaluations:
         gid = ev.get("genome_id", "")
         q = ev.get("quality")
-        if gid and q is not None and ev.get("failure_reason") is None:
+        if gid and q is not None and _is_successful_evaluation(ev):
             genome_qualities.setdefault(gid, []).append(float(q))
 
     if not genome_qualities:
@@ -410,7 +410,7 @@ def _compute_generation_stats(
     for ev in evaluations:
         gen = ev.get("generation")
         q = ev.get("quality")
-        if gen is not None and q is not None and ev.get("failure_reason") is None:
+        if gen is not None and q is not None and _is_successful_evaluation(ev):
             gen_data.setdefault(gen, []).append(float(q))
             gen_counts[gen] = gen_counts.get(gen, 0) + 1
 
@@ -456,6 +456,10 @@ def _failure_label(row: dict[str, Any]) -> str | None:
     return str(status)
 
 
+def _is_successful_evaluation(row: dict[str, Any]) -> bool:
+    return _failure_label(row) is None
+
+
 def _compute_failure_patterns(evaluations: list[dict[str, Any]]) -> dict[str, int]:
     counts = Counter()
     for row in evaluations:
@@ -477,7 +481,7 @@ def _compute_operator_success(
     }
     grouped: dict[tuple[str, str, str], list[float]] = {}
     for row in evaluations:
-        if row.get("failure_reason") is not None:
+        if not _is_successful_evaluation(row):
             continue
         genome_id = row.get("genome_id", "")
         operator = operator_by_genome.get(genome_id)
@@ -518,7 +522,7 @@ def _compute_inheritance_summary(evaluations: list[dict[str, Any]]) -> dict[str,
 
 
 def _compute_efficiency_summary(evaluations: list[dict[str, Any]]) -> dict[str, float] | None:
-    valid = [row for row in evaluations if row.get("failure_reason") is None]
+    valid = [row for row in evaluations if _is_successful_evaluation(row)]
     if not valid:
         return None
     avg_quality = sum(float(row.get("quality") or 0.0) for row in valid) / len(valid)
@@ -540,7 +544,7 @@ def _compute_family_efficiency(
     family_by_genome = {genome.genome_id: genome.family for genome in genomes}
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in evaluations:
-        if row.get("failure_reason") is not None:
+        if not _is_successful_evaluation(row):
             continue
         family = family_by_genome.get(row.get("genome_id", ""))
         if family is None:
@@ -561,7 +565,7 @@ def _compute_operator_efficiency(
     }
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in evaluations:
-        if row.get("failure_reason") is not None:
+        if not _is_successful_evaluation(row):
             continue
         genome_id = row.get("genome_id", "")
         operator = operator_by_genome.get(genome_id)

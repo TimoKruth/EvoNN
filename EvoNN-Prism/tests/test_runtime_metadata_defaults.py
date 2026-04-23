@@ -90,6 +90,87 @@ def test_report_failure_helpers_count_non_ok_status_without_failure_reason():
     ]
 
 
+def test_report_success_helpers_ignore_non_ok_status_without_failure_reason():
+    evaluations = [
+        {
+            "genome_id": "genome-ok",
+            "generation": 0,
+            "benchmark_id": "moons",
+            "quality": 0.9,
+            "train_seconds": 0.3,
+            "parameter_count": 120,
+            "failure_reason": None,
+            "status": "ok",
+        },
+        {
+            "genome_id": "genome-missing",
+            "generation": 0,
+            "benchmark_id": "digits",
+            "quality": 0.99,
+            "train_seconds": 9.9,
+            "parameter_count": 999,
+            "failure_reason": None,
+            "status": "missing",
+        },
+    ]
+    genomes = [
+        type("Genome", (), {"genome_id": "genome-ok", "family": "mlp"})(),
+        type("Genome", (), {"genome_id": "genome-missing", "family": "attention"})(),
+    ]
+    lineage = [
+        {"genome_id": "genome-ok", "mutation_summary": "mutation:width"},
+        {"genome_id": "genome-missing", "mutation_summary": "mutation:embedding_dim"},
+    ]
+
+    summary = report._compute_efficiency_summary(evaluations)
+    family_rows = report._compute_family_efficiency(evaluations, genomes)
+    operator_rows = report._compute_operator_efficiency(evaluations, genomes, lineage)
+    operator_success_rows = report._compute_operator_success(evaluations, genomes, lineage)
+    gen_stats = report._compute_generation_stats(evaluations, latest_gen=0)
+    best = report._select_best(genomes, evaluations)
+
+    assert summary == {
+        "avg_quality": 0.9,
+        "avg_train_seconds": 0.3,
+        "avg_parameter_count": 120.0,
+        "quality_per_second": 3.0,
+        "quality_per_kparam": 0.9,
+    }
+    assert family_rows == [
+        {
+            "family": "mlp",
+            "avg_quality": 0.9,
+            "avg_train_seconds": 0.3,
+            "avg_parameter_count": 120.0,
+            "quality_per_second": 3.0,
+            "quality_per_kparam": 0.9,
+        }
+    ]
+    assert operator_rows == [
+        {
+            "operator": "mutation:width",
+            "family": "mlp",
+            "avg_quality": 0.9,
+            "avg_train_seconds": 0.3,
+            "avg_parameter_count": 120.0,
+            "quality_per_second": 3.0,
+            "quality_per_kparam": 0.9,
+        }
+    ]
+    assert operator_success_rows == [
+        {
+            "operator": "mutation:width",
+            "family": "mlp",
+            "benchmark": "moons",
+            "avg_quality": 0.9,
+            "count": 1,
+        }
+    ]
+    assert gen_stats == {0: {"best": 0.9, "avg": 0.9, "count": 1}}
+    assert best is not None
+    assert best.genome_id == "genome-ok"
+
+
 def test_inspect_status_mix_falls_back_to_failure_reason_when_status_is_missing(monkeypatch, tmp_path):
     run_dir = tmp_path / "inspect-status-fallback"
     run_dir.mkdir()
