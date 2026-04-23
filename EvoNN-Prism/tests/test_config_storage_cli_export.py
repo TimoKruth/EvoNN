@@ -5,17 +5,20 @@ import random
 from pathlib import Path
 from types import SimpleNamespace
 
-import mlx.core as mx
 import numpy as np
+import pytest
 import yaml
 from typer.testing import CliRunner
 
+try:
+    import mlx.core as mx
+except ImportError:  # pragma: no cover - host-dependent MLX runtime availability
+    mx = None
+
 from prism.cli import app
 from prism.benchmarks.datasets import get_benchmark
-from prism.pipeline import coordinator
 from prism.config import RunConfig, load_config
 from prism.export import symbiosis as sym
-from prism.families.compiler import compile_genome
 from prism.genome import ModelGenome
 from prism.runtime.cache import WeightCache
 from prism.runtime.training import EvaluationResult
@@ -23,6 +26,23 @@ from prism.storage import RunStore
 
 
 runner = CliRunner()
+
+
+def _import_coordinator_or_skip():
+    return pytest.importorskip(
+        "prism.pipeline.coordinator",
+        reason="MLX runtime unavailable on this host",
+        exc_type=ImportError,
+    )
+
+
+def _import_compile_genome_or_skip():
+    module = pytest.importorskip(
+        "prism.families.compiler",
+        reason="MLX runtime unavailable on this host",
+        exc_type=ImportError,
+    )
+    return module.compile_genome
 
 
 def _sample_genome(family: str = "mlp", widths: list[int] | None = None) -> ModelGenome:
@@ -205,6 +225,7 @@ def test_cli_benchmarks_and_symbiosis_export(monkeypatch, tmp_path: Path):
 
 
 def test_cli_evolve_loads_pack_and_calls_coordinator(monkeypatch, tmp_path: Path):
+    coordinator = _import_coordinator_or_skip()
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         yaml.safe_dump(
@@ -229,7 +250,7 @@ def test_cli_evolve_loads_pack_and_calls_coordinator(monkeypatch, tmp_path: Path
         called["run_dir"] = run_dir
         called["resume"] = resume
 
-    monkeypatch.setattr("prism.pipeline.coordinator.run_evolution", fake_run_evolution)
+    monkeypatch.setattr(coordinator, "run_evolution", fake_run_evolution)
 
     run_dir = tmp_path / "run"
     result = runner.invoke(app, ["evolve", "-c", str(config_path), "--run-dir", str(run_dir)])
@@ -241,6 +262,7 @@ def test_cli_evolve_loads_pack_and_calls_coordinator(monkeypatch, tmp_path: Path
 
 
 def test_create_seed_population_keeps_unique_genome_ids():
+    coordinator = _import_coordinator_or_skip()
     evolution = RunConfig.model_validate(
         {
             "evolution": {
@@ -255,6 +277,7 @@ def test_create_seed_population_keeps_unique_genome_ids():
 
 
 def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_path: Path):
+    coordinator = _import_coordinator_or_skip()
     cfg = RunConfig.model_validate(
         {
             "seed": 3,
@@ -360,6 +383,7 @@ def test_inspect_surfaces_failure_patterns_and_recent_failures(tmp_path: Path):
 
 
 def test_coordinator_summary_persists_failure_patterns(monkeypatch, tmp_path: Path):
+    coordinator = _import_coordinator_or_skip()
     cfg = RunConfig.model_validate(
         {
             "seed": 9,
@@ -475,13 +499,12 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
     results = json.loads(results_path.read_text(encoding="utf-8"))
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
 
-    assert sym._MLX_VERSION is not None
     assert manifest["fairness"]["code_version"] == "deadbeef"
     assert manifest["fairness"]["benchmark_pack_id"] == "demo_pack"
     assert manifest["artifacts"]["canonical_benchmarks"] == ["canon::moons", "canon::iris"]
     assert manifest["device"]["framework"] == "mlx"
     assert manifest["device"]["precision_mode"] == "fp32"
-    assert manifest["device"]["framework_version"] == sym._MLX_VERSION
+    assert manifest["device"]["framework_version"] == "0.0-test"
     assert manifest["budget"]["wall_clock_seconds"] == 7.25
     assert len(results) == 2
     assert summary["runtime_backend"] == manifest["device"]["framework"]
@@ -492,7 +515,9 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
     assert summary["failure_patterns"] == {}
 
 
+@pytest.mark.skipif(mx is None, reason="MLX runtime unavailable on this host")
 def test_language_modeling_specs_load_and_compile():
+    compile_genome = _import_compile_genome_or_skip()
     tiny = get_benchmark("tiny_lm_synthetic")
     assert tiny.task == "language_modeling"
     x_train, y_train, x_val, y_val = tiny.load_data(seed=7)
@@ -520,6 +545,7 @@ def test_language_modeling_specs_load_and_compile():
     assert probs.shape == (2, 8, 32)
 
 
+@pytest.mark.skipif(mx is None, reason="MLX runtime unavailable on this host")
 def test_weight_cache_skips_missing_parameter_paths():
     class DummyModel:
         def trainable_parameters(self):
@@ -545,6 +571,7 @@ def test_smoke_pack_contains_33_plus_5_lm():
 
 
 def test_load_prior_run_memory_and_seed_population(tmp_path: Path):
+    coordinator = _import_coordinator_or_skip()
     run_dir = tmp_path / "prior-run"
     run_dir.mkdir()
     genome = _sample_genome("attention", [32, 16])
