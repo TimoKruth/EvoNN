@@ -13,6 +13,7 @@ import math
 import platform
 import shutil
 import subprocess
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median as stat_median
@@ -642,6 +643,10 @@ def _write_summary_json(
     median_quality = float(stat_median(qualities)) if qualities else None
 
     failure_count = sum(1 for r in results if r.get("status") != "ok")
+    non_ok_results = [r for r in results if r.get("status") != "ok"]
+    failure_patterns = dict(
+        Counter(str(r.get("failure_reason") or r.get("status") or "unknown") for r in non_ok_results).most_common()
+    )
 
     budget = manifest.get("budget", {})
     device = manifest.get("device", {})
@@ -659,6 +664,7 @@ def _write_summary_json(
         "median_parameter_count": median_param_count,
         "median_benchmark_quality": median_quality,
         "failure_count": failure_count,
+        "failure_patterns": failure_patterns,
         "benchmarks_evaluated": len(best_fitness),
         "runtime_backend": device.get("framework", "unknown"),
         "runtime_version": device.get("framework_version", "unknown"),

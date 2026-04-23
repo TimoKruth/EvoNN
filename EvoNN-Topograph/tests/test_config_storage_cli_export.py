@@ -369,6 +369,7 @@ def test_export_symbiosis_uses_recorded_runtime_metadata_in_manifest_and_summary
     assert summary["runtime_backend"] == "numpy-fallback"
     assert summary["runtime_version"] == "fallback-1.2.3"
     assert summary["precision_mode"] == "bf16"
+    assert summary["failure_patterns"] == {"failed": 1}
 
 
 
