@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -17,6 +18,16 @@ from prism.config import load_config
 
 console = Console()
 app = typer.Typer(name="prism", help="Family-based evolutionary NAS")
+
+
+def _format_status_mix(evaluations: list[dict]) -> str:
+    counts = Counter(str(row.get("status") or "unknown") for row in evaluations)
+    if not counts:
+        return "none"
+
+    ordered_statuses = ["ok"]
+    ordered_statuses.extend(sorted(status for status in counts if status != "ok"))
+    return ", ".join(f"{status}={counts[status]}" for status in ordered_statuses if status in counts)
 
 
 # ===========================================================================
@@ -174,7 +185,7 @@ def inspect(
     table.add_row("Benchmarks", str(len(best_per_benchmark)))
     table.add_row(
         "Evaluation Status Mix",
-        f"ok={len(evaluations) - len(failed_evaluations)}, failed={len(failed_evaluations)}",
+        _format_status_mix(evaluations),
     )
     table.add_row("Runtime", runtime_meta["runtime_backend"])
     table.add_row("Runtime Version", runtime_meta["runtime_version"])
