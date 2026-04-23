@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     genome_id VARCHAR,
     generation INTEGER,
     benchmark_id VARCHAR,
+    status VARCHAR,
     metric_name VARCHAR,
     metric_value DOUBLE,
     quality DOUBLE,
@@ -76,6 +77,7 @@ class RunStore:
 
     def _ensure_optional_columns(self) -> None:
         """Add analytics columns to older run DBs."""
+        self.conn.execute("ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS status VARCHAR")
         self.conn.execute("ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS inherited_from VARCHAR")
         self.conn.execute("ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS inheritance_hit BOOLEAN")
         self.conn.execute("ALTER TABLE archives ADD COLUMN IF NOT EXISTS generation INTEGER")
@@ -110,17 +112,19 @@ class RunStore:
         train_seconds: float,
         failure_reason: str | None = None,
         inherited_from: str | None = None,
+        status: str | None = None,
     ) -> None:
+        effective_status = status or ("failed" if failure_reason else "ok")
         self.conn.execute(
             """
             INSERT INTO evaluations (
-                run_id, genome_id, generation, benchmark_id, metric_name,
+                run_id, genome_id, generation, benchmark_id, status, metric_name,
                 metric_value, quality, parameter_count, train_seconds, failure_reason,
                 inherited_from, inheritance_hit
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                run_id, genome_id, generation, benchmark_id, metric_name,
+                run_id, genome_id, generation, benchmark_id, effective_status, metric_name,
                 metric_value, quality, parameter_count, train_seconds, failure_reason,
                 inherited_from, inherited_from is not None,
             ],
@@ -168,7 +172,7 @@ class RunStore:
         if generation is not None:
             rows = self.conn.execute(
                 """
-                SELECT genome_id, generation, benchmark_id, metric_name, metric_value,
+                SELECT genome_id, generation, benchmark_id, status, metric_name, metric_value,
                        quality, parameter_count, train_seconds, failure_reason,
                        inherited_from, inheritance_hit
                 FROM evaluations
@@ -180,7 +184,7 @@ class RunStore:
         else:
             rows = self.conn.execute(
                 """
-                SELECT genome_id, generation, benchmark_id, metric_name, metric_value,
+                SELECT genome_id, generation, benchmark_id, status, metric_name, metric_value,
                        quality, parameter_count, train_seconds, failure_reason,
                        inherited_from, inheritance_hit
                 FROM evaluations
@@ -190,7 +194,7 @@ class RunStore:
                 [run_id],
             ).fetchall()
         cols = [
-            "genome_id", "generation", "benchmark_id", "metric_name", "metric_value",
+            "genome_id", "generation", "benchmark_id", "status", "metric_name", "metric_value",
             "quality", "parameter_count", "train_seconds", "failure_reason",
             "inherited_from", "inheritance_hit",
         ]
@@ -216,10 +220,12 @@ class RunStore:
     def load_best_per_benchmark(self, run_id: str) -> dict[str, dict]:
         rows = self.conn.execute(
             """
-            SELECT benchmark_id, genome_id, quality, metric_name, metric_value,
+            SELECT benchmark_id, genome_id, status, quality, metric_name, metric_value,
                    parameter_count, train_seconds
             FROM evaluations
-            WHERE run_id = ? AND failure_reason IS NULL
+            WHERE run_id = ?
+              AND COALESCE(status, CASE WHEN failure_reason IS NULL THEN 'ok' ELSE 'failed' END) = 'ok'
+              AND failure_reason IS NULL
             QUALIFY ROW_NUMBER() OVER (
                 PARTITION BY benchmark_id ORDER BY quality DESC
             ) = 1
@@ -227,7 +233,7 @@ class RunStore:
             [run_id],
         ).fetchall()
         cols = [
-            "benchmark_id", "genome_id", "quality", "metric_name", "metric_value",
+            "benchmark_id", "genome_id", "status", "quality", "metric_name", "metric_value",
             "parameter_count", "train_seconds",
         ]
         return {row[0]: dict(zip(cols, row)) for row in rows}

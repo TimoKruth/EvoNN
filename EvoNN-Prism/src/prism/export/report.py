@@ -431,6 +431,8 @@ def _compute_family_benchmark_wins(
     genome_families = {genome.genome_id: genome.family for genome in genomes}
     counts = Counter()
     for best in best_per_benchmark.values():
+        if not _is_successful_evaluation(best):
+            continue
         family = genome_families.get(best.get("genome_id", ""))
         if family:
             counts[family] += 1

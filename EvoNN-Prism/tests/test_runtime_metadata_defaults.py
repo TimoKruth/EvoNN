@@ -73,6 +73,28 @@ def test_resolved_runtime_metadata_falls_back_to_host_version_when_recorded_unkn
     }
 
 
+def test_resolved_runtime_metadata_does_not_apply_mlx_version_to_non_mlx_backend(monkeypatch, tmp_path):
+    run_dir = tmp_path / "runtime-metadata-non-mlx"
+    run_dir.mkdir()
+
+    monkeypatch.setattr(
+        sym,
+        "_load_runtime_metadata",
+        lambda _run_dir: {
+            "runtime_backend": "torch",
+            "runtime_version": "unknown",
+            "precision_mode": "fp16",
+        },
+    )
+    monkeypatch.setattr(sym, "_MLX_VERSION", "9.9.9-host")
+
+    assert sym._resolved_runtime_metadata(run_dir) == {
+        "runtime_backend": "torch",
+        "runtime_version": "unknown",
+        "precision_mode": "fp16",
+    }
+
+
 def test_symbiosis_representative_ignores_non_ok_status_without_failure_reason():
     genome_ok = type("Genome", (), {"genome_id": "genome-ok", "family": "mlp"})()
     genome_missing = type("Genome", (), {"genome_id": "genome-missing", "family": "attention"})()
@@ -210,6 +232,20 @@ def test_report_success_helpers_ignore_non_ok_status_without_failure_reason():
     ]
     assert best is not None
     assert best.genome_id == "genome-ok"
+
+
+def test_family_benchmark_wins_ignore_non_ok_status_rows():
+    genomes = [
+        type("Genome", (), {"genome_id": "genome-ok", "family": "mlp"})(),
+        type("Genome", (), {"genome_id": "genome-missing", "family": "attention"})(),
+    ]
+    best_per_benchmark = {
+        "moons": {"genome_id": "genome-ok", "status": "ok", "failure_reason": None},
+        "iris": {"genome_id": "genome-missing", "status": "missing", "failure_reason": None},
+    }
+
+    assert report._compute_family_benchmark_wins(best_per_benchmark, genomes) == {"mlp": 1}
+    assert sym._family_benchmark_wins(best_per_benchmark, genomes) == {"mlp": 1}
 
 
 def test_inspect_status_mix_falls_back_to_failure_reason_when_status_is_missing(monkeypatch, tmp_path):

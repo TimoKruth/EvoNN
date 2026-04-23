@@ -354,7 +354,7 @@ def _resolved_runtime_metadata(run_dir: Path) -> dict[str, str]:
         backend = "mlx"
 
     runtime_version = runtime_meta["runtime_version"]
-    if runtime_version == "unknown":
+    if runtime_version == "unknown" and backend == "mlx":
         runtime_version = _MLX_VERSION or "unknown"
 
     return {
@@ -538,6 +538,8 @@ def _family_benchmark_wins(
     genome_families = {genome.genome_id: genome.family for genome in genomes}
     counts: dict[str, int] = {}
     for best in best_per_benchmark.values():
+        if _failure_label(best) is not None:
+            continue
         family = genome_families.get(best.get("genome_id", ""))
         if family is None:
             continue

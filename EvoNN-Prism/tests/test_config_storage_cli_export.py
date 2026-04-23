@@ -80,16 +80,30 @@ def test_run_store_roundtrip_and_best_per_benchmark(tmp_path: Path):
     db_path = tmp_path / "metrics.duckdb"
     genome_a = _sample_genome("mlp", [16, 8])
     genome_b = _sample_genome("conv2d", [32, 16])
+    genome_c = _sample_genome("attention", [24, 12])
 
     with RunStore(db_path) as store:
         store.save_run("run-1", {"seed": 42})
         store.save_genome("run-1", genome_a)
         store.save_genome("run-1", genome_b)
+        store.save_genome("run-1", genome_c)
         store.save_evaluation(
             "run-1", genome_a.genome_id, 0, "moons", "accuracy", 0.8, 0.8, 100, 0.5
         )
         store.save_evaluation(
             "run-1", genome_b.genome_id, 1, "moons", "accuracy", 0.9, 0.9, 120, 0.6
+        )
+        store.save_evaluation(
+            "run-1",
+            genome_c.genome_id,
+            1,
+            "iris",
+            "accuracy",
+            float("nan"),
+            float("nan"),
+            140,
+            0.4,
+            status="missing",
         )
         store.save_lineage("run-1", genome_b.genome_id, genome_a.genome_id, 1, "mut")
         store.save_archive("run-1", 1, "pareto", "moons", genome_b.genome_id, 0.9)
@@ -101,11 +115,16 @@ def test_run_store_roundtrip_and_best_per_benchmark(tmp_path: Path):
         best = store.load_best_per_benchmark("run-1")
         latest = store.latest_generation("run-1")
 
-    assert [row["_family"] for row in loaded] == ["mlp", "conv2d"]
-    assert len(evals) == 2
+    assert [row["_family"] for row in loaded] == ["mlp", "conv2d", "attention"]
+    assert len(evals) == 3
     assert lineage[0]["mutation_summary"] == "mut"
     assert archives[0]["generation"] == 1
+    assert {row["benchmark_id"]: row["status"] for row in evals} == {
+        "moons": "ok",
+        "iris": "missing",
+    }
     assert best["moons"]["genome_id"] == genome_b.genome_id
+    assert "iris" not in best
     assert best["moons"]["metric_value"] == 0.9
     assert latest == 1
 
