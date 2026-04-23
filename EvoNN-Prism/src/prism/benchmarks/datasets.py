@@ -160,6 +160,10 @@ def load_sklearn(spec: BenchmarkSpec, seed: int = 42) -> tuple[np.ndarray, np.nd
 
 def load_openml(spec: BenchmarkSpec) -> tuple[np.ndarray, np.ndarray]:
     """Load an OpenML dataset by source_id, with categorical encoding."""
+    source_id = spec.source_id
+    if source_id is None:
+        raise ValueError(f"OpenML benchmark '{spec.id}' missing source_id")
+
     try:
         import openml
         import pandas as pd
@@ -167,10 +171,6 @@ def load_openml(spec: BenchmarkSpec) -> tuple[np.ndarray, np.ndarray]:
         raise ImportError(
             "OpenML support requires: uv sync --extra data"
         ) from exc
-
-    source_id = spec.source_id
-    if source_id is None:
-        raise ValueError(f"OpenML benchmark '{spec.id}' missing source_id")
 
     logger.info("Downloading OpenML dataset %d for %s", source_id, spec.id)
     dataset = openml.datasets.get_dataset(source_id, download_data=True)

@@ -146,7 +146,7 @@ def export_symbiosis_contract(
     store.close()
 
     # 7. Build manifest
-    runtime_meta = _load_runtime_metadata(run_dir)
+    runtime_meta = _resolved_runtime_metadata(run_dir)
     pack_name = Path(pack_path).stem
     generations = (latest_gen + 1) if latest_gen is not None else 0
     total_evaluations = _intended_evaluation_count(
@@ -337,6 +337,19 @@ def _load_runtime_metadata(run_dir: Path) -> dict[str, str | None]:
     }
 
 
+def _resolved_runtime_metadata(run_dir: Path) -> dict[str, str]:
+    runtime_meta = _load_runtime_metadata(run_dir)
+    backend = runtime_meta["runtime_backend"]
+    if backend == "unknown":
+        backend = "mlx"
+
+    return {
+        "runtime_backend": backend,
+        "runtime_version": _MLX_VERSION or runtime_meta["runtime_version"] or "unknown",
+        "precision_mode": runtime_meta["precision_mode"] or "fp32",
+    }
+
+
 def _load_run_config(run_dir: Path) -> RunConfig:
     config_path = run_dir / "config.yaml"
     if config_path.exists():
@@ -462,6 +475,11 @@ def _write_summary_json(
     failure_count = sum(1 for r in results if r.get("status") != "ok")
     budget = manifest.get("budget", {})
     device = manifest.get("device", {})
+    runtime_defaults = {
+        "framework": "mlx",
+        "framework_version": _MLX_VERSION or "unknown",
+        "precision_mode": "fp32",
+    }
 
     summary = {
         "system": "prism",
@@ -472,9 +490,9 @@ def _write_summary_json(
         "generations_completed": (latest_gen + 1) if latest_gen is not None else 0,
         "epochs_per_candidate": config.training.epochs,
         "population_size": config.evolution.population_size,
-        "runtime_backend": device.get("framework", "unknown"),
-        "runtime_version": device.get("framework_version") or "unknown",
-        "precision_mode": device.get("precision_mode", "fp32"),
+        "runtime_backend": device.get("framework") or runtime_defaults["framework"],
+        "runtime_version": device.get("framework_version") or runtime_defaults["framework_version"],
+        "precision_mode": device.get("precision_mode") or runtime_defaults["precision_mode"],
         "best_fitness": best_fitness,
         "median_parameter_count": median_param_count,
         "median_benchmark_quality": median_quality,
