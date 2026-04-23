@@ -6,6 +6,7 @@ import json
 import platform
 import shutil
 import subprocess
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median as stat_median
@@ -210,6 +211,13 @@ def _build_compare_summary(
     best_fitness: dict[str, float] = {}
     ok_param_counts: list[int] = []
     quality_values: list[float] = []
+    non_ok_results = [record for record in results if record.get("status") != "ok"]
+    failure_patterns = dict(
+        Counter(
+            str(record.get("failure_reason") or record.get("status") or "unknown")
+            for record in non_ok_results
+        ).most_common()
+    )
     for record in results:
         if record.get("status") != "ok":
             continue
@@ -238,7 +246,8 @@ def _build_compare_summary(
         "best_fitness": best_fitness,
         "median_parameter_count": int(stat_median(ok_param_counts)) if ok_param_counts else 0,
         "median_benchmark_quality": float(stat_median(quality_values)) if quality_values else None,
-        "failure_count": sum(1 for record in results if record.get("status") != "ok"),
+        "failure_count": len(non_ok_results),
+        "failure_patterns": failure_patterns,
         "benchmarks_evaluated": len(best_fitness),
         "wall_clock_seconds": summary.get("wall_clock_seconds"),
         "primitive_usage": summary.get("primitive_usage", {}),

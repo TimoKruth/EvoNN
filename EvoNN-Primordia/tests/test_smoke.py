@@ -257,6 +257,7 @@ seed_policy:
     assert compare_summary["precision_mode"] == summary["precision_mode"]
     assert export_summary == compare_summary
     assert compare_summary["benchmarks_evaluated"] == 2
+    assert compare_summary["failure_patterns"] == {}
     assert compare_summary["wall_clock_seconds"] == summary["wall_clock_seconds"]
     assert compare_summary["primitive_usage"] == summary["primitive_usage"]
     assert primitive_bank["system"] == "primordia"
@@ -654,10 +655,13 @@ seed_policy:
     )
 
     export_symbiosis_contract(run_dir, pack_path, run_dir)
+    compare_summary = json.loads((run_dir / "compare_summary.json").read_text(encoding="utf-8"))
     primitive_bank = json.loads((run_dir / "primitive_bank_summary.json").read_text(encoding="utf-8"))
 
     embedding = next(entry for entry in primitive_bank["primitive_families"] if entry["family"] == "embedding")
     attention = next(entry for entry in primitive_bank["primitive_families"] if entry["family"] == "attention")
+    assert compare_summary["failure_count"] == 1
+    assert compare_summary["failure_patterns"] == {"boom": 1}
     assert embedding["benchmark_wins"] == 0
     assert embedding["benchmarks_won"] == []
     assert embedding["best_metric_value"] is None
