@@ -114,6 +114,45 @@ See:
 - [BUDGET_CONTRACT.md](./BUDGET_CONTRACT.md)
 - [TELEMETRY_SPEC.md](./TELEMETRY_SPEC.md)
 
+### Shared Research Infrastructure
+
+Beyond shared benchmark definitions, EvoNN likely needs a broader layer of
+shared research infrastructure. The point is not to erase package identity. The
+point is to stop re-implementing the same comparison-facing plumbing in five
+slightly different ways.
+
+The strongest current candidates for shared substrate are:
+
+- shared benchmark/parity-pack resolution helpers beneath package-local
+  `get_benchmark`, `list_benchmarks`, `resolve_pack_path`, and
+  `load_parity_pack` wrappers
+- shared Symbiosis export helpers for manifest assembly, common `summary.json`
+  fields, runtime metadata defaults, budget normalization, and seeding
+  provenance
+- shared report-generation helpers for markdown safety, runtime/budget sections,
+  failure-pattern aggregation, and compare-facing summary rendering
+- shared run-storage primitives such as common `RunStore`/DuckDB schema layers
+  for runs, evaluations, artifacts, and metadata
+- shared typed models and validation helpers for telemetry, budget, and seeding
+  metadata
+- shared CLI helper patterns for recurring commands such as `benchmarks`,
+  `inspect`, and export/report surfaces
+
+This is a structural unification agenda, not a runtime merger agenda.
+
+What should remain package-local:
+
+- genome and candidate representations
+- mutation and crossover logic
+- compiler/runtime assumptions
+- search-loop coordination
+- abstraction-specific telemetry above the common minimum floor
+
+The rule is simple:
+
+unify infrastructure where sameness improves trust and maintenance; preserve
+search-core differences where distinctness is the whole scientific point.
+
 ## The Foundation: Compare
 
 `EvoNN-Compare` is the trust layer of the project.

@@ -46,6 +46,22 @@ The point is not to assume one wins. The point is to make both ladders measurabl
 - Package-local search cores stay distinct.
 - Shared substrate is allowed; shared runtime/search internals are not.
 
+## Shared-substrate dependency
+
+This plan assumes EvoNN will gradually unify some umbrella infrastructure while
+keeping the search systems scientifically distinct.
+
+The most relevant shared-substrate candidates for ladder work are:
+- benchmark/parity-pack resolution helpers
+- compare-facing export/manifest/summary helpers
+- report-rendering helpers for provenance and failure surfaces
+- telemetry/budget/seeding metadata validators
+- shared run-storage primitives where provenance needs a common floor
+
+The ladders plan should consume those shared layers when they exist, but it
+should not wait for a full umbrella merger and it should never force Prism,
+Topograph, Stratograph, or Primordia to share one search runtime.
+
 ---
 
 ## Stage 1: Umbrella seeding metadata contract

@@ -21,6 +21,15 @@ Foundation packages:
 - `EvoNN-Contenders`
 - `shared-benchmarks/`
 
+Shared-infrastructure candidates that may deserve first-class umbrella modules
+over time:
+- benchmark/parity-pack resolution helpers
+- export/manifest/summary helpers
+- report-rendering helpers
+- run-storage/schema helpers
+- telemetry/budget/seeding metadata models
+- CLI support helpers
+
 Search packages:
 - `EvoNN-Primordia`
 - `EvoNN-Prism`
@@ -34,6 +43,30 @@ Root-level strategy docs:
 - `BUDGET_CONTRACT.md`
 - `TELEMETRY_SPEC.md`
 - `SEEDING_LADDERS_IMPLEMENTATION_PLAN.md`
+
+## Structural Unification Policy
+
+The monorepo is allowed to unify shared research infrastructure, but it should
+not erase the scientific distinctness of the search systems.
+
+Good shared-substrate candidates:
+- benchmark catalog and parity-pack resolution
+- compare-facing export helpers
+- common report sections and rendering utilities
+- run metadata / evaluation storage primitives
+- telemetry, budget, and seeding validation models
+- recurring CLI helper patterns
+
+Keep package-local unless strong evidence suggests otherwise:
+- genome definitions
+- mutation and crossover logic
+- compiler/runtime implementations
+- search-loop coordinators
+- abstraction-specific telemetry that sits above the umbrella minimum contract
+
+In short:
+- unify infrastructure for trust, parity, and maintenance
+- preserve search-core differences for science
 
 ## Commands
 

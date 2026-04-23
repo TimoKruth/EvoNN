@@ -36,6 +36,8 @@ Deliverables:
 - normalized benchmark ladder
 - normalized budget contract
 - normalized telemetry/reporting surface
+- first-class inventory of which structural layers should become shared
+  umbrella infrastructure versus remain package-local
 - clear package roles and workspace coherence
 - stronger root-level documentation of how the umbrella fits together
 
@@ -50,7 +52,51 @@ Success criteria:
 - every major package can point to the same benchmark taxonomy
 - budget terms mean the same thing across systems
 - exported telemetry has a common minimum surface
+- recurring infrastructure duplication is identified and ranked instead of being
+  allowed to drift silently
 - monorepo docs reflect the actual umbrella rather than a partial subset
+
+### Horizon 1A: Structural Unification Of Shared Infrastructure
+
+Goal:
+reduce duplicated research plumbing across packages without collapsing distinct
+search bets into one runtime.
+
+Why here:
+shared substrate work belongs with the trustworthy-umbrella horizon because it
+directly affects comparability, maintenance cost, and parity velocity.
+
+Primary candidates for unification:
+- benchmark/parity-pack resolution helpers beneath package-local benchmark APIs
+- Symbiosis export-core helpers and compare-facing summary assembly
+- report-generation primitives such as markdown escaping and failure-pattern
+  rendering
+- run-storage primitives and common metadata tables
+- typed telemetry/budget/seeding metadata models and validators
+- CLI helper conventions for recurring inspect/export surfaces
+
+Keep separate by design:
+- genomes and candidate representations
+- mutation/crossover logic
+- compiler/runtime internals
+- package-local search coordinators
+- abstraction-specific telemetry above the shared minimum contract
+
+Near-term ranking:
+1. shared benchmark/parity loader layer
+2. shared export/manifest/summary helpers
+3. shared report rendering helpers
+4. shared storage substrate
+5. shared telemetry/budget/seeding models
+6. shared CLI support helpers
+7. shared package scaffolding conventions
+
+Success criteria:
+- the repo names the best shared-infrastructure candidates explicitly
+- future umbrella work can target shared substrate intentionally rather than by
+  ad hoc copy-porting
+- package identity is preserved while duplicated compare-facing plumbing starts
+  shrinking
 
 ## Horizon 2: Primitive-First Search
 
@@ -164,12 +210,17 @@ Priority 1:
 finish and enforce Horizon 1 documents across the repo.
 
 Priority 2:
-establish Primordia as the missing Horizon 2 package.
+turn the structural-unification inventory into explicit shared-substrate work,
+starting with benchmark/parity resolution and export/report helpers.
 
 Priority 3:
-thread the benchmark ladder and budget contract into package docs and CLIs.
+establish Primordia as the missing Horizon 2 package.
 
 Priority 4:
+thread the benchmark ladder and budget contract into package docs, exports, and
+CLIs.
+
+Priority 5:
 start defining how primitive motifs are exported, versioned, and consumed by
 higher-level systems.
 
