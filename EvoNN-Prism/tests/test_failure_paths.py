@@ -16,18 +16,38 @@ from prism.benchmarks.spec import BenchmarkSpec
 from prism.config import RunConfig
 from prism.genome import ModelGenome, apply_random_mutation
 from prism.export import report as report_mod
-from prism.pipeline import archive as archive_mod
-from prism.pipeline import evaluate as evaluate_mod
-from prism.pipeline import reproduce as reproduce_mod
-from prism.pipeline.evaluate import (
-    GenerationState,
-    _benchmark_epoch_multiplier,
-    _benchmark_priority_scores,
-    _evaluate_single,
-    _genome_epoch_multiplier,
-    _resolve_output_dim,
+
+_MLX_SKIP_REASON = "MLX runtime unavailable on this host"
+
+archive_mod = pytest.importorskip(
+    "prism.pipeline.archive",
+    reason=_MLX_SKIP_REASON,
+    exc_type=ImportError,
 )
-from prism.runtime.training import EvaluationResult, train_and_evaluate
+evaluate_mod = pytest.importorskip(
+    "prism.pipeline.evaluate",
+    reason=_MLX_SKIP_REASON,
+    exc_type=ImportError,
+)
+reproduce_mod = pytest.importorskip(
+    "prism.pipeline.reproduce",
+    reason=_MLX_SKIP_REASON,
+    exc_type=ImportError,
+)
+training_mod = pytest.importorskip(
+    "prism.runtime.training",
+    reason=_MLX_SKIP_REASON,
+    exc_type=ImportError,
+)
+
+GenerationState = evaluate_mod.GenerationState
+_benchmark_epoch_multiplier = evaluate_mod._benchmark_epoch_multiplier
+_benchmark_priority_scores = evaluate_mod._benchmark_priority_scores
+_evaluate_single = evaluate_mod._evaluate_single
+_genome_epoch_multiplier = evaluate_mod._genome_epoch_multiplier
+_resolve_output_dim = evaluate_mod._resolve_output_dim
+EvaluationResult = training_mod.EvaluationResult
+train_and_evaluate = training_mod.train_and_evaluate
 
 
 def _sample_genome(family: str = "mlp") -> ModelGenome:
