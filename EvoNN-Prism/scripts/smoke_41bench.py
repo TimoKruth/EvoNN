@@ -40,10 +40,10 @@ SEED = 42
 
 
 def load_pack(path):
-    with open(path) as f:
-        pack = yaml.safe_load(f)
+    with open(path, encoding="utf-8") as f:
+        pack = yaml.safe_load(f) or {}
     benchmarks = []
-    for native in pack["benchmarks"]:
+    for native in pack.get("benchmarks", []):
         spec = get_benchmark(native)
         benchmarks.append({
             "canonical_id": get_canonical_id(native),

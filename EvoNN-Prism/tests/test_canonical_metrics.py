@@ -227,3 +227,15 @@ def test_main_records_pack_name_from_pack_path(monkeypatch, tmp_path):
     assert out_path.exists()
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["pack"] == "custom_pack"
+
+
+def test_load_pack_tolerates_empty_yaml_and_missing_benchmarks(tmp_path):
+    smoke = _load_smoke_module()
+
+    empty_pack = tmp_path / "empty.yaml"
+    empty_pack.write_text("{}\n", encoding="utf-8")
+    assert smoke.load_pack(empty_pack) == []
+
+    missing_list_pack = tmp_path / "missing.yaml"
+    missing_list_pack.write_text("name: demo\n", encoding="utf-8")
+    assert smoke.load_pack(missing_list_pack) == []
