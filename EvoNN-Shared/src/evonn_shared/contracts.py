@@ -69,8 +69,13 @@ class ArtifactPaths(BaseModel):
     report_markdown: str
     model_summary_json: str | None = None
     genome_summary_json: str | None = None
+    contender_summary_json: str | None = None
     dataset_manifest_json: str | None = None
+    dataset_manifest_hash: str | None = None
     raw_database: str | None = None
+    pack_name: str | None = None
+    benchmarks: list[str] | None = None
+    canonical_benchmarks: list[str] | None = None
 
 
 class SearchTelemetry(BaseModel):

@@ -120,6 +120,7 @@ def export_symbiosis_contract(
             config_snapshot="config.yaml",
             report_markdown=str(Path(report_path).relative_to(run_dir)),
             model_summary_json="model_summary.json",
+            contender_summary_json="contender_summary.json",
             dataset_manifest_json="dataset_manifest.json",
             raw_database="metrics.duckdb",
         ),

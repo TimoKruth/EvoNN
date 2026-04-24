@@ -27,7 +27,8 @@ except importlib.metadata.PackageNotFoundError:
         mlx = None
         _MLX_VERSION = None
 
-import prism
+from evonn_shared.contracts import ArtifactPaths, BenchmarkEntry, BudgetEnvelope, DeviceInfo, ResultRecord, RunManifest
+from evonn_shared.manifests import benchmark_signature, fairness_manifest
 from prism.benchmarks.parity import get_canonical_id, load_parity_pack
 from prism.config import RunConfig, load_config
 from prism.genome import ModelGenome
@@ -77,14 +78,13 @@ def export_symbiosis_contract(
 
     # 4. Load parity pack benchmarks
     pack_specs = load_parity_pack(pack_path)
-    benchmark_names = [spec.id for spec in pack_specs]
 
     # 5. Select representative genome (highest average quality)
     representative = _select_representative(genomes, evaluations)
 
     # 6. Build results list
-    results: list[dict[str, Any]] = []
-    benchmark_entries: list[dict[str, Any]] = []
+    results: list[ResultRecord] = []
+    benchmark_entries: list[BenchmarkEntry] = []
 
     for spec in pack_specs:
         native_name = spec.id
@@ -117,31 +117,34 @@ def export_symbiosis_contract(
             status = "missing"
             failure_reason = "no_evaluated_genome"
 
-        results.append({
-            "system": "prism",
-            "run_id": run_dir.name,
-            "benchmark_id": get_canonical_id(native_name),
-            "metric_name": metric_name,
-            "metric_direction": metric_direction,
-            "metric_value": metric_value,
-            "quality": quality,
-            "parameter_count": parameter_count,
-            "train_seconds": train_seconds,
-            "peak_memory_mb": None,
-            "architecture_summary": _architecture_summary(representative) if representative else None,
-            "genome_id": genome_id,
-            "family": representative.family if representative else None,
-            "status": status,
-            "failure_reason": failure_reason,
-        })
+        results.append(
+            ResultRecord(
+                system="prism",
+                run_id=run_dir.name,
+                benchmark_id=get_canonical_id(native_name),
+                metric_name=metric_name,
+                metric_direction=metric_direction,
+                metric_value=metric_value,
+                quality=quality,
+                parameter_count=parameter_count,
+                train_seconds=train_seconds,
+                peak_memory_mb=None,
+                architecture_summary=_architecture_summary(representative) if representative else None,
+                genome_id=genome_id,
+                status=status,
+                failure_reason=failure_reason,
+            )
+        )
 
-        benchmark_entries.append({
-            "benchmark_id": get_canonical_id(native_name),
-            "task_kind": spec.task,
-            "metric_name": metric_name,
-            "metric_direction": metric_direction,
-            "status": status,
-        })
+        benchmark_entries.append(
+            BenchmarkEntry(
+                benchmark_id=get_canonical_id(native_name),
+                task_kind=spec.task,
+                metric_name=metric_name,
+                metric_direction=metric_direction,
+                status=status,
+            )
+        )
 
     store.close()
 
@@ -158,62 +161,71 @@ def export_symbiosis_contract(
     config_snapshot_name = "config.yaml" if (output_dir / "config.yaml").exists() else "config.json"
     report_name = "report.md"
 
-    manifest = {
-        "schema_version": "1.0",
-        "system": "prism",
-        "version": prism.__version__,
-        "run_id": run_dir.name,
-        "run_name": run_dir.name,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "pack_name": pack_name,
-        "seed": config.seed,
-        "benchmarks": benchmark_entries,
-        "budget": {
-            "evaluation_count": total_evaluations,
-            "epochs_per_candidate": config.training.epochs,
-            "generations": generations,
-            "population_size": config.evolution.population_size,
-            "wall_clock_seconds": _load_wall_clock_seconds(output_dir),
-            "budget_policy_name": "prototype_equal_budget",
-        },
-        "device": {
-            "device_name": _detect_device(),
-            "precision_mode": runtime_meta["precision_mode"],
-            "framework": runtime_meta["runtime_backend"],
-            "framework_version": runtime_meta["runtime_version"],
-        },
-        "config_snapshot": config.model_dump(mode="json"),
-        "artifacts": {
-            "config_snapshot": config_snapshot_name,
-            "report_markdown": report_name,
-            "genome_summary": _genome_summary(representative) if representative else {"status": "missing"},
-            "dataset_manifest_hash": _compute_dataset_hash(benchmark_names),
-            "pack_name": pack_name,
-            "benchmarks": benchmark_names,
-            "canonical_benchmarks": [get_canonical_id(n) for n in benchmark_names],
-        },
-        "fairness": _fairness_manifest(
+    manifest = RunManifest(
+        schema_version="1.0",
+        system="prism",
+        run_id=run_dir.name,
+        run_name=run_dir.name,
+        created_at=datetime.now(timezone.utc),
+        pack_name=pack_name,
+        seed=config.seed,
+        benchmarks=benchmark_entries,
+        budget=BudgetEnvelope(
+            evaluation_count=total_evaluations,
+            epochs_per_candidate=config.training.epochs,
+            generations=generations,
+            population_size=config.evolution.population_size,
+            wall_clock_seconds=_load_wall_clock_seconds(output_dir),
+            budget_policy_name="prototype_equal_budget",
+        ),
+        device=DeviceInfo(
+            device_name=_detect_device(),
+            precision_mode=runtime_meta["precision_mode"],
+            framework=runtime_meta["runtime_backend"],
+            framework_version=runtime_meta["runtime_version"],
+        ),
+        artifacts=ArtifactPaths(
+            config_snapshot=config_snapshot_name,
+            report_markdown=report_name,
+            dataset_manifest_hash=_compute_dataset_hash([spec.id for spec in pack_specs]),
+            pack_name=pack_name,
+            benchmarks=[spec.id for spec in pack_specs],
+            canonical_benchmarks=[get_canonical_id(spec.id) for spec in pack_specs],
+        ),
+        fairness=fairness_manifest(
             pack_name=pack_name,
             seed=config.seed,
             evaluation_count=total_evaluations,
             budget_policy_name="prototype_equal_budget",
-            benchmark_entries=benchmark_entries,
-            data_signature=_benchmark_signature(pack_name, benchmark_entries),
+            benchmark_entries=[entry.model_dump(mode="json") for entry in benchmark_entries],
+            data_signature=benchmark_signature(
+                pack_name,
+                [entry.model_dump(mode="json") for entry in benchmark_entries],
+            ),
+            code_version=_code_version(),
         ),
-    }
+    )
 
     # 8. Write manifest.json and results.json
+    manifest_payload = manifest.model_dump(mode="json")
+    result_payloads = [result.model_dump(mode="json") for result in results]
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    results_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
-    (output_dir / report_name).write_text(_render_report_markdown(manifest, results), encoding="utf-8")
+    manifest_path.write_text(json.dumps(manifest_payload, indent=2), encoding="utf-8")
+    results_path.write_text(
+        json.dumps(result_payloads, indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / report_name).write_text(
+        _render_report_markdown(manifest_payload, result_payloads),
+        encoding="utf-8",
+    )
 
     # 9. Write summary.json
     _write_summary_json(
         output_dir,
-        manifest,
-        results,
+        manifest_payload,
+        result_payloads,
         genomes,
         latest_gen,
         config,
@@ -388,37 +400,6 @@ def _resolve_run_id(store: RunStore) -> str:
 def _compute_dataset_hash(benchmark_names: list[str]) -> str:
     key = "|".join(sorted(benchmark_names))
     return hashlib.sha256(key.encode()).hexdigest()[:16]
-
-
-def _fairness_manifest(
-    *,
-    pack_name: str,
-    seed: int,
-    evaluation_count: int,
-    budget_policy_name: str,
-    benchmark_entries: list[dict[str, Any]],
-    data_signature: str,
-) -> dict[str, Any]:
-    return {
-        "benchmark_pack_id": pack_name,
-        "seed": seed,
-        "evaluation_count": evaluation_count,
-        "budget_policy_name": budget_policy_name,
-        "data_signature": data_signature or _benchmark_signature(pack_name, benchmark_entries),
-        "code_version": _code_version(),
-    }
-
-
-def _benchmark_signature(pack_name: str, benchmark_entries: list[dict[str, Any]]) -> str:
-    payload = json.dumps(
-        {
-            "pack_name": pack_name,
-            "benchmarks": benchmark_entries,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def _code_version() -> str | None:
