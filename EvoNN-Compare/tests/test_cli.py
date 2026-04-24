@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from typer.testing import CliRunner
 
 from evonn_compare.cli.main import app

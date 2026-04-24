@@ -107,10 +107,22 @@ def resolve_pack_path(pack_ref: str | Path) -> Path:
     if path.exists():
         return path
     candidates = [path]
+    if path.is_absolute():
+        candidates.append(Path(path.name))
+        if len(path.parts) >= 2:
+            candidates.append(Path(*path.parts[-2:]))
     if path.suffix not in {".yaml", ".yml"}:
         candidates.extend([Path(f"{path}.yaml"), Path(f"{path}.yml")])
+        if path.is_absolute():
+            candidates.extend([Path(f"{path.name}.yaml"), Path(f"{path.name}.yml")])
+    deduped_candidates: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate not in seen:
+            seen.add(candidate)
+            deduped_candidates.append(candidate)
     for root in _PACK_SEARCH_DIRS:
-        for candidate in candidates:
+        for candidate in deduped_candidates:
             resolved = root / candidate
             if resolved.exists():
                 return resolved

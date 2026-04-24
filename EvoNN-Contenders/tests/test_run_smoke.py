@@ -30,14 +30,37 @@ selection:
         + "\n",
         encoding="utf-8",
     )
+    pack_path = tmp_path / "smoke_compare_pack.yaml"
+    pack_path.write_text(
+        """
+name: smoke_compare_pack
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      contenders: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: tiny_lm_synthetic
+    native_ids:
+      contenders: tiny_lm_synthetic
+    task_kind: language_modeling
+    metric_name: perplexity
+    metric_direction: min
+budget_policy:
+  evaluation_count: 4
+  epochs_per_candidate: 1
+seed_policy:
+  mode: shared
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
     run_dir = tmp_path / "run"
     config = load_config(config_path)
     run_contenders(config, run_dir=run_dir, config_path=config_path)
-    manifest_path, results_path = export_symbiosis_contract(
-        run_dir,
-        Path("/Users/timokruth/Projekte/Evo Neural Nets/EvoNN-Compare/manual_compare_runs/20260416_budget38_seed42_smoke_valid/packs/working_33_plus_5_lm_compare_eval38.yaml"),
-        run_dir,
-    )
+    manifest_path, results_path = export_symbiosis_contract(run_dir, pack_path, run_dir)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     results = json.loads(results_path.read_text(encoding="utf-8"))
     assert manifest["system"] == "contenders"

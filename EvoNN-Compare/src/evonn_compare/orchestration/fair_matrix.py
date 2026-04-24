@@ -12,7 +12,6 @@ from typing import Any
 
 import yaml
 
-from evonn_compare.adapters.slots import fallback_native_id
 from evonn_compare.comparison import build_matrix_summary, summarize_matrix_case
 from evonn_compare.comparison.engine import ComparisonEngine
 from evonn_compare.contracts.parity import load_parity_pack

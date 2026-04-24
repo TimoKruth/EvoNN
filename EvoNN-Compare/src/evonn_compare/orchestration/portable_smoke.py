@@ -257,7 +257,7 @@ def _portable_export(
         "",
         f"- Run ID: `{run_dir.name}`",
         f"- Pack: `{pack_name}`",
-        f"- Runtime: `portable-sklearn`",
+        "- Runtime: `portable-sklearn`",
         f"- Runtime Version: `{SKLEARN_VERSION}`",
         f"- Benchmarks OK: `{summary['benchmarks_evaluated']}`",
         f"- Failures: `{summary['failure_count']}`",

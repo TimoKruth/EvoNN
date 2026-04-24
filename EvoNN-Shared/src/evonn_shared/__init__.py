@@ -12,6 +12,7 @@ from evonn_shared.contracts import (
     RunManifest,
     SearchTelemetry,
 )
+from evonn_shared.manifests import benchmark_signature, default_artifact, default_data_signature, fairness_manifest
 from evonn_shared.runs import RunCoordinates
 
 __all__ = [
@@ -28,4 +29,8 @@ __all__ = [
     "RunManifest",
     "SearchTelemetry",
     "TaskKind",
+    "benchmark_signature",
+    "default_artifact",
+    "default_data_signature",
+    "fairness_manifest",
 ]

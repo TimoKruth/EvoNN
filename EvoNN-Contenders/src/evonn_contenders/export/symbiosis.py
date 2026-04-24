@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import platform
 import subprocess
@@ -15,6 +14,7 @@ from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_p
 from evonn_contenders.config import load_config
 from evonn_contenders.export.report import write_report
 from evonn_contenders.storage import RunStore
+from evonn_shared.manifests import benchmark_signature, fairness_manifest
 
 
 def export_symbiosis_contract(
@@ -132,13 +132,14 @@ def export_symbiosis_contract(
             "image_benchmark_count": budget_meta.get("image_benchmark_count"),
             "language_modeling_benchmark_count": budget_meta.get("language_modeling_benchmark_count"),
         },
-        "fairness": _fairness_manifest(
+        "fairness": fairness_manifest(
             pack_name=pack.name,
             seed=config.seed,
             evaluation_count=budget_meta.get("evaluation_count", len(contenders)),
             budget_policy_name=_export_budget_policy_name(budget_meta.get("budget_policy_name")),
             benchmark_entries=manifest_benchmarks,
-            data_signature=_benchmark_signature(pack.name, manifest_benchmarks),
+            data_signature=benchmark_signature(pack.name, manifest_benchmarks),
+            code_version=_code_version(),
         ),
     }
     manifest_path = output_dir / "manifest.json"
@@ -182,44 +183,6 @@ def _export_budget_policy_name(name: Any) -> str:
         return "fixed_reference_contender_pool"
     return str(name or "fixed_reference_contender_pool")
 
-
-def _fairness_manifest(
-    *,
-    pack_name: str,
-    seed: int,
-    evaluation_count: int,
-    budget_policy_name: str,
-    benchmark_entries: list[dict[str, Any]],
-    data_signature: str,
-) -> dict[str, Any]:
-    return {
-        "benchmark_pack_id": pack_name,
-        "seed": seed,
-        "evaluation_count": evaluation_count,
-        "budget_policy_name": budget_policy_name,
-        "data_signature": data_signature or _benchmark_signature(pack_name, benchmark_entries),
-        "code_version": _code_version(),
-    }
-
-
-def _benchmark_signature(pack_name: str, benchmark_entries: list[dict[str, Any]]) -> str:
-    payload = json.dumps(
-        {
-            "pack_name": pack_name,
-            "benchmarks": [
-                {
-                    "benchmark_id": entry.get("benchmark_id"),
-                    "task_kind": entry.get("task_kind"),
-                    "metric_name": entry.get("metric_name"),
-                    "metric_direction": entry.get("metric_direction"),
-                }
-                for entry in benchmark_entries
-            ],
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def _code_version() -> str | None:
