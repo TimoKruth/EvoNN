@@ -14,6 +14,7 @@ from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_p
 from evonn_contenders.config import load_config
 from evonn_contenders.export.report import write_report
 from evonn_contenders.storage import RunStore
+from evonn_shared.contracts import ArtifactPaths, BenchmarkEntry, BudgetEnvelope, DeviceInfo, ResultRecord, RunManifest
 from evonn_shared.manifests import benchmark_signature, fairness_manifest
 
 
@@ -44,8 +45,8 @@ def export_symbiosis_contract(
     _write_summary_json(output_dir / "contender_summary.json", contenders)
     _write_summary_json(output_dir / "model_summary.json", results)
 
-    manifest_benchmarks: list[dict[str, Any]] = []
-    result_records: list[dict[str, Any]] = []
+    manifest_benchmarks: list[BenchmarkEntry] = []
+    result_records: list[ResultRecord] = []
     dataset_manifest: list[dict[str, Any]] = []
     for entry in pack.benchmarks:
         native_name = _resolve_native_name(entry, available_results=results)
@@ -53,31 +54,31 @@ def export_symbiosis_contract(
         result = results.get(native_name)
         status = result["status"] if result else "missing"
         manifest_benchmarks.append(
-            {
-                "benchmark_id": entry.benchmark_id,
-                "task_kind": entry.task_kind,
-                "metric_name": entry.metric_name,
-                "metric_direction": entry.metric_direction,
-                "status": status,
-            }
+            BenchmarkEntry(
+                benchmark_id=entry.benchmark_id,
+                task_kind=entry.task_kind,
+                metric_name=entry.metric_name,
+                metric_direction=entry.metric_direction,
+                status=status,
+            )
         )
         result_records.append(
-            {
-                "system": "contenders",
-                "run_id": run["run_id"],
-                "benchmark_id": entry.benchmark_id,
-                "metric_name": entry.metric_name,
-                "metric_direction": entry.metric_direction,
-                "metric_value": result["metric_value"] if result else None,
-                "quality": result["quality"] if result else None,
-                "parameter_count": result["parameter_count"] if result else None,
-                "train_seconds": result["train_seconds"] if result else None,
-                "peak_memory_mb": None,
-                "architecture_summary": result["architecture_summary"] if result else None,
-                "genome_id": result["contender_id"] if result else None,
-                "status": status,
-                "failure_reason": result["failure_reason"] if result else ("missing_result" if not result else None),
-            }
+            ResultRecord(
+                system="contenders",
+                run_id=run["run_id"],
+                benchmark_id=entry.benchmark_id,
+                metric_name=entry.metric_name,
+                metric_direction=entry.metric_direction,
+                metric_value=result["metric_value"] if result else None,
+                quality=result["quality"] if result else None,
+                parameter_count=result["parameter_count"] if result else None,
+                train_seconds=result["train_seconds"] if result else None,
+                peak_memory_mb=None,
+                architecture_summary=result["architecture_summary"] if result else None,
+                genome_id=result["contender_id"] if result else None,
+                status=status,
+                failure_reason=result["failure_reason"] if result else ("missing_result" if not result else None),
+            )
         )
         dataset_manifest.append(
             {
@@ -92,60 +93,56 @@ def export_symbiosis_contract(
 
     _write_summary_json(output_dir / "dataset_manifest.json", dataset_manifest)
 
-    manifest = {
-        "schema_version": "1.0",
-        "system": "contenders",
-        "version": "0.1.0",
-        "run_id": run["run_id"],
-        "run_name": run["run_name"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "pack_name": pack.name,
-        "seed": config.seed,
-        "benchmarks": manifest_benchmarks,
-        "budget": {
-            "evaluation_count": budget_meta.get("evaluation_count", len(contenders)),
-            "epochs_per_candidate": 1,
-            "effective_training_epochs": 1,
-            "generations": 1,
-            "population_size": budget_meta.get("evaluation_count", len(contenders)),
-            "budget_policy_name": _export_budget_policy_name(budget_meta.get("budget_policy_name")),
-        },
-        "device": {
-            "device_name": platform.machine(),
-            "precision_mode": "float32",
-            "framework": "scikit-learn",
-            "framework_version": None,
-        },
-        "artifacts": {
-            "config_snapshot": "config.yaml",
-            "report_markdown": str(Path(report_path).relative_to(run_dir)),
-            "model_summary_json": "model_summary.json",
-            "contender_summary_json": "contender_summary.json",
-            "dataset_manifest_json": "dataset_manifest.json",
-            "raw_database": "metrics.duckdb",
-        },
-        "search_telemetry": {
-            "fixed_pool": True,
-            "benchmark_count": budget_meta.get("benchmark_count"),
-            "tabular_benchmark_count": budget_meta.get("tabular_benchmark_count"),
-            "synthetic_benchmark_count": budget_meta.get("synthetic_benchmark_count"),
-            "image_benchmark_count": budget_meta.get("image_benchmark_count"),
-            "language_modeling_benchmark_count": budget_meta.get("language_modeling_benchmark_count"),
-        },
-        "fairness": fairness_manifest(
+    manifest = RunManifest(
+        schema_version="1.0",
+        system="contenders",
+        run_id=run["run_id"],
+        run_name=run["run_name"],
+        created_at=datetime.now(timezone.utc),
+        pack_name=pack.name,
+        seed=config.seed,
+        benchmarks=manifest_benchmarks,
+        budget=BudgetEnvelope(
+            evaluation_count=budget_meta.get("evaluation_count", len(contenders)),
+            epochs_per_candidate=1,
+            effective_training_epochs=1,
+            generations=1,
+            population_size=budget_meta.get("evaluation_count", len(contenders)),
+            budget_policy_name=_export_budget_policy_name(budget_meta.get("budget_policy_name")),
+        ),
+        device=DeviceInfo(
+            device_name=platform.machine(),
+            precision_mode="float32",
+            framework="scikit-learn",
+            framework_version=None,
+        ),
+        artifacts=ArtifactPaths(
+            config_snapshot="config.yaml",
+            report_markdown=str(Path(report_path).relative_to(run_dir)),
+            model_summary_json="model_summary.json",
+            dataset_manifest_json="dataset_manifest.json",
+            raw_database="metrics.duckdb",
+        ),
+        fairness=fairness_manifest(
             pack_name=pack.name,
             seed=config.seed,
             evaluation_count=budget_meta.get("evaluation_count", len(contenders)),
             budget_policy_name=_export_budget_policy_name(budget_meta.get("budget_policy_name")),
-            benchmark_entries=manifest_benchmarks,
-            data_signature=benchmark_signature(pack.name, manifest_benchmarks),
+            benchmark_entries=[entry.model_dump(mode="json") for entry in manifest_benchmarks],
+            data_signature=benchmark_signature(
+                pack.name,
+                [entry.model_dump(mode="json") for entry in manifest_benchmarks],
+            ),
             code_version=_code_version(),
         ),
-    }
+    )
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    results_path.write_text(json.dumps(result_records, indent=2), encoding="utf-8")
+    manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+    results_path.write_text(
+        json.dumps([record.model_dump(mode="json") for record in result_records], indent=2),
+        encoding="utf-8",
+    )
     return manifest_path, results_path
 
 
