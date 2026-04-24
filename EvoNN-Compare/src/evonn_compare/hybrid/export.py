@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import platform
 import subprocess
@@ -10,14 +9,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from evonn_compare.contracts.models import (
-    ArtifactPaths,
-    BenchmarkEntry,
-    BudgetEnvelope,
-    DeviceInfo,
-    ResultRecord,
-    RunManifest,
-)
+from evonn_shared.contracts import ArtifactPaths, BenchmarkEntry, BudgetEnvelope, DeviceInfo, ResultRecord, RunManifest
+from evonn_shared.manifests import benchmark_signature, fairness_manifest
 
 
 def export_hybrid_results(engine, output_dir: Path, pack_name: str) -> Path:
@@ -63,14 +56,34 @@ def export_hybrid_results(engine, output_dir: Path, pack_name: str) -> Path:
             config_snapshot="config_snapshot.json",
             report_markdown=report_path.name,
         ),
-        fairness={
-            "benchmark_pack_id": pack_name,
-            "seed": engine.config.seed,
-            "evaluation_count": engine.total_evaluations,
-            "budget_policy_name": "prototype_equal_budget",
-            "data_signature": _benchmark_signature(records),
-            "code_version": _code_version(),
-        },
+        fairness=fairness_manifest(
+            pack_name=pack_name,
+            seed=engine.config.seed,
+            evaluation_count=engine.total_evaluations,
+            budget_policy_name="prototype_equal_budget",
+            benchmark_entries=[
+                {
+                    "benchmark_id": record.benchmark_id,
+                    "task_kind": record.task,
+                    "metric_name": record.metric_name,
+                    "metric_direction": record.metric_direction,
+                }
+                for record in records
+            ],
+            data_signature=benchmark_signature(
+                pack_name,
+                [
+                    {
+                        "benchmark_id": record.benchmark_id,
+                        "task_kind": record.task,
+                        "metric_name": record.metric_name,
+                        "metric_direction": record.metric_direction,
+                    }
+                    for record in records
+                ],
+            ),
+            code_version=_code_version(),
+        ),
     )
 
     results = [
@@ -122,24 +135,6 @@ def _render_report(engine) -> str:
             f"| {record.benchmark_id} | {record.metric_name} | {metric_value} | {loss} | {record.genome_id} |"
         )
     return "\n".join(lines) + "\n"
-
-
-def _benchmark_signature(records) -> str:
-    payload = json.dumps(
-        [
-            {
-                "benchmark_id": record.benchmark_id,
-                "metric_name": record.metric_name,
-                "metric_direction": record.metric_direction,
-                "task": record.task,
-            }
-            for record in records
-        ],
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
-
 
 def _code_version() -> str | None:
     try:

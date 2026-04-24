@@ -6,8 +6,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from evonn_compare.contracts.models import ResultRecord, RunManifest
 from evonn_compare.contracts.parity import ParityPack
+from evonn_shared.contracts import ResultRecord, RunManifest
 
 
 class ValidationIssue(BaseModel):
