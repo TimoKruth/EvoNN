@@ -4,6 +4,7 @@ members = [
     "EvoNN-Contenders",
     "EvoNN-Primordia",
     "EvoNN-Prism",
+    "EvoNN-Shared",
     "EvoNN-Stratograph",
     "EvoNN-Topograph",
 ]

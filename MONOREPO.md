@@ -8,6 +8,7 @@ Current workspace members:
 - `EvoNN-Contenders`
 - `EvoNN-Primordia`
 - `EvoNN-Prism`
+- `EvoNN-Shared`
 - `EvoNN-Stratograph`
 - `EvoNN-Topograph`
 
@@ -19,6 +20,7 @@ runtime.
 Foundation packages:
 - `EvoNN-Compare`
 - `EvoNN-Contenders`
+- `EvoNN-Shared`
 - `shared-benchmarks/`
 
 Shared-infrastructure candidates that may deserve first-class umbrella modules
@@ -29,6 +31,10 @@ over time:
 - run-storage/schema helpers
 - telemetry/budget/seeding metadata models
 - CLI support helpers
+
+The first shared substrate package now lives in `EvoNN-Shared/` as `evonn_shared`.
+Its current role is intentionally narrow: shared compare/export contracts, minimal
+benchmark descriptors, budget metadata, and run identity helpers.
 
 Search packages:
 - `EvoNN-Primordia`
