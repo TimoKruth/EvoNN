@@ -13,7 +13,6 @@ import platform
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from statistics import median as stat_median
 from typing import Any
 
 try:
@@ -28,7 +27,7 @@ except importlib.metadata.PackageNotFoundError:
         _MLX_VERSION = None
 
 from evonn_shared.contracts import ArtifactPaths, BenchmarkEntry, BudgetEnvelope, DeviceInfo, ResultRecord, RunManifest
-from evonn_shared.manifests import benchmark_signature, fairness_manifest
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
 from prism.benchmarks.parity import get_canonical_id, load_parity_pack
 from prism.config import RunConfig, load_config
 from prism.genome import ModelGenome
@@ -453,21 +452,10 @@ def _write_summary_json(
     lineage_records: list[dict[str, Any]] | None = None,
 ) -> None:
     """Write summary.json with cross-system durability contract fields."""
-    best_fitness: dict[str, float] = {}
-    for record in results:
-        bid = record.get("benchmark_id", "")
-        mv = record.get("metric_value")
-        status = record.get("status", "")
-        if status == "ok" and mv is not None:
-            best_fitness[bid] = float(mv)
-
-    param_counts = [g.parameter_estimate for g in genomes if g.parameter_estimate > 0]
-    median_param_count = int(stat_median(param_counts)) if param_counts else 0
-
-    qualities = list(best_fitness.values())
-    median_quality = float(stat_median(qualities)) if qualities else None
-
-    failure_count = sum(1 for r in results if r.get("status") != "ok")
+    core = summary_core_from_results(
+        results=results,
+        parameter_counts=[g.parameter_estimate for g in genomes if g.parameter_estimate > 0],
+    )
     budget = manifest.get("budget", {})
     device = manifest.get("device", {})
     runtime_defaults = {
@@ -488,18 +476,12 @@ def _write_summary_json(
         "runtime_backend": device.get("framework") or runtime_defaults["framework"],
         "runtime_version": device.get("framework_version") or runtime_defaults["framework_version"],
         "precision_mode": device.get("precision_mode") or runtime_defaults["precision_mode"],
-        "best_fitness": best_fitness,
-        "median_parameter_count": median_param_count,
-        "median_benchmark_quality": median_quality,
-        "failure_count": failure_count,
-        "benchmarks_evaluated": len(best_fitness),
+        **core,
         "operator_mix": _operator_mix(lineage_records or []),
         "family_benchmark_wins": _family_benchmark_wins(best_per_benchmark or {}, genomes),
         "failure_patterns": _failure_patterns(results),
     }
-    (output_dir / "summary.json").write_text(
-        json.dumps(summary, indent=2), encoding="utf-8",
-    )
+    write_json(output_dir / "summary.json", summary)
 
 
 def _operator_mix(lineage_records: list[dict[str, Any]]) -> dict[str, int]:

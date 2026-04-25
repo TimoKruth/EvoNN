@@ -17,6 +17,7 @@ from evonn_shared.manifests import (
     default_artifact,
     default_data_signature,
     fairness_manifest,
+    summary_core_from_results,
     write_json,
 )
 from evonn_shared.runs import RunCoordinates
@@ -39,5 +40,6 @@ __all__ = [
     "default_artifact",
     "default_data_signature",
     "fairness_manifest",
+    "summary_core_from_results",
     "write_json",
 ]
