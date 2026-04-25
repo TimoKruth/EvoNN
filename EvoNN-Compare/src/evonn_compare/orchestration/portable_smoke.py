@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import hashlib
 import json
 from pathlib import Path
 import platform
@@ -21,6 +20,16 @@ from sklearn.preprocessing import StandardScaler
 
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.orchestration.benchmark_resolution import resolve_supported_benchmark_id
+from evonn_shared.contracts import (
+    ArtifactPaths,
+    BenchmarkEntry,
+    BudgetEnvelope,
+    DeviceInfo,
+    ResultRecord,
+    RunManifest,
+    SearchTelemetry,
+)
+from evonn_shared.manifests import benchmark_signature, fairness_manifest
 
 TaskKind = Literal["classification", "regression", "language_modeling"]
 
@@ -186,48 +195,49 @@ def _portable_export(
     pack_name = pack.name
     evaluation_count = int(pack.budget_policy.evaluation_count)
     wall_clock = round(time.perf_counter() - started, 4)
-    manifest = {
-        "schema_version": "1.0",
-        "system": system,
-        "run_id": run_dir.name,
-        "run_name": run_dir.name,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "pack_name": pack_name,
-        "seed": seed,
-        "benchmarks": benchmark_entries,
-        "budget": {
-            "evaluation_count": evaluation_count,
-            "epochs_per_candidate": int(pack.budget_policy.epochs_per_candidate),
-            "effective_training_epochs": epochs,
-            "wall_clock_seconds": wall_clock,
-            "generations": generations,
-            "population_size": population_size,
-            "budget_policy_name": "prototype_equal_budget",
-        },
-        "device": {
-            "device_name": platform.machine(),
-            "precision_mode": "fp32",
-            "framework": "portable-sklearn",
-            "framework_version": SKLEARN_VERSION,
-        },
-        "artifacts": {
-            "config_snapshot": "config.yaml",
-            "report_markdown": "report.md",
-            "dataset_manifest_json": "dataset_manifest.json",
-        },
-        "search_telemetry": {
-            "qd_enabled": False,
-            "effective_training_epochs": epochs,
-        },
-        "fairness": {
-            "benchmark_pack_id": pack_name,
-            "seed": seed,
-            "evaluation_count": evaluation_count,
-            "budget_policy_name": "prototype_equal_budget",
-            "data_signature": _benchmark_signature(pack_name, benchmark_entries),
-            "code_version": _code_version(),
-        },
-    }
+    manifest = RunManifest(
+        schema_version="1.0",
+        system=system,
+        run_id=run_dir.name,
+        run_name=run_dir.name,
+        created_at=datetime.now(timezone.utc),
+        pack_name=pack_name,
+        seed=seed,
+        benchmarks=[BenchmarkEntry(**entry) for entry in benchmark_entries],
+        budget=BudgetEnvelope(
+            evaluation_count=evaluation_count,
+            epochs_per_candidate=int(pack.budget_policy.epochs_per_candidate),
+            effective_training_epochs=epochs,
+            wall_clock_seconds=wall_clock,
+            generations=generations,
+            population_size=population_size,
+            budget_policy_name="prototype_equal_budget",
+        ),
+        device=DeviceInfo(
+            device_name=platform.machine(),
+            precision_mode="fp32",
+            framework="portable-sklearn",
+            framework_version=SKLEARN_VERSION,
+        ),
+        artifacts=ArtifactPaths(
+            config_snapshot="config.yaml",
+            report_markdown="report.md",
+            dataset_manifest_json="dataset_manifest.json",
+        ),
+        search_telemetry=SearchTelemetry(
+            qd_enabled=False,
+            effective_training_epochs=epochs,
+        ),
+        fairness=fairness_manifest(
+            pack_name=pack_name,
+            seed=seed,
+            evaluation_count=evaluation_count,
+            budget_policy_name="prototype_equal_budget",
+            benchmark_entries=benchmark_entries,
+            data_signature=benchmark_signature(pack_name, benchmark_entries),
+            code_version=_code_version(),
+        ),
+    )
     dataset_manifest = [
         {
             "benchmark_id": entry.benchmark_id,
@@ -273,9 +283,14 @@ def _portable_export(
             f"| {row['benchmark_id']} | {row['status']} | {row['metric_name']} | {'---' if value is None else f'{float(value):.6f}'} | {row.get('architecture_summary') or '—'} |"
         )
 
+    result_records = [ResultRecord(**row) for row in results]
+
     for target in {run_dir, resolved_output_dir}:
-        (target / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-        (target / "results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
+        (target / "manifest.json").write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+        (target / "results.json").write_text(
+            json.dumps([record.model_dump(mode="json") for record in result_records], indent=2),
+            encoding="utf-8",
+        )
         (target / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         (target / "report.md").write_text("\n".join(report_lines) + "\n", encoding="utf-8")
         (target / "dataset_manifest.json").write_text(json.dumps(dataset_manifest, indent=2), encoding="utf-8")
@@ -465,26 +480,6 @@ def _best_family(results: list[dict[str, Any]]) -> str | None:
     if not ok_rows:
         return None
     return str(ok_rows[0]["architecture_summary"]).split("[", 1)[0]
-
-
-def _benchmark_signature(pack_name: str, benchmark_entries: list[dict[str, Any]]) -> str:
-    raw = json.dumps(
-        {
-            "pack_name": pack_name,
-            "benchmarks": [
-                {
-                    "benchmark_id": entry.get("benchmark_id"),
-                    "task_kind": entry.get("task_kind"),
-                    "metric_name": entry.get("metric_name"),
-                    "metric_direction": entry.get("metric_direction"),
-                }
-                for entry in benchmark_entries
-            ],
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def _code_version() -> str | None:
