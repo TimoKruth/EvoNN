@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 
 from evonn_compare.contracts.parity import resolve_pack_path
+from evonn_compare.orchestration.lane_presets import resolve_lane_preset
 from evonn_compare.orchestration.fair_matrix import (
     prepare_fair_matrix_cases,
     run_fair_matrix_case,
@@ -15,9 +16,10 @@ from evonn_compare.orchestration.fair_matrix import (
 
 
 def fair_matrix(
-    pack: str = typer.Option(..., "--pack", help="Parity pack name or YAML path"),
-    seeds: str = typer.Option("42", "--seeds", help="Comma-separated seeds"),
-    budgets: str = typer.Option("76", "--budgets", help="Comma-separated budgets"),
+    pack: str | None = typer.Option(None, "--pack", help="Parity pack name or YAML path"),
+    preset: str | None = typer.Option(None, "--preset", help="Named lane preset (for example: smoke, local)"),
+    seeds: str | None = typer.Option(None, "--seeds", help="Comma-separated seeds"),
+    budgets: str | None = typer.Option(None, "--budgets", help="Comma-separated budgets"),
     workspace: str = typer.Option(..., "--workspace", help="Campaign workspace"),
     prism_root: str = typer.Option("EvoNN-Prism", "--prism-root"),
     topograph_root: str = typer.Option("EvoNN-Topograph", "--topograph-root"),
@@ -30,12 +32,17 @@ def fair_matrix(
 ) -> None:
     """Generate and optionally execute fair four-way compare cases."""
 
-    pack_path = resolve_pack_path(pack)
+    preset_spec = resolve_lane_preset(preset) if preset else None
+    pack_name = pack or (preset_spec.pack if preset_spec else None)
+    if pack_name is None:
+        raise typer.BadParameter("either --pack or --preset is required")
+
+    pack_path = resolve_pack_path(pack_name)
     paths, cases = prepare_fair_matrix_cases(
         pack_name=Path(pack_path).stem,
         base_pack_path=pack_path,
-        seeds=_parse_csv_ints(seeds),
-        budgets=_parse_csv_ints(budgets),
+        seeds=_parse_optional_csv_ints(seeds) or (list(preset_spec.seeds) if preset_spec else [42]),
+        budgets=_parse_optional_csv_ints(budgets) or (list(preset_spec.budgets) if preset_spec else [76]),
         workspace=Path(workspace),
         prism_root=Path(prism_root),
         topograph_root=Path(topograph_root),
@@ -70,3 +77,9 @@ def _parse_csv_ints(raw: str) -> list[int]:
     if not values:
         raise ValueError("expected at least one integer value")
     return [int(item) for item in values]
+
+
+def _parse_optional_csv_ints(raw: str | None) -> list[int] | None:
+    if raw is None:
+        return None
+    return _parse_csv_ints(raw)
