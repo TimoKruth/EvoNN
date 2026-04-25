@@ -31,6 +31,7 @@ except importlib.metadata.PackageNotFoundError:
         _MLX_VERSION = None
 
 import topograph
+from evonn_shared.manifests import benchmark_signature, fairness_manifest
 from topograph.benchmarks.parity import (
     get_canonical_id,
     load_parity_pack,
@@ -188,13 +189,14 @@ def export_symbiosis_contract(
             representative, benchmark_names, config, pack_name, run_dir,
         ),
         "search_telemetry": _search_telemetry(config, budget_meta),
-        "fairness": _fairness_manifest(
+        "fairness": fairness_manifest(
             pack_name=pack_name,
             seed=config.seed,
             evaluation_count=int(budget_manifest["evaluation_count"]),
             budget_policy_name="prototype_equal_budget",
             benchmark_entries=benchmark_entries,
-            data_signature=_benchmark_signature(pack_name, benchmark_entries),
+            data_signature=benchmark_signature(pack_name, benchmark_entries),
+            code_version=_code_version(),
         ),
     }
 
@@ -529,37 +531,6 @@ def _resolve_run_id(store: RunStore) -> str:
 def _compute_dataset_hash(benchmark_names: list[str]) -> str:
     key = "|".join(sorted(benchmark_names))
     return hashlib.sha256(key.encode()).hexdigest()[:16]
-
-
-def _fairness_manifest(
-    *,
-    pack_name: str,
-    seed: int,
-    evaluation_count: int,
-    budget_policy_name: str,
-    benchmark_entries: list[dict[str, Any]],
-    data_signature: str,
-) -> dict[str, Any]:
-    return {
-        "benchmark_pack_id": pack_name,
-        "seed": seed,
-        "evaluation_count": evaluation_count,
-        "budget_policy_name": budget_policy_name,
-        "data_signature": data_signature or _benchmark_signature(pack_name, benchmark_entries),
-        "code_version": _code_version(),
-    }
-
-
-def _benchmark_signature(pack_name: str, benchmark_entries: list[dict[str, Any]]) -> str:
-    payload = json.dumps(
-        {
-            "pack_name": pack_name,
-            "benchmarks": benchmark_entries,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def _code_version() -> str | None:
