@@ -54,6 +54,34 @@ def test_linear_svc_trains_on_iris() -> None:
     assert 0.0 <= float(record["metric_value"]) <= 1.0
 
 
+def test_diabetes_benchmark_loads_regression_data() -> None:
+    spec = get_benchmark("diabetes")
+    x_train, y_train, x_val, y_val = spec.load_data(seed=7)
+    assert x_train.shape[1] == 10
+    assert y_train.dtype.kind == "f"
+    assert y_val.dtype.kind == "f"
+
+
+def test_friedman1_benchmark_loads_regression_data() -> None:
+    spec = get_benchmark("friedman1")
+    x_train, y_train, x_val, y_val = spec.load_data(seed=7)
+    assert x_train.shape[1] == 10
+    assert y_train.dtype.kind == "f"
+    assert y_val.dtype.kind == "f"
+
+
+def test_hist_gb_trains_on_diabetes_regression() -> None:
+    record = _evaluate("diabetes", "tabular", "hist_gb")
+    assert record["status"] == "ok"
+    assert float(record["metric_value"]) >= 0.0
+
+
+def test_extra_trees_trains_on_friedman1_regression() -> None:
+    record = _evaluate("friedman1", "tabular", "extra_trees")
+    assert record["status"] == "ok"
+    assert float(record["metric_value"]) >= 0.0
+
+
 def test_new_contender_names_resolve() -> None:
     assert resolve_contenders("tabular", ["linear_svc", "xgb_small", "lgbm_small", "catboost_small"])
     assert resolve_contenders("image", ["cnn_small"])

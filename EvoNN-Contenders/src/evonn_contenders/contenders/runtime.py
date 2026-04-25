@@ -9,15 +9,22 @@ import math
 import warnings
 
 import numpy as np
-from sklearn.ensemble import ExtraTreesClassifier, HistGradientBoostingClassifier, RandomForestClassifier
+from sklearn.ensemble import (
+    ExtraTreesClassifier,
+    ExtraTreesRegressor,
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+    RandomForestClassifier,
+    RandomForestRegressor,
+)
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.kernel_approximation import Nystroem
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
-from sklearn.neural_network import MLPClassifier
+from sklearn.linear_model import LogisticRegression, Ridge
+from sklearn.metrics import accuracy_score, mean_squared_error
+from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.svm import LinearSVC, SVC
+from sklearn.svm import LinearSVC, LinearSVR, SVC, SVR
 
 from evonn_contenders.contenders.registry import ContenderSpec
 
@@ -220,6 +227,15 @@ def _run_classifier(
     y_val: np.ndarray,
     config: Any | None,
 ) -> tuple[float, int]:
+    if spec.task == "regression":
+        estimator = _build_regressor(spec, contender_name, seed, x_train, config)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=ConvergenceWarning)
+            estimator.fit(x_train, y_train)
+        y_pred = estimator.predict(x_val)
+        metric = float(mean_squared_error(y_val, y_pred))
+        return metric, _estimate_parameter_count(estimator)
+
     estimator = _build_classifier(spec, contender_name, seed, x_train, config)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=ConvergenceWarning)
@@ -298,6 +314,59 @@ def _build_classifier(
     if contender_name == "catboost_small":
         return _build_catboost(seed, num_classes=spec.model_output_dim, small=True)
     raise KeyError(f"Unknown classifier contender: {contender_name}")
+
+
+def _build_regressor(
+    spec: Any,
+    contender_name: str,
+    seed: int,
+    x_train: np.ndarray,
+    config: Any | None,
+) -> Any:
+    if contender_name == "hist_gb":
+        return HistGradientBoostingRegressor(random_state=seed)
+    if contender_name == "hist_gb_small":
+        return HistGradientBoostingRegressor(max_depth=6, max_leaf_nodes=15, random_state=seed)
+    if contender_name == "hist_gb_leaf63":
+        return HistGradientBoostingRegressor(max_leaf_nodes=63, learning_rate=0.05, random_state=seed)
+    if contender_name == "hist_gb_deep":
+        return HistGradientBoostingRegressor(max_depth=12, max_leaf_nodes=63, learning_rate=0.05, random_state=seed)
+    if contender_name == "extra_trees":
+        return ExtraTreesRegressor(n_estimators=256, random_state=seed, n_jobs=-1)
+    if contender_name == "extra_trees_small":
+        return ExtraTreesRegressor(n_estimators=128, max_depth=12, random_state=seed, n_jobs=-1)
+    if contender_name == "extra_trees_deep":
+        return ExtraTreesRegressor(n_estimators=384, max_depth=None, min_samples_leaf=1, random_state=seed, n_jobs=-1)
+    if contender_name == "random_forest":
+        return RandomForestRegressor(n_estimators=256, random_state=seed, n_jobs=-1)
+    if contender_name == "random_forest_small":
+        return RandomForestRegressor(n_estimators=128, max_depth=12, random_state=seed, n_jobs=-1)
+    if contender_name == "random_forest_deep":
+        return RandomForestRegressor(n_estimators=384, max_depth=None, min_samples_leaf=1, random_state=seed, n_jobs=-1)
+    if contender_name == "mlp":
+        return _build_mlp_regressor(seed, hidden_layer_sizes=(128, 64), max_iter=150)
+    if contender_name == "mlp_small":
+        return _build_mlp_regressor(seed, hidden_layer_sizes=(64, 32), max_iter=120)
+    if contender_name == "mlp_wide":
+        return _build_mlp_regressor(seed, hidden_layer_sizes=(256, 128), max_iter=180)
+    if contender_name == "mlp_deep":
+        return _build_mlp_regressor(seed, hidden_layer_sizes=(256, 128, 64), max_iter=180)
+    if contender_name in {"logistic", "logistic_c1", "logistic_c10", "logistic_balanced"}:
+        alpha = {
+            "logistic": 1.0,
+            "logistic_c1": 10.0,
+            "logistic_c10": 0.1,
+            "logistic_balanced": 1.0,
+        }[contender_name]
+        return _build_ridge_regressor(alpha=alpha)
+    if contender_name in {"linear_svc", "linear_svc_balanced"}:
+        return _build_linear_svr(seed)
+    if contender_name == "rbf_svc_small":
+        _check_kernel_svm_guardrails(spec, x_train, config)
+        return _build_rbf_svr()
+    if contender_name == "svm_nystroem_rbf":
+        return _build_nystroem_svr(seed, x_train.shape[1], len(x_train))
+    raise KeyError(f"Unknown regression contender: {contender_name}")
 
 
 def _run_ngram_language_model(
@@ -471,6 +540,23 @@ def _build_mlp(seed: int, *, hidden_layer_sizes: tuple[int, ...], max_iter: int)
     )
 
 
+def _build_mlp_regressor(seed: int, *, hidden_layer_sizes: tuple[int, ...], max_iter: int) -> Pipeline:
+    return Pipeline(
+        [
+            ("scale", StandardScaler()),
+            (
+                "reg",
+                MLPRegressor(
+                    hidden_layer_sizes=hidden_layer_sizes,
+                    max_iter=max_iter,
+                    early_stopping=True,
+                    random_state=seed,
+                ),
+            ),
+        ]
+    )
+
+
 def _build_logistic(seed: int, *, c: float, class_weight: str | None) -> Pipeline:
     return Pipeline(
         [
@@ -485,6 +571,15 @@ def _build_logistic(seed: int, *, c: float, class_weight: str | None) -> Pipelin
                     random_state=seed,
                 ),
             ),
+        ]
+    )
+
+
+def _build_ridge_regressor(*, alpha: float) -> Pipeline:
+    return Pipeline(
+        [
+            ("scale", StandardScaler()),
+            ("reg", Ridge(alpha=alpha)),
         ]
     )
 
@@ -507,11 +602,29 @@ def _build_linear_svc(seed: int, *, class_weight: str | None) -> Pipeline:
     )
 
 
+def _build_linear_svr(seed: int) -> Pipeline:
+    return Pipeline(
+        [
+            ("scale", StandardScaler()),
+            ("reg", LinearSVR(C=1.0, random_state=seed, max_iter=4000)),
+        ]
+    )
+
+
 def _build_rbf_svc(seed: int) -> Pipeline:
     return Pipeline(
         [
             ("scale", StandardScaler()),
             ("clf", SVC(C=2.0, kernel="rbf", gamma="scale", random_state=seed)),
+        ]
+    )
+
+
+def _build_rbf_svr() -> Pipeline:
+    return Pipeline(
+        [
+            ("scale", StandardScaler()),
+            ("reg", SVR(C=2.0, kernel="rbf", gamma="scale")),
         ]
     )
 
@@ -523,6 +636,17 @@ def _build_nystroem_svc(seed: int, input_dim: int, train_rows: int) -> Pipeline:
             ("scale", StandardScaler()),
             ("kernel", Nystroem(kernel="rbf", gamma=0.5, n_components=components, random_state=seed)),
             ("clf", LinearSVC(C=1.0, random_state=seed, max_iter=4000, dual="auto")),
+        ]
+    )
+
+
+def _build_nystroem_svr(seed: int, input_dim: int, train_rows: int) -> Pipeline:
+    components = min(256, max(32, input_dim * 4), train_rows)
+    return Pipeline(
+        [
+            ("scale", StandardScaler()),
+            ("kernel", Nystroem(kernel="rbf", gamma=0.5, n_components=components, random_state=seed)),
+            ("reg", LinearSVR(C=1.0, random_state=seed, max_iter=4000)),
         ]
     )
 
