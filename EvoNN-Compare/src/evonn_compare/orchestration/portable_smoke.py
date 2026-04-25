@@ -29,7 +29,7 @@ from evonn_shared.contracts import (
     RunManifest,
     SearchTelemetry,
 )
-from evonn_shared.manifests import benchmark_signature, fairness_manifest, write_json
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
 
 TaskKind = Literal["classification", "regression", "language_modeling"]
 
@@ -247,6 +247,14 @@ def _portable_export(
         }
         for entry in pack.benchmarks
     ]
+    core = summary_core_from_results(
+        results=results,
+        parameter_counts=[
+            int(row["parameter_count"])
+            for row in results
+            if row.get("status") == "ok" and row.get("parameter_count") is not None
+        ],
+    )
     summary = {
         "system": system,
         "run_id": run_dir.name,
@@ -255,11 +263,9 @@ def _portable_export(
         "runtime_version": SKLEARN_VERSION,
         "precision_mode": "fp32",
         "total_evaluations": evaluation_count,
-        "benchmarks_evaluated": sum(1 for row in results if row["status"] == "ok"),
-        "failure_count": sum(1 for row in results if row["status"] == "failed"),
+        **core,
         "wall_clock_seconds": wall_clock,
         "best_results": best_results,
-        "failure_patterns": failures,
         "best_family": _best_family(results) if system == "prism" else None,
     }
     report_lines = [

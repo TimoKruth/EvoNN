@@ -5,13 +5,11 @@ import json
 import platform
 import shutil
 import subprocess
-from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from statistics import median as stat_median
 from typing import Any
 
-from evonn_shared.manifests import benchmark_signature, fairness_manifest, write_json
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
 
 from evonn_primordia.benchmarks import get_benchmark
 from evonn_primordia.benchmarks.parity import fallback_native_id, load_parity_pack
@@ -210,29 +208,14 @@ def _build_compare_summary(
     results: list[dict[str, Any]],
     evaluation_count: int,
 ) -> dict[str, Any]:
-    best_fitness: dict[str, float] = {}
-    ok_param_counts: list[int] = []
-    quality_values: list[float] = []
-    non_ok_results = [record for record in results if record.get("status") != "ok"]
-    failure_patterns = dict(
-        Counter(
-            str(record.get("failure_reason") or record.get("status") or "unknown")
-            for record in non_ok_results
-        ).most_common()
+    core = summary_core_from_results(
+        results=results,
+        parameter_counts=[
+            int(record["parameter_count"])
+            for record in results
+            if record.get("status") == "ok" and record.get("parameter_count") is not None
+        ],
     )
-    for record in results:
-        if record.get("status") != "ok":
-            continue
-        benchmark_id = str(record.get("benchmark_id") or "")
-        metric_value = record.get("metric_value")
-        if benchmark_id and metric_value is not None:
-            best_fitness[benchmark_id] = float(metric_value)
-        parameter_count = record.get("parameter_count")
-        if parameter_count is not None:
-            ok_param_counts.append(int(parameter_count))
-        quality = record.get("quality")
-        if quality is not None:
-            quality_values.append(float(quality))
 
     return {
         "system": "primordia",
@@ -245,12 +228,7 @@ def _build_compare_summary(
         "runtime_backend": summary.get("runtime", "unknown"),
         "runtime_version": summary.get("runtime_version") or "unknown",
         "precision_mode": summary.get("precision_mode", "unknown"),
-        "best_fitness": best_fitness,
-        "median_parameter_count": int(stat_median(ok_param_counts)) if ok_param_counts else 0,
-        "median_benchmark_quality": float(stat_median(quality_values)) if quality_values else None,
-        "failure_count": len(non_ok_results),
-        "failure_patterns": failure_patterns,
-        "benchmarks_evaluated": len(best_fitness),
+        **core,
         "wall_clock_seconds": summary.get("wall_clock_seconds"),
         "primitive_usage": summary.get("primitive_usage", {}),
         "group_counts": summary.get("group_counts", {}),

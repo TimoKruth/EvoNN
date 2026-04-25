@@ -7,10 +7,9 @@ import platform
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from statistics import median as stat_median
 from typing import Any
 
-from evonn_shared.manifests import benchmark_signature, fairness_manifest, write_json
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
 
 import stratograph
 from stratograph.benchmarks import get_benchmark
@@ -207,24 +206,14 @@ def _write_contract_summary_json(
     report_context: dict[str, Any],
 ) -> None:
     """Write cross-system summary.json for Stratograph exports."""
-    best_fitness: dict[str, float] = {}
-    ok_param_counts: list[int] = []
-    quality_values: list[float] = []
-    for record in results:
-        if record.get("status") != "ok":
-            continue
-        benchmark_id = str(record.get("benchmark_id") or "")
-        metric_value = record.get("metric_value")
-        if benchmark_id and metric_value is not None:
-            best_fitness[benchmark_id] = float(metric_value)
-        parameter_count = record.get("parameter_count")
-        if parameter_count is not None:
-            ok_param_counts.append(int(parameter_count))
-        quality = record.get("quality")
-        if quality is not None:
-            quality_values.append(float(quality))
-
-    failure_count = sum(1 for record in results if record.get("status") != "ok")
+    core = summary_core_from_results(
+        results=results,
+        parameter_counts=[
+            int(record["parameter_count"])
+            for record in results
+            if record.get("status") == "ok" and record.get("parameter_count") is not None
+        ],
+    )
     budget = manifest.get("budget", {})
     device = manifest.get("device", {})
     status_payload = report_context.get("status", {})
@@ -245,11 +234,7 @@ def _write_contract_summary_json(
         "runtime_backend": device.get("framework", "unknown"),
         "runtime_version": device.get("framework_version") or "unknown",
         "precision_mode": device.get("precision_mode", "unknown"),
-        "best_fitness": best_fitness,
-        "median_parameter_count": int(stat_median(ok_param_counts)) if ok_param_counts else 0,
-        "median_benchmark_quality": float(stat_median(quality_values)) if quality_values else None,
-        "failure_count": failure_count,
-        "benchmarks_evaluated": len(best_fitness),
+        **core,
         "failure_patterns": dict(summarize_failure_patterns(non_ok_results)),
         "completed_benchmarks": status_payload.get("completed_count", len(results)),
         "remaining_benchmarks": status_payload.get("remaining_count", 0),
