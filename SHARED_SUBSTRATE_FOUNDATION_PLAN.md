@@ -39,6 +39,10 @@ Keep package-local unless evidence says otherwise:
 - search coordinators
 - engine-specific telemetry above the umbrella minimum contract
 
+Interpretation rule:
+- shared substrate means a shared minimum compare/export surface, not shared engine behavior semantics
+- shared helpers must preserve existing field meaning unless a behavior change is explicit, tested, and intentionally adopted across consumers
+
 ## Current Known Progress
 
 Already established in the branch/history:
@@ -84,17 +88,21 @@ Recent commits that materially advanced the plan:
 - `4aea70f` — `refactor: add shared json artifact writers`
 - `c2c0915` — `refactor: share export summary core logic`
 - `bef3d9a` — `refactor: extend shared summary core across exporters`
+- `5b0f947` — `fix shared summary median quality semantics`
+- `fbaf5e5` — `feat: add named compare lane presets`
 
 Important implementation lessons learned during execution:
 - Linux and macOS verification paths differ in practice because Prism/Topograph MLX flows are macOS-specific; hook/test policy must keep Linux from pretending to validate MLX paths it cannot execute
 - package-local exporters can converge on common compare/report surfaces without forcing the search runtimes themselves to merge
 - the cleanest substrate progress so far has come from pulling duplicated manifest/fairness/summary/report plumbing into `evonn_shared` first, then rewiring call sites package by package
+- shared summary/helper extraction is not automatically semantics-preserving; compatibility-focused regression tests need to land with each shared-helper move, not after it
 
 Current status by milestone:
 - Milestone 1: largely advanced, though some compatibility re-export cleanup may still remain
 - Milestone 2: materially underway; shared manifest/fairness helpers, shared JSON writers, and shared summary-core logic now exist and are in active use
 - Milestone 3: underway; Prism, Contenders, Topograph, Primordia, Stratograph, and Compare portable smoke have all been moved closer to the same compare/export substrate
-- Milestones 4-6: still ahead; these now depend more on compare-lane definition, reporting/trend surfaces, and workflow default decisions than on basic substrate scaffolding
+- Milestone 4: partly advanced; named lane presets now exist in Compare, but the lane still needs explicit acceptance rules, repeatability checks, and routine execution
+- Milestones 5-6: still ahead; these now depend more on reporting/trend surfaces and workflow default decisions than on basic substrate scaffolding
 
 ## Milestones
 
@@ -141,6 +149,7 @@ Current read:
 - shared JSON artifact writing helpers are landed
 - shared summary-core logic is landed and already reused across multiple exporters
 - remaining work is to decide how far to push toward a true canonical manifest builder versus keeping some per-package manifest assembly while sharing the derived/core logic
+- the quality bar here must be semantic compatibility, not just reduced duplication
 
 Implementation notes:
 - a practical substrate line has emerged:
@@ -148,6 +157,7 @@ Implementation notes:
   - share JSON artifact writing
   - share summary-core derivation
   - leave package-specific extra summary/report fields local unless commonality becomes obvious
+- every shared-helper extraction in this area should ship with focused compatibility tests against at least one existing exporter/consumer path
 
 ### Milestone 3 — Contenders/Prism/Topograph export convergence
 
@@ -173,6 +183,11 @@ Current read:
 - Compare portable smoke now participates in the same substrate direction, which is useful for low-cost compare lanes
 - the remaining gap is less about basic export contract shape and more about compare-lane orchestration, adapter simplification, and elimination of leftover Compare-local special handling
 
+Concrete leftovers to close:
+- reduce or explicitly bless compatibility re-exports that still exist only to preserve older Compare import paths
+- replace brittle Compare-side orchestration behavior that depends on matching human-readable contender cache-miss text
+- document which Compare-side engine-specific branches are still intentional after the export surface converges
+
 ### Milestone 4 — Small-budget compare lane
 
 Objective:
@@ -196,6 +211,22 @@ Additional detail captured from later discussion:
 - the lane should prefer artifacts that are valid on Linux fallback paths while remaining meaningful on macOS-native Prism/Topograph flows
 - acceptance should include artifact completeness, fairness metadata completeness, and rerun-to-rerun sanity stability
 
+Operational decision for now:
+- the provisional smallest named lane is Compare preset `smoke`
+- that preset currently means:
+  - pack: `tier1_core_smoke`
+  - seeds: `42`
+  - budgets: `16`
+  - purpose: lowest-cost repeatable contract/artifact validation lane
+
+Phase-1 acceptance for this milestone:
+- the `smoke` preset runs end-to-end from Compare in a single command path
+- the lane covers both at least one classification case and at least one regression case
+- each participating system emits `manifest.json`, `results.json`, and `summary.json`
+- the compare lane emits a fair-matrix summary/report artifact without ad hoc post-processing
+- rerunning the same preset must not produce contract/fairness incompatibility due to substrate drift
+- any remaining incomparables must be attributable to declared engine/task limitations, not contract/schema breakage
+
 ### Milestone 5 — Trend-capable reporting
 
 Objective:
@@ -217,6 +248,19 @@ Additional detail captured from later discussion:
 - failures need to stay first-class in the reporting surface, not just success-only aggregates
 - compare summaries should preserve enough shared structure that longitudinal reporting can be built on top of them rather than rebuilt per engine
 
+Phase-1 acceptance for this milestone:
+- trend inputs are derived from structured JSON artifacts, not markdown scraping
+- the minimum longitudinal dimensions are fixed and documented:
+  - engine
+  - benchmark
+  - pack
+  - budget
+  - seed
+  - outcome status
+  - metric direction/value
+  - fairness metadata
+- repeated `smoke` lane runs can be appended to a single trend dataset without per-engine parsers
+
 ### Milestone 6 — Prism default operating path
 
 Objective:
@@ -237,21 +281,23 @@ Additional detail captured from later discussion:
 - “Prism default” does not mean “Topograph neglected”
 - the point is a default operating path plus a real challenger lane, not a de facto monoculture
 - any remaining Compare-side engine-specific branches should be either eliminated or justified explicitly
+- this milestone should follow a credible compare lane and reporting surface; it is not the proof point for the branch by itself
 
 ## Suggested KPIs
 
 ### Platform KPIs
-- time to run the smallest compare lane
-- number of packages using shared contracts
-- number of engine-specific branches left in Compare
-- percent of compare/export logic sourced from `evonn_shared`
-- repeatability of small-budget runs
+- one named smallest lane preset exists in Compare and is stable: `smoke`
+- `smoke` lane is executable through a single Compare entrypoint
+- number of packages using shared contracts continues upward from the current baseline
+- number of unexplained engine-specific branches left in Compare trends toward zero
+- number of compatibility regressions introduced by shared-helper refactors trends toward zero
+- repeated `smoke` runs stay contract-valid and artifact-complete
 
 ### Research KPIs
-- Prism vs Topograph comparable on fixed tasks
-- Contenders vs Prism comparable on fixed tasks
-- artifact completeness and trendability across reruns
-- ability to explain losses/wins with shared budget/fairness context
+- Prism vs Topograph are comparable on the fixed `smoke` lane
+- Contenders vs Prism are comparable on the fixed `smoke` lane where task support overlaps
+- artifact completeness and trendability hold across repeated `smoke` reruns
+- losses/wins can be explained with shared budget/fairness context instead of package-local interpretation only
 
 ## Working Rules
 
@@ -267,10 +313,17 @@ Additional detail captured from later discussion:
 1. finish the remaining shared-contract / compatibility cleanup
 2. decide whether to introduce a fuller canonical manifest builder or keep manifest assembly package-local while the shared derived/core helpers grow
 3. finish export convergence for the engines that matter to the low-cost compare lane first
-4. define the small-budget compare lane explicitly (benchmarks + budget + acceptance criteria)
-5. wire that lane through Compare/reporting so it is genuinely repeatable
+4. treat Compare preset `smoke` as the provisional smallest lane and finish its acceptance criteria, comparability rules, and routine rerun path
+5. wire that lane through Compare/reporting so it is genuinely repeatable and trend-ingestible
 6. harden artifact/report structure for trend tracking
 7. switch more docs/workflows to Prism as default while preserving Topograph as the first challenger
+
+## Open Technical Leftovers
+
+- `evonn_compare.contracts.models` is still a compatibility re-export layer and should either be retired or declared stable on purpose
+- Compare-side contender orchestration still has at least one brittle string-matching path around baseline cache misses
+- the boundary between canonical shared manifest derivation and package-local manifest assembly still needs an explicit decision
+- Compare should document which remaining engine-specific branches are intentional after substrate convergence and which are debt
 
 ## Known Risks / Watchouts
 
@@ -278,9 +331,13 @@ Additional detail captured from later discussion:
 - do not over-share engine-specific telemetry or search-core semantics just because the export/report substrate is converging
 - do not let the shared substrate stop at file-format cleanup; it needs to cash out in a real repeatable compare lane
 - do not let the compare lane become classification-only if the long-term goal is cross-task evidence
+- do not accept reduced duplication as success if the resulting shared helpers subtly change field semantics or comparability rules
 
 ## Success State
 
 This plan succeeds when EvoNN has a real shared research substrate instead of a
-partial scaffold, and when that substrate supports an honest, repeatable,
-small-budget Prism-vs-Topograph comparison lane with trend-capable artifacts.
+partial scaffold, and when that substrate supports:
+- a concrete, routinely rerunnable Compare lane beginning with the named `smoke` preset
+- honest Prism-vs-Topograph and Contender-vs-Prism comparisons on a shared minimum fairness surface
+- trend-capable structured artifacts that accumulate over time without per-engine parsing hacks
+- a default-Prism operating path that is earned by comparable evidence rather than assumed in advance
