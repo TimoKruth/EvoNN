@@ -170,9 +170,9 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
 
     manifest = {"run_id": "demo", "budget": {"evaluation_count": 3, "wall_clock_seconds": 12.5}}
     results = [
-        {"benchmark_id": "moons", "metric_value": 0.91, "status": "ok"},
-        {"benchmark_id": "iris", "metric_value": 0.95, "status": "ok"},
-        {"benchmark_id": "bad", "metric_value": None, "status": "failed"},
+        {"benchmark_id": "moons", "metric_value": 0.91, "quality": 9.1, "status": "ok"},
+        {"benchmark_id": "iris", "metric_value": 0.95, "quality": 9.5, "status": "ok"},
+        {"benchmark_id": "bad", "metric_value": None, "quality": -999.0, "status": "failed"},
     ]
     best_per_benchmark = {
         "moons": {"genome_id": genome_b.genome_id},
@@ -200,6 +200,7 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
     assert summary["generations_completed"] == 2
     assert summary["failure_count"] == 1
     assert summary["benchmarks_evaluated"] == 2
+    assert summary["median_benchmark_quality"] == pytest.approx(0.93)
     assert summary["runtime_backend"] == "mlx"
     assert summary["precision_mode"] == "fp32"
     assert summary["operator_mix"]["mutation:width"] == 1

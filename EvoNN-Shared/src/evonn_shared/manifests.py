@@ -31,7 +31,6 @@ def summary_core_from_results(
     """Derive the common summary-core fields shared by compare/export surfaces."""
 
     best_fitness: dict[str, float] = {}
-    quality_values: list[float] = []
     failure_labels: dict[str, int] = {}
 
     for record in results:
@@ -40,10 +39,6 @@ def summary_core_from_results(
         benchmark_id = record.get("benchmark_id")
         if status == "ok" and benchmark_id and metric_value is not None:
             best_fitness[str(benchmark_id)] = float(metric_value)
-
-        quality = record.get("quality")
-        if quality is not None:
-            quality_values.append(float(quality))
 
         reason = record.get("failure_reason") or (status if status not in {None, "ok"} else None)
         if reason is not None:
@@ -57,7 +52,7 @@ def summary_core_from_results(
     if params and len(params) % 2 == 0:
         median_param_count = int((params[len(params) // 2 - 1] + params[len(params) // 2]) / 2)
 
-    qualities = sorted(quality_values)
+    qualities = sorted(best_fitness.values())
     median_quality = None
     if qualities:
         mid = len(qualities) // 2
