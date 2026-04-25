@@ -29,7 +29,7 @@ from evonn_shared.contracts import (
     RunManifest,
     SearchTelemetry,
 )
-from evonn_shared.manifests import benchmark_signature, fairness_manifest
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, write_json
 
 TaskKind = Literal["classification", "regression", "language_modeling"]
 
@@ -287,22 +287,16 @@ def _portable_export(
 
     for target in {run_dir, resolved_output_dir}:
         (target / "manifest.json").write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
-        (target / "results.json").write_text(
-            json.dumps([record.model_dump(mode="json") for record in result_records], indent=2),
-            encoding="utf-8",
-        )
-        (target / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        write_json(target / "results.json", [record.model_dump(mode="json") for record in result_records])
+        write_json(target / "summary.json", summary)
         (target / "report.md").write_text("\n".join(report_lines) + "\n", encoding="utf-8")
-        (target / "dataset_manifest.json").write_text(json.dumps(dataset_manifest, indent=2), encoding="utf-8")
+        write_json(target / "dataset_manifest.json", dataset_manifest)
         if not (target / "config.yaml").exists() and config_path.exists():
             shutil.copy2(config_path, target / "config.yaml")
 
     if log_dir is not None:
         log_dir.mkdir(parents=True, exist_ok=True)
-        (log_dir / f"{system}_portable_smoke.log").write_text(
-            json.dumps({"pack": pack_name, "results": results}, indent=2),
-            encoding="utf-8",
-        )
+        write_json(log_dir / f"{system}_portable_smoke.log", {"pack": pack_name, "results": results})
 
     return PortableArtifacts(
         run_dir=run_dir,

@@ -11,7 +11,7 @@ from pathlib import Path
 from statistics import median as stat_median
 from typing import Any
 
-from evonn_shared.manifests import benchmark_signature, fairness_manifest
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, write_json
 
 from evonn_primordia.benchmarks import get_benchmark
 from evonn_primordia.benchmarks.parity import fallback_native_id, load_parity_pack
@@ -172,8 +172,8 @@ def export_symbiosis_contract(
     }
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    results_path.write_text(json.dumps(result_records, indent=2), encoding="utf-8")
+    write_json(manifest_path, manifest)
+    write_json(results_path, result_records)
     return manifest_path, results_path
 
 
@@ -201,7 +201,7 @@ def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]])
 
 
 def _write_summary_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_json(path, payload)
 
 
 def _build_compare_summary(

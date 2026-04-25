@@ -17,6 +17,12 @@ def default_artifact(run_dir: Path, *candidates: str) -> str:
     return candidates[0]
 
 
+def write_json(path: Path, payload: Any, *, indent: int = 2) -> None:
+    """Write a JSON artifact using the common export formatting."""
+
+    path.write_text(json.dumps(payload, indent=indent), encoding="utf-8")
+
+
 def benchmark_signature(pack_name: str | None, benchmark_entries: list[dict[str, Any]]) -> str:
     """Stable signature for a benchmark pack plus benchmark contract rows."""
 

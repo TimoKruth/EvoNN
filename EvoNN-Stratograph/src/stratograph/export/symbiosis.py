@@ -10,7 +10,7 @@ from pathlib import Path
 from statistics import median as stat_median
 from typing import Any
 
-from evonn_shared.manifests import benchmark_signature, fairness_manifest
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, write_json
 
 import stratograph
 from stratograph.benchmarks import get_benchmark
@@ -159,8 +159,8 @@ def export_symbiosis_contract(
     }
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    results_path.write_text(json.dumps(result_records, indent=2), encoding="utf-8")
+    write_json(manifest_path, manifest)
+    write_json(results_path, result_records)
     _write_contract_summary_json(
         output_dir,
         manifest,
@@ -195,7 +195,7 @@ def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]])
 
 
 def _write_summary_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_json(path, payload)
 
 
 def _write_contract_summary_json(
@@ -266,7 +266,7 @@ def _write_contract_summary_json(
             "avg_cell_depth": float(representative_genome.average_cell_depth),
             "reuse_ratio": float(representative_genome.reuse_ratio),
         }
-    (output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    write_json(output_dir / "summary.json", summary)
 
 
 def _code_version() -> str | None:

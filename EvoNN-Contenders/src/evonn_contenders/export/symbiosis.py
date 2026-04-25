@@ -15,7 +15,7 @@ from evonn_contenders.config import load_config
 from evonn_contenders.export.report import write_report
 from evonn_contenders.storage import RunStore
 from evonn_shared.contracts import ArtifactPaths, BenchmarkEntry, BudgetEnvelope, DeviceInfo, ResultRecord, RunManifest
-from evonn_shared.manifests import benchmark_signature, fairness_manifest
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, write_json
 
 
 def export_symbiosis_contract(
@@ -140,10 +140,7 @@ def export_symbiosis_contract(
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
     manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
-    results_path.write_text(
-        json.dumps([record.model_dump(mode="json") for record in result_records], indent=2),
-        encoding="utf-8",
-    )
+    write_json(results_path, [record.model_dump(mode="json") for record in result_records])
     return manifest_path, results_path
 
 
@@ -171,7 +168,7 @@ def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]])
 
 
 def _write_summary_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_json(path, payload)
 
 
 def _export_budget_policy_name(name: Any) -> str:
