@@ -61,6 +61,32 @@ def test_fair_matrix_markdown_splits_fair_and_reference_rows(tmp_path: Path) -> 
     assert "| 64 | 42 |" in markdown
 
 
+def test_fair_matrix_markdown_includes_lane_metadata() -> None:
+    from evonn_compare.comparison.fair_matrix import LaneMetadata
+
+    summary = build_matrix_summary(
+        pack_name="tier1_core_smoke_eval16",
+        lane=LaneMetadata(
+            preset="smoke",
+            pack_name="tier1_core_smoke_eval16",
+            expected_budget=16,
+            expected_seed=42,
+            artifact_completeness_ok=True,
+            fairness_ok=True,
+            repeatability_ready=True,
+        ),
+        fair_rows=[],
+        reference_rows=[],
+        parity_rows=[],
+    )
+
+    markdown = render_fair_matrix_markdown(summary)
+
+    assert "## Lane Metadata" in markdown
+    assert "- Preset: `smoke`" in markdown
+    assert "- Repeatability Ready: `yes`" in markdown
+
+
 def test_fair_matrix_reference_row_for_nonfair_pair(tmp_path: Path) -> None:
     pack = load_parity_pack(PACK_PATH)
     systems = {

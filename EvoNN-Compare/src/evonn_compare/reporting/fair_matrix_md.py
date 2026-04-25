@@ -9,10 +9,29 @@ def render_fair_matrix_markdown(summary: FairMatrixSummary) -> str:
     lines = [
         f"# Fair Matrix: {summary.pack_name}",
         "",
+    ]
+    if summary.lane is not None:
+        lines.extend(
+            [
+                "## Lane Metadata",
+                "",
+                f"- Preset: `{summary.lane.preset or 'custom'}`",
+                f"- Pack: `{summary.lane.pack_name}`",
+                f"- Expected Budget: `{summary.lane.expected_budget}`",
+                f"- Expected Seed: `{summary.lane.expected_seed}`",
+                f"- Artifact Completeness: `{'ok' if summary.lane.artifact_completeness_ok else 'incomplete'}`",
+                f"- Fairness Status: `{'ok' if summary.lane.fairness_ok else 'reference-only'}`",
+                f"- Repeatability Ready: `{'yes' if summary.lane.repeatability_ready else 'no'}`",
+                "",
+            ]
+        )
+    lines.extend(
+        [
         "## Fair Search-Budget Results",
         "",
         _result_header(summary.systems, include_note=False),
     ]
+    )
     if summary.fair_rows:
         for row in summary.fair_rows:
             lines.append(_result_row(summary.systems, row, include_note=False))

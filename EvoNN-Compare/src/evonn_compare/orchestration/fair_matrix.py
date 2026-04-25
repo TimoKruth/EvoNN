@@ -32,6 +32,7 @@ from evonn_compare.orchestration.portable_smoke import (
 )
 from evonn_compare.orchestration.primordia import ensure_primordia_export
 from evonn_compare.reporting import render_comparison_markdown, render_fair_matrix_markdown
+from evonn_compare.comparison.fair_matrix import LaneMetadata
 
 
 COMPARE_ROOT = Path(__file__).resolve().parents[3]
@@ -60,6 +61,7 @@ class MatrixPaths:
 @dataclass(frozen=True)
 class MatrixCase:
     pack_name: str
+    lane_preset: str | None
     seed: int
     budget: int
     pack_path: Path
@@ -99,6 +101,7 @@ def prepare_fair_matrix_cases(
     primordia_root: Path = DEFAULT_PRIMORDIA_ROOT,
     contenders_root: Path = DEFAULT_CONTENDERS_ROOT,
     include_contenders: bool = True,
+    lane_preset: str | None = None,
 ) -> tuple[MatrixPaths, list[MatrixCase]]:
     workspace = workspace.resolve()
     paths = MatrixPaths(
@@ -146,6 +149,7 @@ def prepare_fair_matrix_cases(
             report_dir = paths.reports_dir / case_name
             case = MatrixCase(
                 pack_name=pack.name,
+                lane_preset=lane_preset,
                 seed=seed,
                 budget=budget,
                 pack_path=pack_path,
@@ -502,6 +506,7 @@ def run_fair_matrix_case(
     )
     summary = build_matrix_summary(
         pack_name=case.pack_name,
+        lane=_build_lane_metadata(case=case, runs=runs, pair_results=pair_results),
         fair_rows=[fair_row] if fair_row is not None else [],
         reference_rows=[reference_row] if reference_row is not None else [],
         parity_rows=parity_rows,
@@ -513,6 +518,49 @@ def run_fair_matrix_case(
         encoding="utf-8",
     )
     return case.summary_output_path
+
+
+def _build_lane_metadata(
+    *,
+    case: MatrixCase,
+    runs: dict[str, tuple[Any, list[Any]]],
+    pair_results: dict[tuple[str, str], tuple[Any, Path]],
+) -> LaneMetadata:
+    artifact_completeness_ok = True
+    for system, (manifest, _results) in runs.items():
+        run_dir = _run_dir_for_system(case, system)
+        required = [run_dir / "manifest.json", run_dir / "results.json", run_dir / "report.md"]
+        dataset_manifest = getattr(manifest.artifacts, "dataset_manifest_json", None)
+        if dataset_manifest:
+            required.append(run_dir / str(dataset_manifest))
+        if not all(path.exists() for path in required):
+            artifact_completeness_ok = False
+            break
+
+    fairness_ok = all(result.parity_status == "fair" for result, _report_path in pair_results.values())
+    return LaneMetadata(
+        preset=case.lane_preset,
+        pack_name=case.pack_name,
+        expected_budget=case.budget,
+        expected_seed=case.seed,
+        artifact_completeness_ok=artifact_completeness_ok,
+        fairness_ok=fairness_ok,
+        repeatability_ready=artifact_completeness_ok and fairness_ok,
+    )
+
+
+def _run_dir_for_system(case: MatrixCase, system: str) -> Path:
+    mapping = {
+        "prism": case.prism_run_dir,
+        "topograph": case.topograph_run_dir,
+        "stratograph": case.stratograph_run_dir,
+        "primordia": case.primordia_run_dir,
+        "contenders": case.contender_run_dir,
+    }
+    run_dir = mapping[system]
+    if run_dir is None:
+        raise ValueError(f"no run dir for system {system}")
+    return run_dir
 
 
 def _run_command(spec: CommandSpec, *, log_dir: Path) -> None:

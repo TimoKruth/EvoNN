@@ -41,9 +41,21 @@ class PairParityRow:
 
 
 @dataclass(frozen=True)
+class LaneMetadata:
+    preset: str | None
+    pack_name: str
+    expected_budget: int
+    expected_seed: int
+    artifact_completeness_ok: bool
+    fairness_ok: bool
+    repeatability_ready: bool
+
+
+@dataclass(frozen=True)
 class FairMatrixSummary:
     pack_name: str
     systems: tuple[str, ...]
+    lane: LaneMetadata | None
     fair_rows: list[MatrixBudgetRow]
     reference_rows: list[MatrixBudgetRow]
     parity_rows: list[PairParityRow]
@@ -101,6 +113,7 @@ def summarize_matrix_case(
 def build_matrix_summary(
     *,
     pack_name: str,
+    lane: LaneMetadata | None = None,
     fair_rows: list[MatrixBudgetRow],
     reference_rows: list[MatrixBudgetRow],
     parity_rows: list[PairParityRow],
@@ -109,6 +122,7 @@ def build_matrix_summary(
     return FairMatrixSummary(
         pack_name=pack_name,
         systems=systems,
+        lane=lane,
         fair_rows=sorted(fair_rows, key=lambda row: (row.budget, row.seed)),
         reference_rows=sorted(reference_rows, key=lambda row: (row.budget, row.seed)),
         parity_rows=sorted(parity_rows, key=lambda row: (row.budget, row.seed, row.pair_label)),

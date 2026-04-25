@@ -346,6 +346,7 @@ def test_prepare_fair_matrix_cases_writes_all_system_configs(tmp_path: Path) -> 
     assert case.topograph_config_path.exists()
     assert case.stratograph_config_path.exists()
     assert case.contender_config_path.exists()
+    assert case.lane_preset is None
 
 
 def test_prepare_fair_matrix_cases_can_skip_contenders(tmp_path: Path) -> None:
@@ -370,3 +371,21 @@ def test_prepare_fair_matrix_cases_can_skip_contenders(tmp_path: Path) -> None:
     assert case.contender_config_path is None
     assert case.contender_run_dir is None
     assert not paths.contender_configs_dir.exists()
+
+
+def test_prepare_fair_matrix_cases_persists_lane_preset(tmp_path: Path) -> None:
+    base_pack = Path(__file__).resolve().parents[1] / "parity_packs" / "tier1_core_smoke.yaml"
+    _paths, cases = prepare_fair_matrix_cases(
+        pack_name="tier1_core_smoke",
+        base_pack_path=base_pack,
+        seeds=[42],
+        budgets=[16],
+        workspace=tmp_path / "matrix",
+        prism_root=tmp_path / "Prism",
+        topograph_root=tmp_path / "Topograph",
+        stratograph_root=tmp_path / "Stratograph",
+        contenders_root=tmp_path / "Contenders",
+        lane_preset="smoke",
+    )
+
+    assert cases[0].lane_preset == "smoke"
