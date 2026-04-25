@@ -51,7 +51,11 @@ def materialize_command(
 
     run_config = load_config(config)
     resolved_run_dir = run_dir or Path("runs") / (run_config.run_name or f"{config.stem}_seed{run_config.seed}")
-    path = materialize_baseline_run(run_config, run_dir=resolved_run_dir, config_path=config)
+    try:
+        path = materialize_baseline_run(run_config, run_dir=resolved_run_dir, config_path=config)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(str(path))
 
 

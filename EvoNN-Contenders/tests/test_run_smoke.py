@@ -1,11 +1,45 @@
 from pathlib import Path
 
 import json
+from typer.testing import CliRunner
 
+from evonn_contenders.cli import app
 from evonn_contenders.config import load_config
 from evonn_contenders.export.symbiosis import export_symbiosis_contract
 from evonn_contenders.pipeline import materialize_baseline_run, run_contenders
 from evonn_contenders.storage import RunStore
+
+runner = CliRunner()
+
+
+def test_materialize_cli_reports_cache_miss_without_traceback(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: cached_contenders
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+baseline:
+  baseline_id: smoke_fixed
+  cache_dir: baseline-cache
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    def fail_materialize(*args, **kwargs):
+        raise ValueError("benchmark 'iris' missing from baseline cache 'smoke_fixed'")
+
+    monkeypatch.setattr("evonn_contenders.cli.materialize_baseline_run", fail_materialize)
+
+    result = runner.invoke(app, ["materialize", "--config", str(config_path), "--run-dir", str(tmp_path / "run")])
+
+    assert result.exit_code == 1
+    assert "missing from baseline cache" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_smoke_run_and_export(tmp_path: Path) -> None:
