@@ -101,8 +101,8 @@ Current status by milestone:
 - Milestone 1: largely advanced, though some compatibility re-export cleanup may still remain
 - Milestone 2: materially underway; shared manifest/fairness helpers, shared JSON writers, and shared summary-core logic now exist and are in active use
 - Milestone 3: underway; Prism, Contenders, Topograph, Primordia, Stratograph, and Compare portable smoke have all been moved closer to the same compare/export substrate
-- Milestone 4: phase-1 done; Compare `smoke` now carries explicit lane acceptance metadata for artifact completeness, pairwise fairness, classification+regression coverage, and budget/seed consistency, with a machine-readable `lane_acceptance.json`
-- Milestone 5: phase-1 done; fair-matrix reruns emit appendable structured trend JSON/JSONL artifacts from compare contracts only, and the minimum longitudinal dimensions are now documented in Compare README
+- Milestone 4: done; Compare `smoke` is now a first-class default small-budget lane with fixed pack/seed/budget defaults, lane acceptance metadata, artifact completeness/fairness/task-coverage/budget/seed checks, and direct fair-matrix/report outputs suitable for repeatable reruns
+- Milestone 5: materially advanced; fair-matrix reruns emit appendable structured trend JSON/JSONL artifacts from compare contracts only, trend markdown/report helpers exist, and a `trend-report` CLI can query merged trend datasets, but the wider artifact-layout standardization is still stronger in fair-matrix flows than across every compare-facing surface
 - Milestone 6: still ahead; it now depends more on workflow default decisions and preserving a credible challenger lane than on basic substrate scaffolding
 
 ## Milestones
@@ -331,9 +331,23 @@ Additional detail captured from later discussion:
 
 ## Open Technical Leftovers
 
-- finish documenting and testing the `smoke` lane as the routine rerun path, not just a portable fallback
 - keep reducing Compare-local orchestration that does not reflect a genuine runtime difference
 - continue narrowing unexplained engine-specific branches until the remaining set is both intentional and tested
+- extend the strongest Milestone-5 trend/report guarantees beyond fair-matrix-centered flows so artifact-layout standardization is equally strong across the rest of Compare
+
+## Milestone 5 completeness audit (current branch read)
+
+What is clearly complete in code now:
+- structured trend inputs do not depend on markdown scraping for fair-matrix flows
+- appendable trend datasets exist both per-case and at workspace scope
+- minimum longitudinal dimensions are preserved in structured outputs
+- fairness context remains visible in both JSON trend records and markdown trend summaries
+- a `trend-report` CLI exists for merged/filterable longitudinal views
+
+What still looks partial rather than fully universal:
+- artifact-layout standardization is strongest around fair-matrix outputs and not yet obviously unified across every compare/report surface
+- trend/report helper reuse exists, but the plan goal of common report rendering helpers where duplication exists is not obviously exhausted yet
+- milestone wording says "reports/artifacts preserve enough structured metadata to compare runs over time" broadly; current branch proves that strongly for fair-matrix, but less comprehensively for all compare outputs
 
 ## Known Risks / Watchouts
 
