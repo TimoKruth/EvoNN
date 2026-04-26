@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import subprocess
 import pytest
@@ -11,9 +12,11 @@ from evonn_compare.comparison.engine import ComparisonEngine
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.ingest.loader import SystemIngestor
 from evonn_compare.orchestration.fair_matrix import (
+    MatrixCase,
     _build_lane_metadata,
     _build_trend_records,
     _native_runtime_available,
+    run_fair_matrix_case,
 )
 from evonn_compare.reporting.fair_matrix_md import render_fair_matrix_markdown
 from test_compare import PACK_PATH, _write_run
@@ -349,3 +352,69 @@ def test_build_lane_metadata_requires_summary_artifact_for_repeatability(tmp_pat
     assert lane.fairness_ok is True
     assert lane.artifact_completeness_ok is False
     assert lane.repeatability_ready is False
+
+
+def test_run_fair_matrix_case_emits_trend_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    case = MatrixCase(
+        pack_name="tier1_core",
+        lane_preset="smoke",
+        seed=42,
+        budget=64,
+        pack_path=PACK_PATH,
+        prism_config_path=tmp_path / "configs" / "prism.yaml",
+        topograph_config_path=tmp_path / "configs" / "topograph.yaml",
+        stratograph_config_path=tmp_path / "configs" / "stratograph.yaml",
+        primordia_config_path=tmp_path / "configs" / "primordia.yaml",
+        contender_config_path=None,
+        prism_run_dir=tmp_path / "runs" / "prism",
+        topograph_run_dir=tmp_path / "runs" / "topograph",
+        stratograph_run_dir=tmp_path / "runs" / "stratograph",
+        primordia_run_dir=tmp_path / "runs" / "primordia",
+        contender_run_dir=None,
+        report_dir=tmp_path / "reports",
+        summary_output_path=tmp_path / "reports" / "fair_matrix_summary.md",
+        log_dir=tmp_path / "logs",
+        systems=("prism", "topograph", "stratograph", "primordia"),
+    )
+    for path in [
+        case.prism_config_path,
+        case.topograph_config_path,
+        case.stratograph_config_path,
+        case.primordia_config_path,
+    ]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("seed: 42\n", encoding="utf-8")
+
+    monkeypatch.setattr("evonn_compare.orchestration.fair_matrix._native_runtime_available", lambda *_args, **_kwargs: False)
+
+    def fake_run_command(spec, *, log_dir):
+        if spec.name == "stratograph_export":
+            _write_run(case.stratograph_run_dir, system="stratograph", budget_policy_name="evolutionary_search")
+
+    def fake_prism_export(**kwargs):
+        _write_run(kwargs["run_dir"], system="prism", score_shift=0.02, budget_policy_name="evolutionary_search")
+
+    def fake_topograph_export(**kwargs):
+        _write_run(kwargs["run_dir"], system="topograph", budget_policy_name="evolutionary_search")
+
+    def fake_primordia_export(**kwargs):
+        _write_run(kwargs["run_dir"], system="primordia", budget_policy_name="evolutionary_search")
+
+    monkeypatch.setattr("evonn_compare.orchestration.fair_matrix._run_command", fake_run_command)
+    monkeypatch.setattr("evonn_compare.orchestration.fair_matrix.ensure_prism_portable_smoke_export", fake_prism_export)
+    monkeypatch.setattr("evonn_compare.orchestration.fair_matrix.ensure_topograph_portable_smoke_export", fake_topograph_export)
+    monkeypatch.setattr("evonn_compare.orchestration.fair_matrix.ensure_primordia_export", fake_primordia_export)
+
+    summary_path = run_fair_matrix_case(case, parallel=False)
+
+    trend_json = case.report_dir / "fair_matrix_trends.json"
+    trend_jsonl = case.report_dir / "fair_matrix_trends.jsonl"
+    assert summary_path == case.summary_output_path
+    assert summary_path.exists()
+    assert trend_json.exists()
+    assert trend_jsonl.exists()
+
+    trend_records = json.loads(trend_json.read_text(encoding="utf-8"))
+    assert len(trend_records) == len(load_parity_pack(PACK_PATH).benchmarks) * 4
+    assert all(record["artifact_paths"]["summary"].endswith("summary.json") for record in trend_records)
+    assert sum(1 for _line in trend_jsonl.read_text(encoding="utf-8").splitlines() if _line.strip()) == len(trend_records)
