@@ -193,6 +193,56 @@ def test_trend_report_filters_rows_and_writes_outputs(tmp_path: Path) -> None:
     assert "| prism | iris_classification | 1 | 0.820000 |" in markdown
 
 
+def test_trend_report_accepts_structured_fair_matrix_trends_jsonl(tmp_path: Path) -> None:
+    trend_path = tmp_path / "fair_matrix_trends.jsonl"
+    trend_path.write_text(
+        "".join(
+            json.dumps(record) + "\n"
+            for record in [
+                {
+                    "pack": "tier1_core_smoke",
+                    "benchmark": "iris_classification",
+                    "task_kind": "classification",
+                    "engine": "prism",
+                    "run_id": "prism-run",
+                    "run_name": "prism-run",
+                    "created_at": "2026-04-01T00:00:00+00:00",
+                    "seed": 42,
+                    "budget": 16,
+                    "outcome_status": "ok",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": 0.81,
+                    "quality": 0.81,
+                    "failure_reason": None,
+                    "fairness": {
+                        "benchmark_pack_id": "tier1_core_smoke",
+                        "seed": 42,
+                        "evaluation_count": 16,
+                        "budget_policy_name": "evolutionary_search",
+                        "data_signature": "shared-signature",
+                        "code_version": "deadbeef",
+                    },
+                    "artifact_paths": {
+                        "manifest": "prism/manifest.json",
+                        "results": "prism/results.json",
+                        "summary": "prism/summary.json",
+                        "report": "prism/report.md",
+                    },
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["trend-report", str(trend_path), "--system", "prism"])
+
+    assert result.exit_code == 0
+    assert "# Fair Matrix Trends: tier1_core_smoke" in result.stdout
+    assert "- Systems: `prism`" in result.stdout
+    assert "| prism | iris_classification | 1 | 0.810000 | 0.810000 | 0.000000 | ok | 16 | 42 | fair |" in result.stdout
+
+
 def test_resolve_lane_preset_rejects_unknown_name() -> None:
     try:
         resolve_lane_preset("unknown")
