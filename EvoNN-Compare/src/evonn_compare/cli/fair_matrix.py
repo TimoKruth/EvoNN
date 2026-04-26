@@ -54,12 +54,15 @@ def fair_matrix(
     )
     if dry_run:
         typer.echo("mode\tdry-run")
-        typer.echo(str(paths.manifest_path))
+        typer.echo(f"manifest\t{paths.manifest_path}")
+        typer.echo(f"trend-dataset\t{paths.trends_dir / 'fair_matrix_trends.jsonl'}")
         for case in cases:
             typer.echo(json.dumps({key: str(value) if isinstance(value, Path) else value for key, value in case.__dict__.items()}))
         return
 
     typer.echo("mode\texecute")
+    typer.echo(f"manifest\t{paths.manifest_path}")
+    typer.echo(f"trend-dataset\t{paths.trends_dir / 'fair_matrix_trends.jsonl'}")
     for case in cases:
         summary_path = run_fair_matrix_case(
             case,
