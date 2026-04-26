@@ -25,6 +25,22 @@ Implication:
 - `Transformer` needs new training/runtime path; current LM protocol is too narrow
 - evolutionary contenders should be adapters to sibling EvoNN projects, not reimplemented here
 
+## 90-day alignment
+
+This plan stays valid long-term, but the next 90 days should optimize for the
+trusted daily compare lane rather than for maximum family count.
+
+Near-term contender priority order:
+
+1. harden contender reliability, export semantics, and budget truth on the
+   default compare lanes
+2. clean up runtime/registry structure where it blocks reliable daily-lane use
+3. add the cheapest high-value baseline expansion, starting with SVM-class
+   additions
+4. only then consider boosted extras if they improve the daily lane cleanly
+5. defer CNN, transformer, and evolutionary-adapter expansion unless they are
+   directly needed for the primary quarter claim
+
 ## Recommended Order
 
 Best order:

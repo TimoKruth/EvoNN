@@ -5,6 +5,22 @@
 This plan turns the `feat/shared-substrate-foundation` stream into an explicit
 execution document.
 
+## Status note (2026-04-26)
+
+The main branch goal of this plan is now complete: the shared-substrate stream
+landed on `main` and established the first real umbrella compare/export
+surface.
+
+For the next 90 days, this document should be read as a foundation record plus
+remaining substrate debt list, not as the repo's primary execution driver.
+Current execution priority now lives in `EVONN_90_DAY_PLAN.md` and focuses on:
+
+- trusted `tier1_core` daily-lane operation
+- budget/accounting truth across engines
+- trend-first decision loops
+- CI coverage for the trust layer
+- contender hardening and one auditable seeding path
+
 The goal is not to merge EvoNN into one engine. The goal is to move recurring
 research infrastructure into a shared substrate so that:
 - comparisons get cheaper and more repeatable
@@ -323,11 +339,17 @@ Additional detail captured from later discussion:
 
 ## Recommended Execution Order From Here
 
-1. finish export convergence for the engines that matter to the low-cost compare lane first
-2. treat Compare preset `smoke` as the provisional smallest lane and finish its acceptance criteria, comparability rules, and routine rerun path
-3. wire that lane through Compare/reporting so it is genuinely repeatable and trend-ingestible
-4. harden artifact/report structure for trend tracking
-5. switch more docs/workflows to Prism as default while preserving Topograph as the first challenger
+1. preserve the current shared-substrate gains while shifting the active proof
+   point from `smoke` to trusted `tier1_core` operation
+2. close budget/accounting mismatches that still make higher-budget
+   comparisons non-fair even when the contract surface technically works
+3. treat structured trend artifacts as the normal review surface for repeated
+   compare reruns
+4. finish the highest-value remaining shared-substrate slice: benchmark/parity
+   resolution cleanup that affects comparability or hidden drift
+5. keep shared-helper work subordinate to evidence velocity; do not keep
+   generalizing the substrate unless it directly improves fairness, trending,
+   or transfer readiness
 
 ## Open Technical Leftovers
 

@@ -6,6 +6,23 @@ Build `EvoNN-Stratograph` as a greenfield sibling project that can later run on
 the same 38-benchmark comparison lane as Prism and Topograph while preserving a
 truly distinct core design.
 
+## Status note (2026-04-26)
+
+Stratograph is now well past the original greenfield stage described here: the
+package has a hierarchical genome/compiler/runtime, compare-compatible exports,
+ablation tooling, and functional tests.
+
+For the current 90-day window, Stratograph should not be treated as a blank
+build plan. Its near-term role is:
+
+1. remain a valid participant on the shared compare substrate
+2. keep budget/export/accounting semantics aligned with trusted daily-lane
+   comparison
+3. preserve a clear challenger path without becoming the main focus ahead of
+   `tier1_core` fairness and trendability
+4. only take on larger hierarchy-search maturity work if that becomes the next
+   explicitly chosen quarter claim
+
 ## Source Of Truth For Comparison
 
 Use the current broad 38-benchmark comparison lane as gold reference, not the

@@ -4,6 +4,21 @@
 
 Extract benchmark definitions into one independent root-level folder so all projects can use the same benchmark source at the same time, without copying YAMLs between repos.
 
+## Status note (2026-04-26)
+
+The repo now already has a root-level `shared-benchmarks/` folder, so the main
+structural direction of this plan is effectively chosen.
+
+For the current 90-day window, the benchmark priority is narrower than broad
+data migration work:
+
+- remove benchmark/parity resolution drift that affects fair comparison on the
+  trusted daily lane
+- keep Compare from depending on sibling-engine benchmark loaders where that
+  hides substrate debt
+- defer larger benchmark-catalog cleanup that does not materially affect
+  `tier1_core`, trendability, or budget/fairness truth
+
 Decision for this plan: **Plan A**.
 
 Plan A means:
@@ -16,12 +31,10 @@ Plan A means:
 Recommended target:
 
 ```text
-/Users/timokruth/Projekte/Evo Neural Nets/shared-benchmarks/
+<repo-root>/shared-benchmarks/
   catalog/
   suites/
-    common/
-    parity/
-    topograph/
+  migration/
   README.md
 ```
 

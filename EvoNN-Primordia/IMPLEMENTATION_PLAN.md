@@ -5,6 +5,25 @@
 Introduce Primordia as a real umbrella package and give it a staged path from
 concept to useful primitive-first search runtime.
 
+## Status note (2026-04-26)
+
+The early package-establishment goals in this document are now effectively
+complete: Primordia exists in the workspace, has a runnable lane, emits compare
+artifacts, and already participates on the shared compare/export surface.
+
+For the current 90-day window, Primordia's main job is no longer proving that
+it exists. Its main job is to support one auditable transfer/seeding path on a
+trusted daily lane.
+
+Near-term Primordia priority:
+
+1. keep Primordia export, budget, and telemetry semantics aligned with the
+   trusted compare lane
+2. make one seed artifact contract robust enough for a first consumer path
+3. support one repeatable seeded vs unseeded experiment
+4. defer larger primitive-search expansion that does not improve transfer proof
+   or compare trust
+
 ## Stage 1: Scaffold And Boundaries
 
 Objective:

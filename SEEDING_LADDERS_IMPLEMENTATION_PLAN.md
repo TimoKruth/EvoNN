@@ -8,6 +8,26 @@
 
 **Tech Stack:** Markdown strategy docs, package-local JSON artifacts, Typer CLIs, existing Symbiosis export flow, existing Compare ingestion contracts, shared benchmark packs.
 
+## 90-day alignment
+
+This document remains the long-run ladder plan. For the current 90-day window,
+the execution target is narrower:
+
+- get one auditable seeded vs unseeded experiment running on the trusted daily
+  compare lane
+- make seed provenance survive exports, trend artifacts, and compare grouping
+- prove one first consumer path cleanly before implementing the full direct and
+  staged matrix
+
+Recommended quarter focus:
+
+1. finalize and enforce seeding metadata semantics across exports and Compare
+2. choose one first consumer path, likely `Primordia -> Prism` or
+   `Primordia -> Topograph`
+3. run one matched seeded vs unseeded comparison with explicit provenance
+4. defer full staged-ladder expansion until the daily lane and budget truth are
+   stable enough to trust the result
+
 ---
 
 ## Research Question

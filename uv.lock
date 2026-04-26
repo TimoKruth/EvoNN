@@ -1933,6 +1933,7 @@ version = "0.1.0"
 source = { editable = "EvoNN-Topograph" }
 dependencies = [
     { name = "duckdb" },
+    { name = "evonn-shared" },
     { name = "mlx" },
     { name = "numpy" },
     { name = "pydantic" },
@@ -1977,6 +1978,7 @@ viz = [
 [package.metadata]
 requires-dist = [
     { name = "duckdb", specifier = ">=1.1.3" },
+    { name = "evonn-shared", editable = "EvoNN-Shared" },
     { name = "lightgbm", marker = "extra == 'baselines'", specifier = ">=4.0" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.9" },
     { name = "mlx", specifier = ">=0.31.0" },

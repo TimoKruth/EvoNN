@@ -206,23 +206,31 @@ artifacts and reports.
 
 ## Near-Term Priorities
 
+For the current 90-day operating window, use `EVONN_90_DAY_PLAN.md` as the
+execution document beneath this roadmap.
+
 Priority 1:
-finish and enforce Horizon 1 documents across the repo.
+make `tier1_core` the trusted daily research lane, with repeatable compare
+artifacts and explicit operating status at budgets `64`, `256`, and `1000`.
 
 Priority 2:
-turn the structural-unification inventory into explicit shared-substrate work,
-starting with benchmark/parity resolution and export/report helpers.
+define and enforce project-wide budget/accounting semantics so fair comparison
+does not depend on per-engine interpretation of evaluations, reuse, caching,
+failures, or resumed runs.
 
 Priority 3:
-establish Primordia as the missing Horizon 2 package.
+make structured trend artifacts the default decision surface for whether a
+change improved anything.
 
 Priority 4:
-thread the benchmark ladder and budget contract into package docs, exports, and
-CLIs.
+harden the trust layer in CI, especially `EvoNN-Shared`, `EvoNN-Compare`,
+`EvoNN-Contenders`, `EvoNN-Primordia`, and `EvoNN-Stratograph`, while keeping
+macOS-native MLX validation explicit for Prism and Topograph.
 
 Priority 5:
-start defining how primitive motifs are exported, versioned, and consumed by
-higher-level systems.
+strengthen the contender floor and execute one auditable transfer/seeding loop
+so the umbrella starts compounding evidence rather than only accumulating
+infrastructure.
 
 ## Long-Term End State
 
