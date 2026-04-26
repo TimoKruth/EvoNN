@@ -3,7 +3,11 @@ import subprocess
 
 import pytest
 
-from evonn_compare.comparison.fair_matrix import build_matrix_summary, summarize_matrix_case
+from evonn_compare.comparison.fair_matrix import (
+    build_matrix_summary,
+    build_matrix_trend_rows,
+    summarize_matrix_case,
+)
 from evonn_compare.comparison.engine import ComparisonEngine
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.ingest.loader import SystemIngestor
@@ -171,6 +175,53 @@ def test_fair_matrix_markdown_omits_contenders_when_not_requested(tmp_path: Path
 
     assert "Contenders Evals" not in markdown
     assert "Contenders Wins" not in markdown
+
+
+def test_build_matrix_trend_rows_capture_minimum_longitudinal_dimensions(tmp_path: Path) -> None:
+    pack = load_parity_pack(PACK_PATH)
+    systems = {
+        "prism": tmp_path / "prism",
+        "topograph": tmp_path / "topograph",
+    }
+    for system, run_dir in systems.items():
+        _write_run(run_dir, system=system)
+
+    ingestors = {system: SystemIngestor(path) for system, path in systems.items()}
+    runs = {
+        system: (ingestor.load_manifest(), ingestor.load_results())
+        for system, ingestor in ingestors.items()
+    }
+    pair_results = {}
+    result = ComparisonEngine().compare(
+        left_manifest=runs["prism"][0],
+        left_results=runs["prism"][1],
+        right_manifest=runs["topograph"][0],
+        right_results=runs["topograph"][1],
+        pack=pack,
+    )
+    pair_results[("prism", "topograph")] = (result, Path("prism_vs_topograph.md"))
+
+    trend_rows = build_matrix_trend_rows(
+        pack=pack,
+        budget=64,
+        seed=42,
+        runs=runs,
+        pair_results=pair_results,
+        systems=("prism", "topograph"),
+    )
+
+    assert len(trend_rows) == len(pack.benchmarks) * 2
+    first = trend_rows[0]
+    assert first.pack_name == pack.name
+    assert first.system in {"prism", "topograph"}
+    assert first.run_id == f"{first.system}-run"
+    assert first.benchmark_id == pack.benchmarks[0].benchmark_id
+    assert first.metric_direction == pack.benchmarks[0].metric_direction
+    assert first.outcome_status == "ok"
+    assert first.matrix_scope == "fair"
+    assert first.fairness_metadata["benchmark_pack_id"] == pack.name
+    assert first.fairness_metadata["seed"] == 42
+    assert first.fairness_metadata["evaluation_count"] == 64
 
 
 def test_native_runtime_available_checks_target_project_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

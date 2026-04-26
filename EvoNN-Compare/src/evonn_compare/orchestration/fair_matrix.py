@@ -12,7 +12,11 @@ from typing import Any
 
 import yaml
 
-from evonn_compare.comparison import build_matrix_summary, summarize_matrix_case
+from evonn_compare.comparison import (
+    build_matrix_summary,
+    build_matrix_trend_rows,
+    summarize_matrix_case,
+)
 from evonn_compare.comparison.engine import ComparisonEngine
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.ingest.loader import SystemIngestor
@@ -510,6 +514,14 @@ def run_fair_matrix_case(
         fair_rows=[fair_row] if fair_row is not None else [],
         reference_rows=[reference_row] if reference_row is not None else [],
         parity_rows=parity_rows,
+        trend_rows=build_matrix_trend_rows(
+            pack=pack,
+            budget=case.budget,
+            seed=case.seed,
+            runs=runs,
+            pair_results=pair_results,
+            systems=case.systems,
+        ),
         systems=case.systems,
     )
     case.summary_output_path.write_text(render_fair_matrix_markdown(summary), encoding="utf-8")
@@ -517,6 +529,14 @@ def run_fair_matrix_case(
         json.dumps(asdict(summary), indent=2, default=str),
         encoding="utf-8",
     )
+    trend_rows_path = case.report_dir / "trend_rows.json"
+    trend_rows_path.write_text(
+        json.dumps([asdict(row) for row in summary.trend_rows], indent=2, default=str),
+        encoding="utf-8",
+    )
+    with (case.report_dir.parent / "fair_matrix_trend_rows.jsonl").open("a", encoding="utf-8") as handle:
+        for row in summary.trend_rows:
+            handle.write(json.dumps(asdict(row), default=str) + "\n")
     return case.summary_output_path
 
 
