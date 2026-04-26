@@ -186,8 +186,12 @@ def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) ->
 
     assert result.exit_code == 0
     assert f"summary\t{summary_path}" in result.stdout
+    assert f"summary_json\t{summary_path.with_suffix('.json')}" in result.stdout
+    assert f"lane_acceptance\t{summary_path.parent / 'lane_acceptance.json'}" in result.stdout
     assert f"trend_rows\t{summary_path.parent / 'trend_rows.json'}" in result.stdout
     assert f"trend_report\t{summary_path.parent / 'trend_report.md'}" in result.stdout
+    assert f"trend_records_json\t{summary_path.parent / 'fair_matrix_trends.json'}" in result.stdout
+    assert f"trend_records_jsonl\t{summary_path.parent / 'fair_matrix_trends.jsonl'}" in result.stdout
     assert f"workspace_trend_rows\t{summary_path.parent.parent / 'fair_matrix_trend_rows.jsonl'}" in result.stdout
     assert f"workspace_trend_report\t{summary_path.parent.parent / 'fair_matrix_trends.md'}" in result.stdout
     assert f"workspace_dashboard\t{tmp_path / 'fair_matrix_dashboard.html'}" in result.stdout

@@ -86,8 +86,12 @@ def _trend_artifact_paths(summary_path: Path) -> dict[str, Path]:
     case_dir = summary_path.parent
     workspace_dir = case_dir.parent
     return {
+        "summary_json": summary_path.with_suffix(".json"),
+        "lane_acceptance": case_dir / "lane_acceptance.json",
         "trend_rows": case_dir / "trend_rows.json",
         "trend_report": case_dir / "trend_report.md",
+        "trend_records_json": case_dir / "fair_matrix_trends.json",
+        "trend_records_jsonl": case_dir / "fair_matrix_trends.jsonl",
         "workspace_trend_rows": workspace_dir / "fair_matrix_trend_rows.jsonl",
         "workspace_trend_report": workspace_dir / "fair_matrix_trends.md",
     }
