@@ -238,6 +238,72 @@ selection:
     assert any(record["contender_name"].endswith("@r2") for record in contenders)
 
 
+def test_budget_matched_export_uses_pack_budget_envelope(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: budget_matched_export
+benchmark_pool:
+  name: tier1_core_eval64
+  benchmarks:
+  - iris
+  - circles
+baseline:
+  mode: budget_matched
+  target_evaluation_count: 6
+  cache_dir: baseline-cache
+contender_pool:
+  tabular: [logistic, hist_gb]
+  synthetic: [hist_gb, extra_trees]
+  image: [mlp]
+  language_modeling: [bigram_lm]
+selection:
+  max_contenders_per_benchmark: null
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    pack_path = tmp_path / "compare_pack.yaml"
+    pack_path.write_text(
+        """
+name: tier1_core_eval64
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      contenders: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: circles_classification
+    native_ids:
+      contenders: circles
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+seed_policy:
+  mode: shared
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+    run_dir = tmp_path / "run"
+    run_contenders(config, run_dir=run_dir, config_path=config_path)
+    manifest_path, _ = export_symbiosis_contract(run_dir, pack_path, run_dir)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["budget"]["evaluation_count"] == 6
+    assert manifest["budget"]["epochs_per_candidate"] == 20
+    assert manifest["budget"]["effective_training_epochs"] == 1
+    assert manifest["budget"]["budget_policy_name"] == "prototype_equal_budget"
+
+
 def test_optional_missing_contenders_are_skipped_by_default(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(

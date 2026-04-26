@@ -54,6 +54,14 @@ def test_trend_report_help() -> None:
     assert "--output" in result.stdout
 
 
+def test_dashboard_help() -> None:
+    result = runner.invoke(app, ["dashboard", "--help"])
+    assert result.exit_code == 0
+    assert "--output" in result.stdout
+    assert "manual_compare_runs" in result.stdout
+    assert "--no-open" in result.stdout
+
+
 def test_hybrid_help() -> None:
     result = runner.invoke(app, ["hybrid", "run", "--help"])
     assert result.exit_code == 0
@@ -243,6 +251,109 @@ def test_trend_report_accepts_structured_fair_matrix_trends_jsonl(tmp_path: Path
     assert "| prism | iris_classification | 1 | 0.810000 | 0.810000 | 0.000000 | ok | 16 | 42 | fair |" in result.stdout
 
 
+def test_dashboard_recomputes_project_only_winners(tmp_path: Path) -> None:
+    summary_dir = tmp_path / "workspace" / "reports" / "tier1_core_eval64_seed42"
+    summary_dir.mkdir(parents=True)
+    summary_path = summary_dir / "fair_matrix_summary.json"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "pack_name": "tier1_core_eval64",
+                "systems": ["prism", "topograph", "stratograph", "primordia", "contenders"],
+                "lane": {
+                    "preset": None,
+                    "pack_name": "tier1_core_eval64",
+                    "expected_budget": 64,
+                    "expected_seed": 42,
+                    "artifact_completeness_ok": True,
+                    "fairness_ok": True,
+                    "task_coverage_ok": True,
+                    "budget_consistency_ok": True,
+                    "seed_consistency_ok": True,
+                    "observed_task_kinds": ["classification"],
+                    "acceptance_notes": [],
+                    "repeatability_ready": True,
+                },
+                "fair_rows": [],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [
+                    _dashboard_row("prism", "iris_classification", 0.80),
+                    _dashboard_row("topograph", "iris_classification", 0.90),
+                    _dashboard_row("stratograph", "iris_classification", 0.70),
+                    _dashboard_row("primordia", "iris_classification", 0.60),
+                    _dashboard_row("contenders", "iris_classification", 0.95),
+                    _dashboard_row("prism", "wine_classification", 0.85),
+                    _dashboard_row("topograph", "wine_classification", 0.83),
+                    _dashboard_row("stratograph", "wine_classification", None, outcome_status="missing"),
+                    _dashboard_row("primordia", "wine_classification", None, outcome_status="failed", failure_reason="boom"),
+                    _dashboard_row("contenders", "wine_classification", 0.84),
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "dashboard.html"
+
+    result = runner.invoke(app, ["dashboard", str(tmp_path / "workspace"), "--output", str(output_path)])
+
+    assert result.exit_code == 0
+    assert output_path.exists()
+    payload = json.loads(output_path.with_suffix(".json").read_text(encoding="utf-8"))
+    run = payload["runs"][0]
+    all_scope = {entry["system"]: entry for entry in run["all_scope"]["rows"]}
+    project_scope = {entry["system"]: entry for entry in run["project_scope"]["rows"]}
+    assert all_scope["contenders"]["solo_wins"] == 1
+    assert all_scope["topograph"]["solo_wins"] == 0
+    assert project_scope["topograph"]["solo_wins"] == 1
+    assert project_scope["prism"]["solo_wins"] == 1
+    assert run["project_scope"]["skipped"] == 0
+    assert "Overall Leaderboard: Projects Only" in output_path.read_text(encoding="utf-8")
+
+
+def test_dashboard_opens_browser_by_default(tmp_path: Path, monkeypatch) -> None:
+    summary_dir = tmp_path / "workspace" / "reports" / "tier1_core_eval64_seed42"
+    summary_dir.mkdir(parents=True)
+    (summary_dir / "fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier1_core_eval64",
+                "systems": ["prism"],
+                "lane": {
+                    "preset": None,
+                    "pack_name": "tier1_core_eval64",
+                    "expected_budget": 64,
+                    "expected_seed": 42,
+                    "artifact_completeness_ok": True,
+                    "fairness_ok": True,
+                    "task_coverage_ok": True,
+                    "budget_consistency_ok": True,
+                    "seed_consistency_ok": True,
+                    "observed_task_kinds": ["classification"],
+                    "acceptance_notes": [],
+                    "repeatability_ready": True,
+                },
+                "fair_rows": [],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [_dashboard_row("prism", "iris_classification", 0.8)],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "dashboard.html"
+    opened: list[str] = []
+    monkeypatch.setattr("evonn_compare.cli.dashboard.webbrowser.open", lambda url: opened.append(url) or True)
+
+    result = runner.invoke(app, ["dashboard", str(tmp_path / "workspace"), "--output", str(output_path)])
+
+    assert result.exit_code == 0
+    assert opened == [output_path.resolve().as_uri()]
+    assert f"opened\t{output_path.resolve().as_uri()}" in result.stdout
+
+
 def test_resolve_lane_preset_rejects_unknown_name() -> None:
     try:
         resolve_lane_preset("unknown")
@@ -250,3 +361,40 @@ def test_resolve_lane_preset_rejects_unknown_name() -> None:
         assert "available" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def _dashboard_row(
+    system: str,
+    benchmark_id: str,
+    metric_value: float | None,
+    *,
+    outcome_status: str = "ok",
+    failure_reason: str | None = None,
+) -> dict[str, object]:
+    return {
+        "pack_name": "tier1_core_eval64",
+        "budget": 64,
+        "seed": 42,
+        "system": system,
+        "run_id": "tier1_core_eval64_seed42",
+        "benchmark_id": benchmark_id,
+        "metric_name": "accuracy",
+        "metric_direction": "max",
+        "metric_value": metric_value,
+        "outcome_status": outcome_status,
+        "failure_reason": failure_reason,
+        "evaluation_count": 64,
+        "epochs_per_candidate": 20,
+        "budget_policy_name": "prototype_equal_budget",
+        "wall_clock_seconds": 1.0,
+        "matrix_scope": "fair",
+        "fairness_metadata": {
+            "benchmark_pack_id": "tier1_core_eval64",
+            "seed": 42,
+            "evaluation_count": 64,
+            "budget_policy_name": "prototype_equal_budget",
+            "data_signature": "shared",
+            "code_version": "deadbeef",
+            "pairwise_fairness_ok": True,
+        },
+    }

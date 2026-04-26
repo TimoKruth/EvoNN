@@ -6,6 +6,7 @@ import typer
 
 from evonn_compare.cli.campaign import campaign
 from evonn_compare.cli.compare import compare
+from evonn_compare.cli.dashboard import dashboard
 from evonn_compare.cli.fair_matrix import fair_matrix
 from evonn_compare.cli.hybrid import run as hybrid_run
 from evonn_compare.cli.trend_report import trend_report
@@ -21,6 +22,7 @@ app.command("validate")(validate)
 app.command("campaign")(campaign)
 app.command("fair-matrix")(fair_matrix)
 app.command("trend-report")(trend_report)
+app.command("dashboard")(dashboard)
 
 hybrid_app = typer.Typer(help="Fused hybrid commands")
 hybrid_app.command("run")(hybrid_run)

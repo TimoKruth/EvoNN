@@ -1029,8 +1029,15 @@ def _save_budget_metadata(
     )
     occupied = len(map_elites_archive) if map_elites_archive is not None else 0
     runtime_backend, runtime_version = _runtime_metadata()
+    # Compare lanes budget against total candidate slots, not only fresh trains.
+    # Weight inheritance can legitimately reuse prior weights while still
+    # consuming a scheduled evaluation slot.
+    accounted_evaluation_count = max(
+        int(state.total_evaluations),
+        int(trained_count + reused_count),
+    )
     metadata = {
-        "evaluation_count": state.total_evaluations,
+        "evaluation_count": accounted_evaluation_count,
         "wall_clock_seconds": round(elapsed, 2),
         "runtime_backend": runtime_backend,
         "runtime_version": runtime_version,
@@ -1069,10 +1076,12 @@ def _save_budget_metadata(
             else None
         ),
         "evals_per_second": (
-            round(state.total_evaluations / elapsed, 6) if elapsed > 0 else None
+            round(accounted_evaluation_count / elapsed, 6) if elapsed > 0 else None
         ),
         "seconds_per_eval": (
-            round(elapsed / state.total_evaluations, 6) if state.total_evaluations > 0 else None
+            round(elapsed / accounted_evaluation_count, 6)
+            if accounted_evaluation_count > 0
+            else None
         ),
         "benchmark_total_seconds": round(total_timing_seconds, 6),
         "requested_parallel_workers": (

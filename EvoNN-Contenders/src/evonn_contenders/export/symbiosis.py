@@ -43,6 +43,11 @@ def export_symbiosis_contract(
     report_path = write_report(run_dir)
     _write_summary_json(output_dir / "contender_summary.json", contenders)
     _write_summary_json(output_dir / "model_summary.json", results)
+    exported_budget_policy_name = _export_budget_policy_name(budget_meta.get("budget_policy_name"))
+    exported_epochs_per_candidate = _export_epochs_per_candidate(
+        pack_epochs_per_candidate=pack.budget_policy.epochs_per_candidate,
+        budget_policy_name=exported_budget_policy_name,
+    )
 
     manifest_benchmarks: list[BenchmarkEntry] = []
     result_records: list[ResultRecord] = []
@@ -103,11 +108,11 @@ def export_symbiosis_contract(
         benchmarks=manifest_benchmarks,
         budget=BudgetEnvelope(
             evaluation_count=budget_meta.get("evaluation_count", len(contenders)),
-            epochs_per_candidate=1,
+            epochs_per_candidate=exported_epochs_per_candidate,
             effective_training_epochs=1,
             generations=1,
             population_size=budget_meta.get("evaluation_count", len(contenders)),
-            budget_policy_name=_export_budget_policy_name(budget_meta.get("budget_policy_name")),
+            budget_policy_name=exported_budget_policy_name,
         ),
         device=DeviceInfo(
             device_name=platform.machine(),
@@ -127,7 +132,7 @@ def export_symbiosis_contract(
             pack_name=pack.name,
             seed=config.seed,
             evaluation_count=budget_meta.get("evaluation_count", len(contenders)),
-            budget_policy_name=_export_budget_policy_name(budget_meta.get("budget_policy_name")),
+            budget_policy_name=exported_budget_policy_name,
             benchmark_entries=[entry.model_dump(mode="json") for entry in manifest_benchmarks],
             data_signature=benchmark_signature(
                 pack.name,
@@ -223,6 +228,12 @@ def _export_budget_policy_name(name: Any) -> str:
     if name == "fixed_reference_contender_pool":
         return "fixed_reference_contender_pool"
     return str(name or "fixed_reference_contender_pool")
+
+
+def _export_epochs_per_candidate(*, pack_epochs_per_candidate: int, budget_policy_name: str) -> int:
+    if budget_policy_name == "prototype_equal_budget":
+        return int(pack_epochs_per_candidate)
+    return 1
 
 
 

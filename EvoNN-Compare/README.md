@@ -105,6 +105,34 @@ When `--output` is provided, the command writes:
 - markdown report at the requested path
 - filtered JSON rows beside it as the same path with `.json` suffix
 
+### Static dashboard
+
+Use `dashboard` to scan one or more fair-matrix workspaces or summary files and
+render a static HTML overview with:
+
+- five-system benchmark-winner tables
+- project-only benchmark-winner tables that recompute winners without contenders
+- aggregate leaderboards across all discovered runs
+
+By default it scans `EvoNN-Compare/manual_compare_runs`:
+
+```bash
+uv run --package evonn-compare evonn-compare dashboard
+```
+
+Optional output path:
+
+```bash
+uv run --package evonn-compare evonn-compare dashboard \
+  EvoNN-Compare/manual_compare_runs \
+  --output EvoNN-Compare/manual_compare_runs/fair_matrix_dashboard.html
+```
+
+The command writes:
+
+- HTML dashboard at `--output`
+- structured dashboard payload beside it as the same path with `.json` suffix
+
 ## Milestone 6: Prism default operating path
 
 Prism is now the default operating path for the routine low-cost compare flow:

@@ -549,3 +549,82 @@ def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: P
     assert budget["worker_clamp_reason_counts"] == {"memory": 1}
     assert budget["benchmark_elite_families"] == {"tabular": 1}
     assert budget["family_stage_history"] == pool_state["family_stage_history"]
+
+
+def test_save_budget_metadata_uses_trained_plus_reused_when_state_undercounts(tmp_path: Path):
+    population = [Genome.create_seed(InnovationCounter(), random.Random(7))]
+    state = GenerationState(
+        generation=0,
+        population=population,
+        raw_losses={"a": [0.3]},
+        total_evaluations=4,
+    )
+    cfg = RunConfig(benchmark_pool={"benchmarks": ["a"], "sample_k": 1})
+
+    with RunStore(tmp_path / "metrics.duckdb") as store:
+        store.save_run("current", {"seed": 42})
+        store.save_benchmark_timings(
+            "current",
+            0,
+            [
+                {
+                    "benchmark_order": 0,
+                    "benchmark_name": "a",
+                    "task": "classification",
+                    "data_load_seconds": 0.1,
+                    "evaluation_seconds": 0.4,
+                    "total_seconds": 0.5,
+                    "trained_count": 4,
+                    "reused_count": 2,
+                    "failed_count": 0,
+                    "requested_worker_count": 2,
+                    "resolved_worker_count": 2,
+                    "data_cache_hits": 0,
+                    "data_cache_misses": 1,
+                    "worker_clamp_reason": None,
+                }
+            ],
+        )
+        store.save_benchmark_results(
+            "current",
+            0,
+            [
+                {
+                    "benchmark_name": "a",
+                    "metric_name": "loss",
+                    "metric_direction": "min",
+                    "metric_value": 0.5,
+                    "quality": 0.5,
+                    "parameter_count": 12,
+                    "train_seconds": 0.1,
+                    "architecture_summary": "1L/1C",
+                    "genome_id": "g0",
+                    "genome_idx": 0,
+                    "status": "ok",
+                    "failure_reason": None,
+                }
+            ],
+        )
+        coordinator_mod._save_budget_metadata(
+            store=store,
+            run_id="current",
+            state=state,
+            config=cfg,
+            completed_generations=1,
+            elapsed=3.0,
+            novelty_archive=None,
+            novelty_score_sum=0.0,
+            novelty_score_count=0,
+            novelty_score_max=0.0,
+            map_elites_archive=None,
+            map_elites_insertions=0,
+            benchmark_elite_archive=None,
+            scheduler=MutationScheduler(),
+            parallel_eval=None,
+            pool_state=None,
+        )
+        budget = store.load_budget_metadata("current")
+
+    assert budget["evaluation_count"] == 6
+    assert budget["evals_per_second"] == 2.0
+    assert budget["seconds_per_eval"] == 0.5
