@@ -40,6 +40,8 @@ By day 90, EvoNN should have:
 Use this file as the quarter execution document.
 
 - `ROADMAP.md` remains the long-horizon umbrella sequence
+- `.hermes/plans/README.md` is now the index for branch-oriented package
+  advancement plans that are broader than the quarter-critical execution scope
 - `SHARED_SUBSTRATE_FOUNDATION_PLAN.md` is now the completed-foundation record
   plus remaining substrate-debt list
 - `BENCHMARK_EXTRACTION_PLAN.md` now feeds only the benchmark/parity cleanup
@@ -51,6 +53,7 @@ Use this file as the quarter execution document.
 - `EvoNN-Primordia/IMPLEMENTATION_PLAN.md` and
   `EvoNN-Stratograph/IMPLEMENTATION_PLAN.md` are now mostly package-history plus
   current-role notes, not the primary repo execution plan
+- active package-advancement branch work should now live under `.hermes/plans/`
 
 ## Non-Goals For This Window
 

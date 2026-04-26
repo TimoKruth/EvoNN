@@ -44,6 +44,11 @@ Near-term contender priority order:
 This alignment section is intentionally not a second quarter plan. Quarter
 execution priority remains owned by `EVONN_90_DAY_PLAN.md`.
 
+Active branch-oriented contender-floor hardening work should now live under:
+
+- `.hermes/plans/README.md`
+- `.hermes/plans/2026-04-27_103000-contenders-floor-hardening-plan.md`
+
 ## Recommended Order
 
 Best order:

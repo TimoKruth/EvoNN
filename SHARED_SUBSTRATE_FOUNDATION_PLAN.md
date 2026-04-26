@@ -21,6 +21,11 @@ Current execution priority now lives in `EVONN_90_DAY_PLAN.md` and focuses on:
 - CI coverage for the trust layer
 - contender hardening and one auditable seeding path
 
+Active branch-oriented shared-substrate follow-up work should now live under:
+
+- `.hermes/plans/README.md`
+- `.hermes/plans/2026-04-27_104000-shared-substrate-debt-reduction-plan.md`
+
 The goal is not to merge EvoNN into one engine. The goal is to move recurring
 research infrastructure into a shared substrate so that:
 - comparisons get cheaper and more repeatable

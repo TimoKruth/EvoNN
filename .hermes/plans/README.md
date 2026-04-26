@@ -1,0 +1,57 @@
+# Active Branch Plans
+
+This directory is the active branch-oriented planning surface for package-level
+advancement work that is broader than the current quarter execution scope.
+
+Use these files when the goal is to push one package or subsystem forward on a
+dedicated branch and merge the work back in slices.
+
+## Current Branch Plans
+
+- `2026-04-26_211820-primordia-quality-parity-plan.md`
+  - full Primordia engine-advancement plan
+  - starts with backend portability, then benchmark completion, then search and
+    quality work
+- `2026-04-27_101500-prism-engine-advancement-plan.md`
+  - Prism branch plan for backend portability, quality, runtime maturity, and
+    stronger default-engine operation
+- `2026-04-27_102000-topograph-engine-advancement-plan.md`
+  - Topograph branch plan for Linux-capable runtime portability, search quality,
+    cost discipline, and challenger maturity
+- `2026-04-27_102500-stratograph-engine-advancement-plan.md`
+  - Stratograph branch plan for turning the current challenger into a more
+    complete, higher-quality hierarchical engine
+- `2026-04-27_103000-contenders-floor-hardening-plan.md`
+  - Contenders branch plan for a stronger, more portable, more auditable
+    baseline floor
+- `2026-04-27_103500-compare-trust-lane-maturation-plan.md`
+  - Compare branch plan for fair-matrix trust, dashboards, trends, and
+    higher-budget lane operation
+- `2026-04-27_104000-shared-substrate-debt-reduction-plan.md`
+  - Shared branch plan for substrate debt reduction without collapsing package
+    identity
+
+## Relationship To Root Plans
+
+- `EVONN_90_DAY_PLAN.md`
+  - remains the current quarter execution source of truth
+- `ROADMAP.md`
+  - remains the long-horizon umbrella sequence
+- `SHARED_SUBSTRATE_FOUNDATION_PLAN.md`
+  - remains the completed-foundation record plus debt list
+- `BENCHMARK_EXTRACTION_PLAN.md`
+  - remains the long-run benchmark/parity cleanup plan
+- `CONTENDER_EXPANSION_PLAN.md`
+  - remains the long-run contender breadth plan
+- `SEEDING_LADDERS_IMPLEMENTATION_PLAN.md`
+  - remains the long-run seeding-ladders plan
+
+## Archived Package Bootstrap Plans
+
+These older package-local plans are no longer active execution documents:
+
+- `EvoNN-Primordia/IMPLEMENTATION_PLAN.md`
+- `EvoNN-Stratograph/IMPLEMENTATION_PLAN.md`
+
+They should be read only as historical/bootstrap records. Active advancement
+work for those packages now lives in this directory.

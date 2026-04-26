@@ -8,6 +8,10 @@ The roadmap is intentionally organized around horizons instead of package-local
 feature lists. The point is to grow the whole program in an order that preserves
 fair comparison, local survivability, and scientific clarity.
 
+Package-specific branch execution plans now live under `.hermes/plans/README.md`.
+This roadmap remains the long-horizon umbrella sequence rather than the active
+branch task list.
+
 ## North Star
 
 EvoNN should become a local-first, benchmark-disciplined research program for
@@ -117,7 +121,7 @@ Deliverables:
 Primary artifacts:
 - `EvoNN-Primordia/README.md`
 - `EvoNN-Primordia/VISION.md`
-- `EvoNN-Primordia/IMPLEMENTATION_PLAN.md`
+- `.hermes/plans/2026-04-26_211820-primordia-quality-parity-plan.md`
 
 Success criteria:
 - primitive-first search is a first-class umbrella concept, not an afterthought
