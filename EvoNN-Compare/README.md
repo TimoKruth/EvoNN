@@ -30,6 +30,8 @@ Each fair-matrix workspace also accumulates:
 - `fair_matrix_trend_rows.jsonl`
 - `fair_matrix_trends.md`
 
+After `fair-matrix` execution, the CLI now prints the paths for the case summary, case trend artifacts, and workspace-level trend dataset/report so reruns can be inspected or fed into `trend-report` immediately.
+
 This means repeated `smoke` lane runs can be appended to one shared trend dataset without per-engine parsers or markdown scraping.
 
 ### Fixed minimum longitudinal dimensions
