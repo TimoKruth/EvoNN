@@ -6,9 +6,30 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from evonn_primordia.cli import app
+from evonn_primordia.config import load_config
 
 
 runner = CliRunner()
+
+
+def test_named_configs_exist_and_load() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    config_dir = repo_root / "EvoNN-Primordia" / "configs"
+
+    smoke = load_config(config_dir / "smoke.yaml")
+    tier1_64 = load_config(config_dir / "tier1_core_eval64.yaml")
+    tier1_256 = load_config(config_dir / "tier1_core_eval256.yaml")
+    tier1_1000 = load_config(config_dir / "tier1_core_eval1000.yaml")
+
+    assert smoke.run_name == "primordia_smoke"
+    assert smoke.runtime.backend == "auto"
+    assert "diabetes" in smoke.benchmark_pool.benchmarks
+    assert "friedman1" in smoke.benchmark_pool.benchmarks
+
+    assert tier1_64.search.target_evaluation_count == 64
+    assert tier1_256.search.target_evaluation_count == 256
+    assert tier1_1000.search.target_evaluation_count == 1000
+    assert tier1_64.benchmark_pool.name == "tier1_core"
 
 
 def test_inspect_renders_compact_run_summary(tmp_path: Path) -> None:

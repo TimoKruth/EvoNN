@@ -164,7 +164,7 @@ class FakeRuntimeBindings:
 @pytest.fixture
 def fake_runtime(monkeypatch):
     runtime = FakeRuntimeBindings()
-    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda: runtime)
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
     return runtime
 
 
@@ -672,7 +672,7 @@ seed_policy:
 
 def test_runtime_metadata_propagates_to_trials_summary_and_report(tmp_path: Path, monkeypatch) -> None:
     runtime = FakeRuntimeBindings(runtime_backend="numpy-fallback", runtime_version="fallback-0.9")
-    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda: runtime)
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         """
@@ -1128,7 +1128,7 @@ def test_language_modeling_output_dim_expands_to_fit_max_token_id(tmp_path: Path
         return base_compile(genome, input_shape, output_dim, modality, task)
 
     runtime.compile_genome = compile_and_capture
-    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda: runtime)
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
 
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
@@ -1163,7 +1163,7 @@ primitive_pool:
 
 
 def test_run_search_requires_runtime_bindings(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda: (_ for _ in ()).throw(RuntimeError("mlx unavailable")))
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: (_ for _ in ()).throw(RuntimeError("mlx unavailable")))
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         """

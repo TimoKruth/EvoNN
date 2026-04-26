@@ -1,43 +1,22 @@
 """MLX-backed primitive-first search runtime for Primordia."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from random import Random
 import shutil
 from time import perf_counter
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
-
-try:
-    import mlx
-    _MLX_VERSION = getattr(mlx, "__version__", None)
-except ImportError:
-    mlx = None
-    _MLX_VERSION = None
 
 from evonn_primordia.config import RunConfig
 from evonn_primordia.export.report import build_primitive_bank_summary, write_report
 from evonn_primordia.export.seeding import build_seed_candidates
+from evonn_primordia.runtime.backends import RuntimeBindings, resolve_runtime_bindings
 
 BUDGET_POLICY_NAME = "prototype_equal_budget"
 PRECISION_MODE = "fp32"
-
-
-@dataclass(frozen=True)
-class RuntimeBindings:
-    get_benchmark: Callable[[str], Any]
-    benchmark_group: Callable[[Any], str]
-    compatible_families: Callable[[str], list[str]]
-    create_seed_genome: Callable[[str, int, int], Any]
-    mutate_genome: Callable[[Any, int, list[str], RunConfig], Any]
-    compile_genome: Callable[[Any, list[int], int, str, str], Any]
-    train_and_evaluate: Callable[..., Any]
-    runtime_backend: str = "mlx"
-    runtime_version: str | None = None
 
 
 def run_search(
@@ -48,10 +27,10 @@ def run_search(
 ) -> Path:
     """Run Primordia search with MLX-backed family evaluation."""
 
-    runtime = _load_runtime_bindings()
-    runtime_backend = getattr(runtime, "runtime_backend", "mlx")
-    runtime_version = getattr(runtime, "runtime_version", _MLX_VERSION)
-    precision_mode = PRECISION_MODE
+    runtime = _load_runtime_bindings(config)
+    runtime_backend = getattr(runtime, "runtime_backend", "unknown")
+    runtime_version = getattr(runtime, "runtime_version", None)
+    precision_mode = getattr(runtime, "precision_mode", PRECISION_MODE)
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     if config_path is not None:
@@ -113,6 +92,7 @@ def run_search(
                 reason=str(exc),
                 runtime_backend=runtime_backend,
                 runtime_version=runtime_version,
+                precision_mode=precision_mode,
             )
             executed_records.append(failed)
             best_results.append(dict(failed))
@@ -130,7 +110,8 @@ def run_search(
                 config.search.seed_hidden_layers,
             )
             for mutation_round in range(repeat_index):
-                genome = runtime.mutate_genome(genome, mutation_round + 1, allowed_families, config)
+                mutated = runtime.mutate_genome(genome, mutation_round + 1, allowed_families, config)
+                genome = mutated[0] if isinstance(mutated, tuple) else mutated
 
             try:
                 compiled = runtime.compile_genome(
@@ -256,51 +237,8 @@ def run_search(
     return run_dir
 
 
-def _load_runtime_bindings() -> RuntimeBindings:
-    try:
-        from evonn_primordia.benchmarks import benchmark_group, get_benchmark
-        from evonn_primordia.config import EvolutionConfig
-        from evonn_primordia.families.compiler import compile_genome, compatible_families
-        from evonn_primordia.genome import apply_random_mutation, create_seed_genome
-        from evonn_primordia.runtime.training import train_and_evaluate
-    except Exception as exc:
-        raise RuntimeError(
-            "Primordia MLX runtime requires local MLX dependencies and Primordia's own benchmark/model modules. Run this on your Apple Silicon workspace with `uv sync --package evonn-primordia`."
-        ) from exc
-
-    def _seed_genome(family: str, width: int, depth: int):
-        evo = EvolutionConfig(
-            seed_hidden_width=width,
-            seed_hidden_layers=depth,
-            allowed_families=[family],
-        )
-        return create_seed_genome(family, evo, Random(0))
-
-    def _mutate(genome, slot_index: int, allowed_families: list[str], config: RunConfig):
-        evo = EvolutionConfig(
-            seed_hidden_width=config.search.seed_hidden_width,
-            seed_hidden_layers=config.search.seed_hidden_layers,
-            max_hidden_width=config.search.max_hidden_width,
-            max_hidden_layers=config.search.max_hidden_layers,
-            allowed_families=allowed_families,
-        )
-        child, _label = apply_random_mutation(genome, evo, Random(slot_index))
-        return child
-
-    def _compile(genome, input_shape: list[int], output_dim: int, modality: str, task: str):
-        return compile_genome(genome, input_shape, output_dim, modality, task=task)
-
-    return RuntimeBindings(
-        get_benchmark=get_benchmark,
-        benchmark_group=benchmark_group,
-        compatible_families=compatible_families,
-        create_seed_genome=_seed_genome,
-        mutate_genome=_mutate,
-        compile_genome=_compile,
-        train_and_evaluate=train_and_evaluate,
-        runtime_backend="mlx",
-        runtime_version=_MLX_VERSION,
-    )
+def _load_runtime_bindings(config: RunConfig) -> RuntimeBindings:
+    return resolve_runtime_bindings(config)
 
 
 def _allowed_families(runtime: RuntimeBindings, config: RunConfig, group: str, modality: str) -> list[str]:
@@ -437,6 +375,7 @@ def _failed_record(
     reason: str,
     runtime_backend: str,
     runtime_version: str | None,
+    precision_mode: str,
 ) -> dict[str, Any]:
     return {
         "benchmark_name": benchmark_name,
@@ -457,6 +396,7 @@ def _failed_record(
         "slot_index": 0,
         "runtime": runtime_backend,
         "runtime_version": runtime_version,
+        "precision_mode": precision_mode,
     }
 
 

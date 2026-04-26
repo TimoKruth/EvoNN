@@ -71,6 +71,15 @@ class TrainingConfig(BaseModel):
     weight_decay: float = 0.0
 
 
+class RuntimeConfig(BaseModel):
+    """Backend/runtime selection policy for Primordia execution."""
+
+    model_config = ConfigDict(frozen=True)
+
+    backend: Literal["auto", "mlx", "numpy-fallback"] = "auto"
+    allow_fallback: bool = True
+
+
 class RunConfig(BaseModel):
     """Top-level Primordia run config."""
 
@@ -82,6 +91,7 @@ class RunConfig(BaseModel):
     primitive_pool: PrimitivePoolConfig = Field(default_factory=PrimitivePoolConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
 
 
 def load_config(path: str | Path) -> RunConfig:
