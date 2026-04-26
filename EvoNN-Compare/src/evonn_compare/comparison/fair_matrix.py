@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from evonn_compare.comparison.engine import ComparisonResult
-from evonn_compare.contracts.models import ResultRecord, RunManifest
+from evonn_shared.contracts import ResultRecord, RunManifest
 from evonn_compare.contracts.parity import ParityPack
 
 

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 from evonn_compare.adapters.slots import canonical_slot
 from evonn_compare.comparison.budget import BudgetComparator
-from evonn_compare.contracts.models import ResultRecord, RunManifest
+from evonn_shared.contracts import ResultRecord, RunManifest
 from evonn_compare.contracts.parity import ParityPack
 
 
