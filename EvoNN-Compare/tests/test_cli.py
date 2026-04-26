@@ -23,6 +23,8 @@ def test_campaign_help() -> None:
     result = runner.invoke(app, ["campaign", "--help"])
     assert result.exit_code == 0
     assert "--workspace" in result.stdout
+    assert "smoke" in result.stdout
+    assert "local" in result.stdout
 
 
 def test_fair_matrix_help() -> None:
@@ -31,6 +33,8 @@ def test_fair_matrix_help() -> None:
     assert "--primordia-root" in result.stdout
     assert "--no-contenders" in result.stdout
     assert "--preset" in result.stdout
+    assert "smoke" in result.stdout
+    assert "local" in result.stdout
 
 
 def test_hybrid_help() -> None:

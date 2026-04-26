@@ -8,7 +8,7 @@ from pathlib import Path
 import typer
 
 from evonn_compare.contracts.parity import resolve_pack_path
-from evonn_compare.orchestration.lane_presets import resolve_lane_preset
+from evonn_compare.orchestration.lane_presets import lane_preset_help, resolve_lane_preset
 from evonn_compare.orchestration.fair_matrix import (
     prepare_fair_matrix_cases,
     run_fair_matrix_case,
@@ -17,7 +17,7 @@ from evonn_compare.orchestration.fair_matrix import (
 
 def fair_matrix(
     pack: str | None = typer.Option(None, "--pack", help="Parity pack name or YAML path"),
-    preset: str | None = typer.Option(None, "--preset", help="Named lane preset (defaults to smoke when neither --pack nor --preset is supplied)"),
+    preset: str | None = typer.Option(None, "--preset", help=lane_preset_help(default_name="smoke")),
     seeds: str | None = typer.Option(None, "--seeds", help="Comma-separated seeds"),
     budgets: str | None = typer.Option(None, "--budgets", help="Comma-separated budgets"),
     workspace: str = typer.Option(..., "--workspace", help="Campaign workspace"),
