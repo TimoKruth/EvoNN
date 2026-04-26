@@ -105,6 +105,23 @@ When `--output` is provided, the command writes:
 - markdown report at the requested path
 - filtered JSON rows beside it as the same path with `.json` suffix
 
+## Milestone 6: Prism default operating path
+
+Prism is now the default operating path for the routine low-cost compare flow:
+
+- `campaign` defaults to the `smoke` lane when no `--pack` or `--preset` is supplied
+- `fair-matrix` defaults to the same `smoke` lane when no `--pack` or `--preset` is supplied
+- the default path still keeps Topograph on the same shared compare/report surface as the first challenger
+
+Functional shared-surface checks currently covered in Compare tests:
+
+- Prism + Topograph default/smoke fair-matrix flow
+- Stratograph config generation on the shared budget/benchmark surface
+- Primordia config generation on the shared budget/benchmark surface
+- four-system fair-matrix orchestration with Prism, Topograph, Stratograph, and Primordia contributing artifact-complete outputs in the test harness
+
+This is a default operating path, not a monoculture claim: Topograph remains the first challenger lane, while Stratograph and Primordia stay on the same compare/export substrate and are checked for continued functional participation.
+
 ## Intentional remaining engine-specific branches
 
 After the shared-substrate convergence work, Compare still keeps a small set of

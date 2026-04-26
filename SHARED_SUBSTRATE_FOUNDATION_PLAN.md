@@ -103,7 +103,7 @@ Current status by milestone:
 - Milestone 3: underway; Prism, Contenders, Topograph, Primordia, Stratograph, and Compare portable smoke have all been moved closer to the same compare/export substrate
 - Milestone 4: done; Compare `smoke` is now a first-class default small-budget lane with fixed pack/seed/budget defaults, lane acceptance metadata, artifact completeness/fairness/task-coverage/budget/seed checks, and direct fair-matrix/report outputs suitable for repeatable reruns
 - Milestone 5: done for the current branch goal; fair-matrix reruns emit appendable structured trend JSON/JSONL artifacts from compare contracts only, trend markdown/report helpers exist, and `trend-report` now consumes both matrix-trend-row datasets and the structured `fair_matrix_trends.json(.l)` artifacts directly
-- Milestone 6: still ahead; it now depends more on workflow default decisions and preserving a credible challenger lane than on basic substrate scaffolding
+- Milestone 6: done for the current branch goal; Prism is the documented default operating path for the routine compare flow, Topograph remains the first challenger on the same fairness surface, and Stratograph/Primordia still participate on the same compare/export substrate with functional test coverage
 
 ## Milestones
 
@@ -347,6 +347,23 @@ What is clearly complete in code now:
 What still looks like future improvement rather than a Milestone-5 blocker:
 - artifact-layout standardization is strongest around fair-matrix outputs and not yet obviously unified across every compare/report surface
 - trend/report helper reuse exists, but the broader "common report rendering helpers where duplication exists" theme can still be pushed further later
+
+## Milestone 6 completeness audit (current branch read)
+
+What is clearly complete in code/docs now:
+- Prism is the documented default path for the routine low-cost compare flow
+- `campaign` and `fair-matrix` both default to the `smoke` lane when no `--pack` or `--preset` is supplied
+- Topograph remains on the same compare/report/fairness surface as the first challenger rather than falling off into a separate workflow
+- intentional remaining Compare-side engine-specific branches are documented explicitly
+- Stratograph and Primordia remain wired into fair-matrix orchestration and budget/config generation on the shared substrate
+
+Functional evidence currently present in tests:
+- CLI tests cover the default `smoke`-lane behavior for `campaign` and `fair-matrix`
+- fair-matrix orchestration tests cover Prism, Topograph, Stratograph, and Primordia producing the expected artifact set in the shared matrix flow
+- config-generation tests cover Stratograph and Primordia on the shared benchmark/budget surface
+
+What still looks like future improvement rather than a Milestone-6 blocker:
+- a stronger live native-runtime integration check for Stratograph/Primordia would be nice when those environments are available, but the current branch already has functional shared-surface coverage sufficient for this milestone goal
 
 ## Known Risks / Watchouts
 
