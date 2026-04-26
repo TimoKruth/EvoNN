@@ -4,6 +4,10 @@ members = [
     "EvoNN-Contenders",
     "EvoNN-Primordia",
     "EvoNN-Prism",
+    "EvoNN-Shared",
     "EvoNN-Stratograph",
     "EvoNN-Topograph",
 ]
+
+[tool.uv.sources]
+evonn-shared = { workspace = true }

@@ -1,6 +1,6 @@
 """Contract models and validation helpers."""
 
-from evonn_compare.contracts.models import (
+from evonn_shared.contracts import (
     ArtifactPaths,
     BenchmarkEntry,
     BudgetEnvelope,

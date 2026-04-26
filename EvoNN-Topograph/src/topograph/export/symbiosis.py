@@ -13,10 +13,8 @@ import math
 import platform
 import shutil
 import subprocess
-from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from statistics import median as stat_median
 from typing import Any
 
 try:
@@ -31,6 +29,7 @@ except importlib.metadata.PackageNotFoundError:
         _MLX_VERSION = None
 
 import topograph
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
 from topograph.benchmarks.parity import (
     get_canonical_id,
     load_parity_pack,
@@ -188,13 +187,14 @@ def export_symbiosis_contract(
             representative, benchmark_names, config, pack_name, run_dir,
         ),
         "search_telemetry": _search_telemetry(config, budget_meta),
-        "fairness": _fairness_manifest(
+        "fairness": fairness_manifest(
             pack_name=pack_name,
             seed=config.seed,
             evaluation_count=int(budget_manifest["evaluation_count"]),
             budget_policy_name="prototype_equal_budget",
             benchmark_entries=benchmark_entries,
-            data_signature=_benchmark_signature(pack_name, benchmark_entries),
+            data_signature=benchmark_signature(pack_name, benchmark_entries),
+            code_version=_code_version(),
         ),
     }
 
@@ -531,37 +531,6 @@ def _compute_dataset_hash(benchmark_names: list[str]) -> str:
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
-def _fairness_manifest(
-    *,
-    pack_name: str,
-    seed: int,
-    evaluation_count: int,
-    budget_policy_name: str,
-    benchmark_entries: list[dict[str, Any]],
-    data_signature: str,
-) -> dict[str, Any]:
-    return {
-        "benchmark_pack_id": pack_name,
-        "seed": seed,
-        "evaluation_count": evaluation_count,
-        "budget_policy_name": budget_policy_name,
-        "data_signature": data_signature or _benchmark_signature(pack_name, benchmark_entries),
-        "code_version": _code_version(),
-    }
-
-
-def _benchmark_signature(pack_name: str, benchmark_entries: list[dict[str, Any]]) -> str:
-    payload = json.dumps(
-        {
-            "pack_name": pack_name,
-            "benchmarks": benchmark_entries,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
-
-
 def _code_version() -> str | None:
     try:
         return subprocess.check_output(
@@ -622,30 +591,9 @@ def _write_summary_json(
     config: RunConfig,
 ) -> None:
     """Write summary.json with cross-system durability contract fields."""
-    # Best metric per benchmark
-    best_fitness: dict[str, float] = {}
-    for record in results:
-        bid = record.get("benchmark_id", "")
-        mv = record.get("metric_value")
-        status = record.get("status", "")
-        if status == "ok" and mv is not None:
-            best_fitness[bid] = float(mv)
-
-    # Median parameter count
-    param_counts = []
-    for genome in population:
-        pc = genome.param_count or sum(lg.width for lg in genome.enabled_layers)
-        param_counts.append(pc)
-    median_param_count = int(stat_median(param_counts)) if param_counts else 0
-
-    # Median quality
-    qualities = [v for v in best_fitness.values()]
-    median_quality = float(stat_median(qualities)) if qualities else None
-
-    failure_count = sum(1 for r in results if r.get("status") != "ok")
-    non_ok_results = [r for r in results if r.get("status") != "ok"]
-    failure_patterns = dict(
-        Counter(str(r.get("failure_reason") or r.get("status") or "unknown") for r in non_ok_results).most_common()
+    core = summary_core_from_results(
+        results=results,
+        parameter_counts=[genome.param_count or sum(lg.width for lg in genome.enabled_layers) for genome in population],
     )
 
     budget = manifest.get("budget", {})
@@ -660,12 +608,7 @@ def _write_summary_json(
         "generations_completed": latest_gen + 1,
         "epochs_per_candidate": config.training.epochs,
         "population_size": budget.get("population_size", config.evolution.population_size),
-        "best_fitness": best_fitness,
-        "median_parameter_count": median_param_count,
-        "median_benchmark_quality": median_quality,
-        "failure_count": failure_count,
-        "failure_patterns": failure_patterns,
-        "benchmarks_evaluated": len(best_fitness),
+        **core,
         "runtime_backend": device.get("framework", "unknown"),
         "runtime_version": device.get("framework_version", "unknown"),
         "precision_mode": device.get("precision_mode", "unknown"),
@@ -679,6 +622,4 @@ def _write_summary_json(
             seeding.get("representative_architecture_summary") if seeding else None
         ),
     }
-    (output_dir / "summary.json").write_text(
-        json.dumps(summary, indent=2), encoding="utf-8",
-    )
+    write_json(output_dir / "summary.json", summary)

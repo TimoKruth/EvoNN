@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
 from pydantic import TypeAdapter
 
-from evonn_compare.contracts.models import ResultRecord, RunManifest
+from evonn_shared.contracts import ResultRecord, RunManifest
 from evonn_compare.contracts.parity import ParityPack, load_parity_pack
 from evonn_compare.contracts.validation import ValidationReport, validate_contract
+from evonn_shared.manifests import default_artifact, default_data_signature
 
 
 class SystemIngestor:
@@ -71,9 +71,9 @@ def ingest_run_dir(run_dir: Path, pack_name: str | None = None) -> dict:
 def _normalize_manifest(payload: dict, run_dir: Path) -> dict:
     artifacts = payload.get("artifacts", {})
     if "config_snapshot" not in artifacts:
-        artifacts["config_snapshot"] = _default_artifact(run_dir, "config.yaml", "config_snapshot.json")
+        artifacts["config_snapshot"] = default_artifact(run_dir, "config.yaml", "config_snapshot.json")
     if "report_markdown" not in artifacts:
-        artifacts["report_markdown"] = _default_artifact(run_dir, "report.md")
+        artifacts["report_markdown"] = default_artifact(run_dir, "report.md")
     payload["artifacts"] = artifacts
 
     budget = dict(payload.get("budget", {}))
@@ -102,7 +102,7 @@ def _normalize_manifest(payload: dict, run_dir: Path) -> dict:
     fairness.setdefault("seed", payload.get("seed"))
     fairness.setdefault("evaluation_count", budget.get("evaluation_count"))
     fairness.setdefault("budget_policy_name", budget.get("budget_policy_name"))
-    fairness.setdefault("data_signature", _default_data_signature(payload))
+    fairness.setdefault("data_signature", default_data_signature(payload))
     fairness.setdefault("code_version", None)
     payload["fairness"] = fairness
 
@@ -124,34 +124,3 @@ def _normalize_results(payload: list[dict]) -> list[dict]:
         normalized.append(row)
     return normalized
 
-
-def _default_artifact(run_dir: Path, *candidates: str) -> str:
-    for candidate in candidates:
-        if (run_dir / candidate).exists():
-            return candidate
-    return candidates[0]
-
-
-def _default_data_signature(payload: dict) -> str:
-    artifacts = payload.get("artifacts", {}) or {}
-    dataset_hash = artifacts.get("dataset_manifest_hash")
-    if dataset_hash:
-        return str(dataset_hash)
-    benchmark_rows = [
-        {
-            "benchmark_id": entry.get("benchmark_id"),
-            "metric_name": entry.get("metric_name"),
-            "metric_direction": entry.get("metric_direction"),
-            "task_kind": entry.get("task_kind"),
-        }
-        for entry in payload.get("benchmarks", [])
-    ]
-    raw = json.dumps(
-        {
-            "pack_name": payload.get("pack_name"),
-            "benchmarks": benchmark_rows,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]

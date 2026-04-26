@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from evonn_compare.comparison.engine import ComparisonEngine
-from evonn_compare.contracts.models import (
+from evonn_shared.contracts import (
     ArtifactPaths,
     BenchmarkEntry,
     BudgetEnvelope,
@@ -88,6 +88,18 @@ def _write_run(
     (run_dir / "manifest.json").write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     (run_dir / "results.json").write_text(
         json.dumps([result.model_dump(mode="json") for result in results], indent=2),
+        encoding="utf-8",
+    )
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": manifest.run_id,
+                "system": system,
+                "pack_name": manifest.pack_name,
+                "best_results": [result.model_dump(mode="json") for result in results],
+            },
+            indent=2,
+        ),
         encoding="utf-8",
     )
 

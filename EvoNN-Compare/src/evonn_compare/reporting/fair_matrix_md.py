@@ -9,10 +9,33 @@ def render_fair_matrix_markdown(summary: FairMatrixSummary) -> str:
     lines = [
         f"# Fair Matrix: {summary.pack_name}",
         "",
+    ]
+    if summary.lane is not None:
+        lines.extend(
+            [
+                "## Lane Metadata",
+                "",
+                f"- Preset: `{summary.lane.preset or 'custom'}`",
+                f"- Pack: `{summary.lane.pack_name}`",
+                f"- Expected Budget: `{summary.lane.expected_budget}`",
+                f"- Expected Seed: `{summary.lane.expected_seed}`",
+                f"- Artifact Completeness: `{'ok' if summary.lane.artifact_completeness_ok else 'incomplete'}`",
+                f"- Fairness Status: `{'ok' if summary.lane.fairness_ok else 'reference-only'}`",
+                f"- Task Coverage: `{'ok' if summary.lane.task_coverage_ok else 'incomplete'}` ({', '.join(summary.lane.observed_task_kinds) or 'none'})",
+                f"- Budget Consistency: `{'ok' if summary.lane.budget_consistency_ok else 'drifted'}`",
+                f"- Seed Consistency: `{'ok' if summary.lane.seed_consistency_ok else 'drifted'}`",
+                f"- Repeatability Ready: `{'yes' if summary.lane.repeatability_ready else 'no'}`",
+                f"- Acceptance Notes: `{'; '.join(summary.lane.acceptance_notes) if summary.lane.acceptance_notes else 'none'}`",
+                "",
+            ]
+        )
+    lines.extend(
+        [
         "## Fair Search-Budget Results",
         "",
         _result_header(summary.systems, include_note=False),
     ]
+    )
     if summary.fair_rows:
         for row in summary.fair_rows:
             lines.append(_result_row(summary.systems, row, include_note=False))

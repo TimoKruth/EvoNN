@@ -244,9 +244,9 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
         },
     }
     results = [
-        {"benchmark_id": "moons", "metric_value": 0.91, "status": "ok"},
-        {"benchmark_id": "iris", "metric_value": 0.87, "status": "ok"},
-        {"benchmark_id": "bad", "metric_value": None, "status": "failed"},
+        {"benchmark_id": "moons", "metric_value": 0.91, "quality": 9.1, "status": "ok"},
+        {"benchmark_id": "iris", "metric_value": 0.87, "quality": 8.7, "status": "ok"},
+        {"benchmark_id": "bad", "metric_value": None, "quality": -999.0, "status": "failed"},
     ]
     pop = [SimpleNamespace(param_count=64, enabled_layers=[]), SimpleNamespace(param_count=128, enabled_layers=[])]
     sym._write_summary_json(tmp_path, manifest, results, pop, latest_gen=1, config=cfg)
@@ -254,6 +254,7 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     assert summary["system"] == "topograph"
     assert summary["failure_count"] == 1
     assert summary["benchmarks_evaluated"] == 2
+    assert summary["median_benchmark_quality"] == pytest.approx(0.89)
     assert summary["seed_source_system"] == "primordia"
     assert summary["seed_source_path"] == "/tmp/primordia/seed_candidates.json"
     assert summary["seed_target_family"] == "tabular"

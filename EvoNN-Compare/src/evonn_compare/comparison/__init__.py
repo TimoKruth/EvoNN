@@ -9,8 +9,10 @@ from evonn_compare.comparison.engine import (
 from evonn_compare.comparison.fair_matrix import (
     FairMatrixSummary,
     MatrixBudgetRow,
+    MatrixTrendRow,
     PairParityRow,
     build_matrix_summary,
+    build_matrix_trend_rows,
     summarize_matrix_case,
 )
 from evonn_compare.comparison.leaderboard import (
@@ -28,8 +30,10 @@ __all__ = [
     "ComparisonSummary",
     "FairMatrixSummary",
     "MatrixBudgetRow",
+    "MatrixTrendRow",
     "PairParityRow",
     "build_matrix_summary",
+    "build_matrix_trend_rows",
     "build_campaign_leaderboard",
     "summarize_matrix_case",
 ]

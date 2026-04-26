@@ -11,13 +11,15 @@ import typer
 
 from evonn_compare.contracts.parity import resolve_pack_path
 from evonn_compare.orchestration.config_gen import prepare_campaign_cases
+from evonn_compare.orchestration.lane_presets import lane_preset_help, resolve_lane_preset
 from evonn_compare.orchestration.runner import CampaignRunner
 
 
 def campaign(
-    pack: str = typer.Option(..., "--pack", help="Parity pack name or YAML path"),
-    seeds: str = typer.Option("42", "--seeds", help="Comma-separated seeds"),
-    budgets: str = typer.Option("64", "--budgets", help="Comma-separated budgets"),
+    pack: str | None = typer.Option(None, "--pack", help="Parity pack name or YAML path"),
+    preset: str | None = typer.Option(None, "--preset", help=lane_preset_help(default_name="smoke")),
+    seeds: str | None = typer.Option(None, "--seeds", help="Comma-separated seeds"),
+    budgets: str | None = typer.Option(None, "--budgets", help="Comma-separated budgets"),
     workspace: str = typer.Option(..., "--workspace", help="Campaign workspace"),
     prism_root: str = typer.Option("../EvoNN-Prism", "--prism-root"),
     topograph_root: str = typer.Option("../EvoNN-Topograph", "--topograph-root"),
@@ -26,11 +28,15 @@ def campaign(
 ) -> None:
     """Generate and optionally execute a Prism-vs-Topograph campaign."""
 
-    seed_values = _parse_csv_ints(seeds)
-    budget_values = _parse_csv_ints(budgets)
+    preset_name = preset or (None if pack else "smoke")
+    preset_spec = resolve_lane_preset(preset_name) if preset_name else None
+    pack_name = pack or (preset_spec.pack if preset_spec else None)
+
+    seed_values = _parse_optional_csv_ints(seeds) or (list(preset_spec.seeds) if preset_spec else [42])
+    budget_values = _parse_optional_csv_ints(budgets) or (list(preset_spec.budgets) if preset_spec else [64])
     prism_root_path = Path(prism_root).resolve()
     topograph_root_path = Path(topograph_root).resolve()
-    pack_path = resolve_pack_path(pack)
+    pack_path = resolve_pack_path(pack_name)
     paths, cases = prepare_campaign_cases(
         pack_name=Path(pack_path).stem,
         base_pack_path=pack_path,
@@ -70,6 +76,12 @@ def _parse_csv_ints(raw: str) -> list[int]:
     if not values:
         raise ValueError("expected at least one integer value")
     return [int(item) for item in values]
+
+
+def _parse_optional_csv_ints(raw: str | None) -> list[int] | None:
+    if raw is None:
+        return None
+    return _parse_csv_ints(raw)
 
 
 def _run_command(spec, *, log_dir: Path) -> None:

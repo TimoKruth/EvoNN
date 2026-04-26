@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from evonn_compare.comparison.engine import ComparisonResult
-from evonn_compare.contracts.models import ResultRecord, RunManifest
+from evonn_shared.contracts import ResultRecord, RunManifest
 from evonn_compare.contracts.parity import ParityPack
 
 
@@ -41,12 +42,51 @@ class PairParityRow:
 
 
 @dataclass(frozen=True)
+class LaneMetadata:
+    preset: str | None
+    pack_name: str
+    expected_budget: int
+    expected_seed: int
+    artifact_completeness_ok: bool
+    fairness_ok: bool
+    task_coverage_ok: bool
+    budget_consistency_ok: bool
+    seed_consistency_ok: bool
+    observed_task_kinds: tuple[str, ...]
+    acceptance_notes: tuple[str, ...]
+    repeatability_ready: bool
+
+
+@dataclass(frozen=True)
+class MatrixTrendRow:
+    pack_name: str
+    budget: int
+    seed: int
+    system: str
+    run_id: str
+    benchmark_id: str
+    metric_name: str
+    metric_direction: str
+    metric_value: float | None
+    outcome_status: str
+    failure_reason: str | None
+    evaluation_count: int
+    epochs_per_candidate: int
+    budget_policy_name: str | None
+    wall_clock_seconds: float | None
+    matrix_scope: str
+    fairness_metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class FairMatrixSummary:
     pack_name: str
     systems: tuple[str, ...]
+    lane: LaneMetadata | None
     fair_rows: list[MatrixBudgetRow]
     reference_rows: list[MatrixBudgetRow]
     parity_rows: list[PairParityRow]
+    trend_rows: list[MatrixTrendRow]
 
 
 def summarize_matrix_case(
@@ -101,18 +141,88 @@ def summarize_matrix_case(
 def build_matrix_summary(
     *,
     pack_name: str,
+    lane: LaneMetadata | None = None,
     fair_rows: list[MatrixBudgetRow],
     reference_rows: list[MatrixBudgetRow],
     parity_rows: list[PairParityRow],
+    trend_rows: list[MatrixTrendRow] | None = None,
     systems: tuple[str, ...] = SYSTEM_ORDER,
 ) -> FairMatrixSummary:
     return FairMatrixSummary(
         pack_name=pack_name,
         systems=systems,
+        lane=lane,
         fair_rows=sorted(fair_rows, key=lambda row: (row.budget, row.seed)),
         reference_rows=sorted(reference_rows, key=lambda row: (row.budget, row.seed)),
         parity_rows=sorted(parity_rows, key=lambda row: (row.budget, row.seed, row.pair_label)),
+        trend_rows=sorted(
+            trend_rows or [],
+            key=lambda row: (row.budget, row.seed, row.system, row.benchmark_id),
+        ),
     )
+
+
+def build_matrix_trend_rows(
+    *,
+    pack: ParityPack,
+    budget: int,
+    seed: int,
+    runs: dict[str, tuple[RunManifest, list[ResultRecord]]],
+    pair_results: dict[tuple[str, str], tuple[ComparisonResult, Path]],
+    systems: tuple[str, ...] = SYSTEM_ORDER,
+) -> list[MatrixTrendRow]:
+    matrix_scope = "fair" if _reference_note(pair_results) is None else "reference"
+    by_system = {
+        system: {record.benchmark_id: record for record in results}
+        for system, (_manifest, results) in runs.items()
+    }
+    rows: list[MatrixTrendRow] = []
+    for benchmark in pack.benchmarks:
+        for system in systems:
+            manifest_results = runs.get(system)
+            if manifest_results is None:
+                continue
+            manifest, _results = manifest_results
+            record = by_system.get(system, {}).get(benchmark.benchmark_id)
+            benchmark_entry = next(
+                (entry for entry in manifest.benchmarks if entry.benchmark_id == benchmark.benchmark_id),
+                None,
+            )
+            status = record.status if record is not None else (benchmark_entry.status if benchmark_entry is not None else "missing")
+            metric_name = record.metric_name if record is not None else benchmark.metric_name
+            metric_direction = record.metric_direction if record is not None else benchmark.metric_direction
+            fairness = manifest.fairness
+            fairness_metadata = {
+                "benchmark_pack_id": fairness.benchmark_pack_id if fairness is not None else manifest.pack_name,
+                "seed": fairness.seed if fairness is not None else manifest.seed,
+                "evaluation_count": fairness.evaluation_count if fairness is not None else manifest.budget.evaluation_count,
+                "budget_policy_name": fairness.budget_policy_name if fairness is not None else manifest.budget.budget_policy_name,
+                "data_signature": fairness.data_signature if fairness is not None else None,
+                "code_version": fairness.code_version if fairness is not None else None,
+                "pairwise_fairness_ok": matrix_scope == "fair",
+            }
+            rows.append(
+                MatrixTrendRow(
+                    pack_name=pack.name,
+                    budget=budget,
+                    seed=seed,
+                    system=system,
+                    run_id=manifest.run_id,
+                    benchmark_id=benchmark.benchmark_id,
+                    metric_name=metric_name,
+                    metric_direction=metric_direction,
+                    metric_value=record.metric_value if record is not None else None,
+                    outcome_status=status,
+                    failure_reason=record.failure_reason if record is not None else None,
+                    evaluation_count=manifest.budget.evaluation_count,
+                    epochs_per_candidate=manifest.budget.epochs_per_candidate,
+                    budget_policy_name=manifest.budget.budget_policy_name,
+                    wall_clock_seconds=manifest.budget.wall_clock_seconds,
+                    matrix_scope=matrix_scope,
+                    fairness_metadata=fairness_metadata,
+                )
+            )
+    return rows
 
 
 def _winner_table(

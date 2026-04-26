@@ -5,6 +5,33 @@ default_install_hook_types:
 repos:
   - repo: local
     hooks:
+      - id: shared-ruff
+        name: Shared Ruff
+        entry: bash scripts/ci/shared-checks.sh ruff
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Shared/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-commit
+
+      - id: compare-ruff
+        name: Compare Ruff
+        entry: bash scripts/ci/compare-checks.sh ruff
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Compare/|EvoNN-Shared/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-commit
+
+      - id: contenders-ruff
+        name: Contenders Ruff
+        entry: bash scripts/ci/contenders-checks.sh ruff
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Contenders/|EvoNN-Shared/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-commit
+
       - id: prism-ruff
         name: Prism Ruff
         entry: bash scripts/ci/prism-checks.sh ruff
@@ -22,6 +49,33 @@ repos:
         files: ^(EvoNN-Topograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
         stages:
           - pre-commit
+
+      - id: shared-pytest
+        name: Shared Pytest
+        entry: bash scripts/ci/shared-checks.sh pytest
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Shared/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-push
+
+      - id: compare-pytest
+        name: Compare Pytest
+        entry: bash scripts/ci/compare-checks.sh pytest
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Compare/|EvoNN-Shared/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-push
+
+      - id: contenders-pytest
+        name: Contenders Pytest
+        entry: bash scripts/ci/contenders-checks.sh pytest
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Contenders/|EvoNN-Shared/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-push
 
       - id: prism-pytest
         name: Prism Pytest

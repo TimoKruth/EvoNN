@@ -266,6 +266,15 @@ def test_load_pack_maps_language_modeling_metrics(monkeypatch, tmp_path):
     ]
 
 
+def test_resolve_output_dim_expands_lm_vocab_when_tokens_exceed_declared_cap():
+    smoke = _load_smoke_module()
+    spec = SimpleNamespace(output_dim=4, num_classes=4)
+    x_train = np.array([[0, 1], [2, 3]], dtype=np.int32)
+    y_train = np.array([[1, 2], [3, 5]], dtype=np.int64)
+
+    assert smoke._resolve_output_dim(spec, x_train, y_train, "language_modeling") == 6
+
+
 def test_load_pack_tolerates_empty_yaml_and_missing_benchmarks(tmp_path):
     smoke = _load_smoke_module()
 
@@ -343,7 +352,7 @@ def test_mini_evolve_language_modeling_uses_lm_contract(monkeypatch):
     assert compile_calls == {
         "family": "attention",
         "input_shape": [4],
-        "output_dim": 11,
+        "output_dim": 12,
         "modality": "text",
         "task": "language_modeling",
     }

@@ -1,11 +1,45 @@
 from pathlib import Path
 
 import json
+from typer.testing import CliRunner
 
+from evonn_contenders.cli import app
 from evonn_contenders.config import load_config
 from evonn_contenders.export.symbiosis import export_symbiosis_contract
 from evonn_contenders.pipeline import materialize_baseline_run, run_contenders
 from evonn_contenders.storage import RunStore
+
+runner = CliRunner()
+
+
+def test_materialize_cli_reports_cache_miss_without_traceback(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: cached_contenders
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+baseline:
+  baseline_id: smoke_fixed
+  cache_dir: baseline-cache
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    def fail_materialize(*args, **kwargs):
+        raise ValueError("benchmark 'iris' missing from baseline cache 'smoke_fixed'")
+
+    monkeypatch.setattr("evonn_contenders.cli.materialize_baseline_run", fail_materialize)
+
+    result = runner.invoke(app, ["materialize", "--config", str(config_path), "--run-dir", str(tmp_path / "run")])
+
+    assert result.exit_code == 1
+    assert "missing from baseline cache" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_smoke_run_and_export(tmp_path: Path) -> None:
@@ -30,22 +64,49 @@ selection:
         + "\n",
         encoding="utf-8",
     )
+    pack_path = tmp_path / "smoke_compare_pack.yaml"
+    pack_path.write_text(
+        """
+name: smoke_compare_pack
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      contenders: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+  - benchmark_id: tiny_lm_synthetic
+    native_ids:
+      contenders: tiny_lm_synthetic
+    task_kind: language_modeling
+    metric_name: perplexity
+    metric_direction: min
+budget_policy:
+  evaluation_count: 4
+  epochs_per_candidate: 1
+seed_policy:
+  mode: shared
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
     run_dir = tmp_path / "run"
     config = load_config(config_path)
     run_contenders(config, run_dir=run_dir, config_path=config_path)
-    manifest_path, results_path = export_symbiosis_contract(
-        run_dir,
-        Path("/Users/timokruth/Projekte/Evo Neural Nets/EvoNN-Compare/manual_compare_runs/20260416_budget38_seed42_smoke_valid/packs/working_33_plus_5_lm_compare_eval38.yaml"),
-        run_dir,
-    )
+    manifest_path, results_path = export_symbiosis_contract(run_dir, pack_path, run_dir)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     results = json.loads(results_path.read_text(encoding="utf-8"))
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     assert manifest["system"] == "contenders"
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
     benchmark_ids = {record["benchmark_id"] for record in results}
     assert "iris_classification" in benchmark_ids
     assert "tiny_lm_synthetic" in benchmark_ids
+    assert summary["system"] == "contenders"
+    assert summary["run_id"] == manifest["run_id"]
+    assert summary["benchmarks_evaluated"] == len(results)
 
 
 def test_baseline_cache_reuses_existing_benchmarks(tmp_path: Path, monkeypatch) -> None:

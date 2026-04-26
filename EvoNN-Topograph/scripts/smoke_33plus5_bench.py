@@ -138,12 +138,33 @@ def _prepare_data(
         x_train = pp.fit_transform(x_train)
         x_val = pp.transform(x_val)
 
-    if spec.task == "regression":
-        num_classes = 1
-    else:
-        num_classes = spec.num_classes or int(np.max(y_train)) + 1
+    num_classes = _resolve_output_dim(
+        task=spec.task,
+        declared=spec.num_classes,
+        x_train=x_train,
+        y_train=y_train,
+    )
 
     return x_train, y_train, x_val, y_val, spec.task, num_classes
+
+
+def _resolve_output_dim(
+    *,
+    task: str,
+    declared: int | None,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+) -> int:
+    if task == "regression":
+        return 1
+    if task != "language_modeling":
+        return declared or int(np.max(y_train)) + 1
+
+    observed_max = max(
+        int(np.max(x_train)) if x_train.size else 0,
+        int(np.max(y_train)) if y_train.size else 0,
+    )
+    return max(declared or 1, observed_max + 1)
 
 
 def smoke_eval(benchmark_name: str, *, seed: int = SEED) -> dict:

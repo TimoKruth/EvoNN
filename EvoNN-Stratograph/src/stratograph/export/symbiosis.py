@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import platform
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from statistics import median as stat_median
 from typing import Any
+
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
 
 import stratograph
 from stratograph.benchmarks import get_benchmark
@@ -146,19 +146,20 @@ def export_symbiosis_contract(
             "map_elites_total_niches": budget_meta.get("map_elites_total_niches"),
             "map_elites_fill_ratio": budget_meta.get("map_elites_fill_ratio"),
         },
-        "fairness": _fairness_manifest(
+        "fairness": fairness_manifest(
             pack_name=pack.name,
             seed=config.seed,
             evaluation_count=budget_meta.get("evaluation_count", len(result_records)),
             budget_policy_name="prototype_equal_budget",
             benchmark_entries=manifest_benchmarks,
-            data_signature=_benchmark_signature(pack.name, manifest_benchmarks),
+            data_signature=benchmark_signature(pack.name, manifest_benchmarks),
+            code_version=_code_version(),
         ),
     }
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    results_path.write_text(json.dumps(result_records, indent=2), encoding="utf-8")
+    write_json(manifest_path, manifest)
+    write_json(results_path, result_records)
     _write_contract_summary_json(
         output_dir,
         manifest,
@@ -193,7 +194,7 @@ def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]])
 
 
 def _write_summary_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_json(path, payload)
 
 
 def _write_contract_summary_json(
@@ -205,24 +206,14 @@ def _write_contract_summary_json(
     report_context: dict[str, Any],
 ) -> None:
     """Write cross-system summary.json for Stratograph exports."""
-    best_fitness: dict[str, float] = {}
-    ok_param_counts: list[int] = []
-    quality_values: list[float] = []
-    for record in results:
-        if record.get("status") != "ok":
-            continue
-        benchmark_id = str(record.get("benchmark_id") or "")
-        metric_value = record.get("metric_value")
-        if benchmark_id and metric_value is not None:
-            best_fitness[benchmark_id] = float(metric_value)
-        parameter_count = record.get("parameter_count")
-        if parameter_count is not None:
-            ok_param_counts.append(int(parameter_count))
-        quality = record.get("quality")
-        if quality is not None:
-            quality_values.append(float(quality))
-
-    failure_count = sum(1 for record in results if record.get("status") != "ok")
+    core = summary_core_from_results(
+        results=results,
+        parameter_counts=[
+            int(record["parameter_count"])
+            for record in results
+            if record.get("status") == "ok" and record.get("parameter_count") is not None
+        ],
+    )
     budget = manifest.get("budget", {})
     device = manifest.get("device", {})
     status_payload = report_context.get("status", {})
@@ -243,11 +234,7 @@ def _write_contract_summary_json(
         "runtime_backend": device.get("framework", "unknown"),
         "runtime_version": device.get("framework_version") or "unknown",
         "precision_mode": device.get("precision_mode", "unknown"),
-        "best_fitness": best_fitness,
-        "median_parameter_count": int(stat_median(ok_param_counts)) if ok_param_counts else 0,
-        "median_benchmark_quality": float(stat_median(quality_values)) if quality_values else None,
-        "failure_count": failure_count,
-        "benchmarks_evaluated": len(best_fitness),
+        **core,
         "failure_patterns": dict(summarize_failure_patterns(non_ok_results)),
         "completed_benchmarks": status_payload.get("completed_count", len(results)),
         "remaining_benchmarks": status_payload.get("remaining_count", 0),
@@ -264,46 +251,7 @@ def _write_contract_summary_json(
             "avg_cell_depth": float(representative_genome.average_cell_depth),
             "reuse_ratio": float(representative_genome.reuse_ratio),
         }
-    (output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-
-
-def _fairness_manifest(
-    *,
-    pack_name: str,
-    seed: int,
-    evaluation_count: int,
-    budget_policy_name: str,
-    benchmark_entries: list[dict[str, Any]],
-    data_signature: str,
-) -> dict[str, Any]:
-    return {
-        "benchmark_pack_id": pack_name,
-        "seed": seed,
-        "evaluation_count": evaluation_count,
-        "budget_policy_name": budget_policy_name,
-        "data_signature": data_signature or _benchmark_signature(pack_name, benchmark_entries),
-        "code_version": _code_version(),
-    }
-
-
-def _benchmark_signature(pack_name: str, benchmark_entries: list[dict[str, Any]]) -> str:
-    payload = json.dumps(
-        {
-            "pack_name": pack_name,
-            "benchmarks": [
-                {
-                    "benchmark_id": entry.get("benchmark_id"),
-                    "task_kind": entry.get("task_kind"),
-                    "metric_name": entry.get("metric_name"),
-                    "metric_direction": entry.get("metric_direction"),
-                }
-                for entry in benchmark_entries
-            ],
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    write_json(output_dir / "summary.json", summary)
 
 
 def _code_version() -> str | None:

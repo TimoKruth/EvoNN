@@ -102,6 +102,20 @@ def _metric_contract(task):
     return "accuracy", "max"
 
 
+def _resolve_output_dim(spec, x_train, y_train, task):
+    if task == "classification":
+        return len(set(y_train.tolist() if hasattr(y_train, "tolist") else y_train))
+    declared = getattr(spec, "output_dim", None) or getattr(spec, "num_classes", None) or 1
+    if task != "language_modeling":
+        return declared
+
+    observed_max = max(
+        int(np.max(x_train)) if x_train.size else 0,
+        int(np.max(y_train)) if y_train.size else 0,
+    )
+    return max(int(declared), observed_max + 1)
+
+
 def _require_runtime_dependencies():
     if compile_genome is None or compatible_families is None or train_and_evaluate is None:
         raise RuntimeError("MLX runtime unavailable for smoke_41bench Prism execution") from _MLX_RUNTIME_IMPORT_ERROR
@@ -122,10 +136,7 @@ def mini_evolve(benchmark_name, task, seed=SEED):
         X_val = pp.transform(X_val)
 
     input_shape = _input_shape_from_data(spec, X_train)
-    if task == "classification":
-        num_classes = len(set(y_train.tolist() if hasattr(y_train, 'tolist') else y_train))
-    else:
-        num_classes = getattr(spec, "output_dim", None) or getattr(spec, "num_classes", None) or 1
+    num_classes = _resolve_output_dim(spec, X_train, y_train, task)
 
     rng = random.Random(seed)
     config = RunConfig()

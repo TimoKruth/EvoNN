@@ -1,16 +1,15 @@
 """Symbiosis-style export contract for Primordia runs."""
 from __future__ import annotations
 
-import hashlib
 import json
 import platform
 import shutil
 import subprocess
-from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from statistics import median as stat_median
 from typing import Any
+
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
 
 from evonn_primordia.benchmarks import get_benchmark
 from evonn_primordia.benchmarks.parity import fallback_native_id, load_parity_pack
@@ -159,19 +158,20 @@ def export_symbiosis_contract(
             "failure_count": int(summary.get("failure_count", 0)),
             "wall_clock_seconds": summary.get("wall_clock_seconds"),
         },
-        "fairness": _fairness_manifest(
+        "fairness": fairness_manifest(
             pack_name=pack.name,
             seed=config.seed,
             evaluation_count=evaluation_count,
             budget_policy_name=BUDGET_POLICY_NAME,
             benchmark_entries=manifest_benchmarks,
-            data_signature=_benchmark_signature(pack.name, manifest_benchmarks),
+            data_signature=benchmark_signature(pack.name, manifest_benchmarks),
+            code_version=_code_version(),
         ),
     }
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    results_path.write_text(json.dumps(result_records, indent=2), encoding="utf-8")
+    write_json(manifest_path, manifest)
+    write_json(results_path, result_records)
     return manifest_path, results_path
 
 
@@ -199,7 +199,7 @@ def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]])
 
 
 def _write_summary_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_json(path, payload)
 
 
 def _build_compare_summary(
@@ -208,29 +208,14 @@ def _build_compare_summary(
     results: list[dict[str, Any]],
     evaluation_count: int,
 ) -> dict[str, Any]:
-    best_fitness: dict[str, float] = {}
-    ok_param_counts: list[int] = []
-    quality_values: list[float] = []
-    non_ok_results = [record for record in results if record.get("status") != "ok"]
-    failure_patterns = dict(
-        Counter(
-            str(record.get("failure_reason") or record.get("status") or "unknown")
-            for record in non_ok_results
-        ).most_common()
+    core = summary_core_from_results(
+        results=results,
+        parameter_counts=[
+            int(record["parameter_count"])
+            for record in results
+            if record.get("status") == "ok" and record.get("parameter_count") is not None
+        ],
     )
-    for record in results:
-        if record.get("status") != "ok":
-            continue
-        benchmark_id = str(record.get("benchmark_id") or "")
-        metric_value = record.get("metric_value")
-        if benchmark_id and metric_value is not None:
-            best_fitness[benchmark_id] = float(metric_value)
-        parameter_count = record.get("parameter_count")
-        if parameter_count is not None:
-            ok_param_counts.append(int(parameter_count))
-        quality = record.get("quality")
-        if quality is not None:
-            quality_values.append(float(quality))
 
     return {
         "system": "primordia",
@@ -243,55 +228,11 @@ def _build_compare_summary(
         "runtime_backend": summary.get("runtime", "unknown"),
         "runtime_version": summary.get("runtime_version") or "unknown",
         "precision_mode": summary.get("precision_mode", "unknown"),
-        "best_fitness": best_fitness,
-        "median_parameter_count": int(stat_median(ok_param_counts)) if ok_param_counts else 0,
-        "median_benchmark_quality": float(stat_median(quality_values)) if quality_values else None,
-        "failure_count": len(non_ok_results),
-        "failure_patterns": failure_patterns,
-        "benchmarks_evaluated": len(best_fitness),
+        **core,
         "wall_clock_seconds": summary.get("wall_clock_seconds"),
         "primitive_usage": summary.get("primitive_usage", {}),
         "group_counts": summary.get("group_counts", {}),
     }
-
-
-def _fairness_manifest(
-    *,
-    pack_name: str,
-    seed: int,
-    evaluation_count: int,
-    budget_policy_name: str,
-    benchmark_entries: list[dict[str, Any]],
-    data_signature: str,
-) -> dict[str, Any]:
-    return {
-        "benchmark_pack_id": pack_name,
-        "seed": seed,
-        "evaluation_count": evaluation_count,
-        "budget_policy_name": budget_policy_name,
-        "data_signature": data_signature or _benchmark_signature(pack_name, benchmark_entries),
-        "code_version": _code_version(),
-    }
-
-
-def _benchmark_signature(pack_name: str, benchmark_entries: list[dict[str, Any]]) -> str:
-    payload = json.dumps(
-        {
-            "pack_name": pack_name,
-            "benchmarks": [
-                {
-                    "benchmark_id": entry.get("benchmark_id"),
-                    "task_kind": entry.get("task_kind"),
-                    "metric_name": entry.get("metric_name"),
-                    "metric_direction": entry.get("metric_direction"),
-                }
-                for entry in benchmark_entries
-            ],
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def _code_version() -> str | None:

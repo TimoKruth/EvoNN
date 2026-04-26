@@ -77,3 +77,17 @@ def test_render_markdown_report_contains_summary_and_lm_section():
     assert "## Summary" in text
     assert "## Language Modeling" in text
     assert "tiny_lm_synthetic" in text
+
+
+def test_resolve_output_dim_expands_lm_vocab_when_tokens_exceed_catalog_cap():
+    smoke = _load_smoke_module()
+
+    x_train = [[1, 2], [3, 4]]
+    y_train = [[2, 3], [4, 5]]
+
+    assert smoke._resolve_output_dim(
+        task="language_modeling",
+        declared=4,
+        x_train=smoke.np.array(x_train),
+        y_train=smoke.np.array(y_train),
+    ) == 6
