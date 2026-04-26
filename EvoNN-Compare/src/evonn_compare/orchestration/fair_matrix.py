@@ -219,6 +219,8 @@ def prepare_fair_matrix_cases(
         "seeds": seeds,
         "budgets": budgets,
         "systems": list(systems),
+        "trends_dir": str(paths.trends_dir),
+        "trend_dataset": str(paths.trends_dir / "fair_matrix_trends.jsonl"),
         "cases": [
             {
                 key: str(value) if isinstance(value, Path) else value
