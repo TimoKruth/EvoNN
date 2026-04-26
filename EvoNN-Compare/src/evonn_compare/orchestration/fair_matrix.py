@@ -559,7 +559,12 @@ def _build_lane_metadata(
     artifact_completeness_ok = True
     for system, (manifest, _results) in runs.items():
         run_dir = _run_dir_for_system(case, system)
-        required = [run_dir / "manifest.json", run_dir / "results.json", run_dir / "report.md"]
+        required = [
+            run_dir / "manifest.json",
+            run_dir / "results.json",
+            run_dir / "summary.json",
+            run_dir / "report.md",
+        ]
         dataset_manifest = getattr(manifest.artifacts, "dataset_manifest_json", None)
         if dataset_manifest:
             required.append(run_dir / str(dataset_manifest))
@@ -638,6 +643,7 @@ def _build_trend_records(
                     "artifact_paths": {
                         "manifest": str(_run_dir_for_system(case, system) / "manifest.json"),
                         "results": str(_run_dir_for_system(case, system) / "results.json"),
+                        "summary": str(_run_dir_for_system(case, system) / "summary.json"),
                         "report": str(_run_dir_for_system(case, system) / "report.md"),
                     },
                 }

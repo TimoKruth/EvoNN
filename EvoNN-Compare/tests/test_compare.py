@@ -90,6 +90,18 @@ def _write_run(
         json.dumps([result.model_dump(mode="json") for result in results], indent=2),
         encoding="utf-8",
     )
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": manifest.run_id,
+                "system": system,
+                "pack_name": manifest.pack_name,
+                "best_results": [result.model_dump(mode="json") for result in results],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_compare_counts_wins(tmp_path: Path) -> None:

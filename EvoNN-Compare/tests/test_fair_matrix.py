@@ -10,7 +10,11 @@ from evonn_compare.comparison.fair_matrix import (
 from evonn_compare.comparison.engine import ComparisonEngine
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.ingest.loader import SystemIngestor
-from evonn_compare.orchestration.fair_matrix import _build_trend_records, _native_runtime_available
+from evonn_compare.orchestration.fair_matrix import (
+    _build_lane_metadata,
+    _build_trend_records,
+    _native_runtime_available,
+)
 from evonn_compare.reporting.fair_matrix_md import render_fair_matrix_markdown
 from test_compare import PACK_PATH, _write_run
 
@@ -299,3 +303,49 @@ def test_build_trend_records_preserves_longitudinal_fields(tmp_path: Path) -> No
     assert first["fairness"]["benchmark_pack_id"] == pack.name
     assert first["fairness"]["evaluation_count"] == 64
     assert first["artifact_paths"]["manifest"].endswith("manifest.json")
+    assert first["artifact_paths"]["summary"].endswith("summary.json")
+
+
+def test_build_lane_metadata_requires_summary_artifact_for_repeatability(tmp_path: Path) -> None:
+    pack = load_parity_pack(PACK_PATH)
+    run_dirs = {
+        "prism": tmp_path / "prism",
+        "topograph": tmp_path / "topograph",
+    }
+    _write_run(run_dirs["prism"], system="prism", score_shift=0.02, budget_policy_name="evolutionary_search")
+    _write_run(run_dirs["topograph"], system="topograph", budget_policy_name="evolutionary_search")
+    (run_dirs["topograph"] / "summary.json").unlink()
+
+    ingestors = {system: SystemIngestor(path) for system, path in run_dirs.items()}
+    runs = {
+        system: (ingestor.load_manifest(), ingestor.load_results())
+        for system, ingestor in ingestors.items()
+    }
+    pair_result = ComparisonEngine().compare(
+        left_manifest=runs["prism"][0],
+        left_results=runs["prism"][1],
+        right_manifest=runs["topograph"][0],
+        right_results=runs["topograph"][1],
+        pack=pack,
+    )
+
+    class CaseStub:
+        lane_preset = "smoke"
+        pack_name = pack.name
+        budget = 64
+        seed = 42
+        prism_run_dir = run_dirs["prism"]
+        topograph_run_dir = run_dirs["topograph"]
+        stratograph_run_dir = tmp_path / "stratograph"
+        primordia_run_dir = tmp_path / "primordia"
+        contender_run_dir = None
+
+    lane = _build_lane_metadata(
+        case=CaseStub(),
+        runs=runs,
+        pair_results={("prism", "topograph"): (pair_result, Path("prism_vs_topograph.md"))},
+    )
+
+    assert lane.fairness_ok is True
+    assert lane.artifact_completeness_ok is False
+    assert lane.repeatability_ready is False
