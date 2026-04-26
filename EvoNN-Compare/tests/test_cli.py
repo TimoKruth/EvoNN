@@ -62,6 +62,14 @@ def test_dashboard_help() -> None:
     assert "--no-open" in result.stdout
 
 
+def test_workspace_report_help() -> None:
+    result = runner.invoke(app, ["workspace-report", "--help"])
+    assert result.exit_code == 0
+    assert "Fair-matrix workspace root" in result.stdout
+    assert "--dashboard-output" in result.stdout
+    assert "--trend-output" in result.stdout
+
+
 def test_hybrid_help() -> None:
     result = runner.invoke(app, ["hybrid", "run", "--help"])
     assert result.exit_code == 0
@@ -102,7 +110,18 @@ def test_fair_matrix_execute_surfaces_manifest_and_trend_dataset(tmp_path, monke
         case.summary_output_path.write_text("# summary\n", encoding="utf-8")
         return case.summary_output_path
 
+    def fake_refresh_workspace_reports(*, workspace):
+        return {
+            "workspace": str(workspace),
+            "summary_count": 1,
+            "trend_dataset": str(Path(workspace) / "trends" / "fair_matrix_trend_rows.jsonl"),
+            "trend_report": str(Path(workspace) / "trends" / "fair_matrix_trends.md"),
+            "dashboard": str(Path(workspace) / "fair_matrix_dashboard.html"),
+            "dashboard_data": str(Path(workspace) / "fair_matrix_dashboard.json"),
+        }
+
     monkeypatch.setattr("evonn_compare.cli.fair_matrix.run_fair_matrix_case", fake_run_fair_matrix_case)
+    monkeypatch.setattr("evonn_compare.cli.fair_matrix.refresh_workspace_reports", fake_refresh_workspace_reports)
 
     result = runner.invoke(app, ["fair-matrix", "--preset", "smoke", "--workspace", str(tmp_path), "--serial"])
     assert result.exit_code == 0
@@ -110,6 +129,8 @@ def test_fair_matrix_execute_surfaces_manifest_and_trend_dataset(tmp_path, monke
     assert "manifest\t" in result.stdout
     assert "trend-dataset\t" in result.stdout
     assert "summary\t" in result.stdout
+    assert "workspace_dashboard\t" in result.stdout
+    assert "workspace_dashboard_data\t" in result.stdout
 
 
 def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) -> None:
@@ -130,8 +151,19 @@ def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) ->
     def fake_run_fair_matrix_case(*_args, **_kwargs):
         return summary_path
 
+    def fake_refresh_workspace_reports(*, workspace):
+        return {
+            "workspace": str(workspace),
+            "summary_count": 1,
+            "trend_dataset": str(Path(workspace) / "trends" / "fair_matrix_trend_rows.jsonl"),
+            "trend_report": str(Path(workspace) / "trends" / "fair_matrix_trends.md"),
+            "dashboard": str(Path(workspace) / "fair_matrix_dashboard.html"),
+            "dashboard_data": str(Path(workspace) / "fair_matrix_dashboard.json"),
+        }
+
     monkeypatch.setattr(fair_matrix_cli, "prepare_fair_matrix_cases", fake_prepare_fair_matrix_cases)
     monkeypatch.setattr(fair_matrix_cli, "run_fair_matrix_case", fake_run_fair_matrix_case)
+    monkeypatch.setattr(fair_matrix_cli, "refresh_workspace_reports", fake_refresh_workspace_reports)
 
     result = runner.invoke(app, ["fair-matrix", "--pack", "tier1_core", "--workspace", str(tmp_path)])
 
@@ -141,6 +173,8 @@ def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) ->
     assert f"trend_report\t{summary_path.parent / 'trend_report.md'}" in result.stdout
     assert f"workspace_trend_rows\t{summary_path.parent.parent / 'fair_matrix_trend_rows.jsonl'}" in result.stdout
     assert f"workspace_trend_report\t{summary_path.parent.parent / 'fair_matrix_trends.md'}" in result.stdout
+    assert f"workspace_dashboard\t{tmp_path / 'fair_matrix_dashboard.html'}" in result.stdout
+    assert f"workspace_dashboard_data\t{tmp_path / 'fair_matrix_dashboard.json'}" in result.stdout
 
 
 def test_trend_report_filters_rows_and_writes_outputs(tmp_path: Path) -> None:
@@ -249,6 +283,60 @@ def test_trend_report_accepts_structured_fair_matrix_trends_jsonl(tmp_path: Path
     assert "# Fair Matrix Trends: tier1_core_smoke" in result.stdout
     assert "- Systems: `prism`" in result.stdout
     assert "| prism | iris_classification | 1 | 0.810000 | 0.810000 | 0.000000 | ok | 16 | 42 | fair | fair | unknown |" in result.stdout
+
+
+def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    trends_dir = workspace / "trends"
+    reports_dir = workspace / "reports" / "tier1_core_eval64_seed42"
+    trends_dir.mkdir(parents=True)
+    reports_dir.mkdir(parents=True)
+    (trends_dir / "fair_matrix_trend_rows.jsonl").write_text(
+        json.dumps(_dashboard_row("prism", "iris_classification", 0.8)) + "\n",
+        encoding="utf-8",
+    )
+    (reports_dir / "fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier1_core_eval64",
+                "systems": ["prism"],
+                "lane": {
+                    "preset": None,
+                    "pack_name": "tier1_core_eval64",
+                    "expected_budget": 64,
+                    "expected_seed": 42,
+                    "operating_state": "contract-fair",
+                    "artifact_completeness_ok": True,
+                    "fairness_ok": True,
+                    "task_coverage_ok": True,
+                    "budget_consistency_ok": True,
+                    "seed_consistency_ok": True,
+                    "budget_accounting_ok": True,
+                    "core_systems_complete_ok": False,
+                    "extended_systems_complete_ok": False,
+                    "observed_task_kinds": ["classification"],
+                    "system_operating_states": {"prism": "benchmark-complete"},
+                    "acceptance_notes": [],
+                    "repeatability_ready": False,
+                },
+                "fair_rows": [],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [_dashboard_row("prism", "iris_classification", 0.8)],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["workspace-report", str(workspace)])
+
+    assert result.exit_code == 0
+    assert f"trend-report\t{workspace / 'trends' / 'fair_matrix_trends.md'}" in result.stdout
+    assert f"dashboard\t{workspace / 'fair_matrix_dashboard.html'}" in result.stdout
+    assert (workspace / "trends" / "fair_matrix_trends.md").exists()
+    assert (workspace / "fair_matrix_dashboard.html").exists()
+    assert "Lane States" in (workspace / "trends" / "fair_matrix_trends.md").read_text(encoding="utf-8")
 
 
 def test_dashboard_recomputes_project_only_winners(tmp_path: Path) -> None:

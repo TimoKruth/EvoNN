@@ -21,7 +21,7 @@ def trend_report(
 ) -> None:
     """Merge and query accumulated fair-matrix trend datasets."""
 
-    rows = _load_trend_rows([Path(value) for value in inputs])
+    rows = load_trend_rows([Path(value) for value in inputs])
     rows = [
         row for row in rows
         if (system is None or row.system == system)
@@ -39,7 +39,7 @@ def trend_report(
     typer.echo(markdown)
 
 
-def _load_trend_rows(paths: list[Path]) -> list[MatrixTrendRow]:
+def load_trend_rows(paths: list[Path]) -> list[MatrixTrendRow]:
     rows: list[MatrixTrendRow] = []
     for path in paths:
         payload = _read_payload(path)

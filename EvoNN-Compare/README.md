@@ -69,10 +69,41 @@ Each fair-matrix workspace also accumulates:
 
 - `fair_matrix_trend_rows.jsonl`
 - `fair_matrix_trends.md`
+- `fair_matrix_dashboard.html`
+- `fair_matrix_dashboard.json`
 
-After `fair-matrix` execution, the CLI now prints the paths for the case summary, case trend artifacts, and workspace-level trend dataset/report so reruns can be inspected or fed into `trend-report` immediately.
+After `fair-matrix` execution, the CLI refreshes the workspace-level trend report and dashboard automatically from the canonical JSON artifacts. It prints the paths for the case summary, case trend artifacts, workspace trend dataset/report, and workspace dashboard so reruns can be reviewed from the longitudinal surface first.
 
 This means repeated `smoke` lane runs can be appended to one shared trend dataset without per-engine parsers or markdown scraping.
+
+### Workspace-first review flow
+
+The default review surface is now the workspace, not an individual markdown snapshot:
+
+```bash
+uv run --package evonn-compare evonn-compare fair-matrix \
+  --workspace .tmp/fair-matrix-smoke
+```
+
+That command refreshes:
+
+- `.tmp/fair-matrix-smoke/trends/fair_matrix_trends.md`
+- `.tmp/fair-matrix-smoke/fair_matrix_dashboard.html`
+- `.tmp/fair-matrix-smoke/fair_matrix_dashboard.json`
+
+To rebuild those workspace-level views later without rerunning engines:
+
+```bash
+uv run --package evonn-compare evonn-compare workspace-report \
+  .tmp/fair-matrix-smoke
+```
+
+Use the workspace trend report and dashboard first for questions like:
+
+- did this improve anything?
+- did fairness/accounting status drift?
+- which lane operating state are we actually in?
+- are failures or missing benchmarks increasing over time?
 
 ### Trend reporting CLI
 

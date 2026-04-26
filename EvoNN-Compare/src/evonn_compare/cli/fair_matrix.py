@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 
 from evonn_compare.contracts.parity import resolve_pack_path
+from evonn_compare.cli.workspace_report import refresh_workspace_reports
 from evonn_compare.orchestration.lane_presets import lane_preset_help, resolve_lane_preset
 from evonn_compare.orchestration.fair_matrix import (
     prepare_fair_matrix_cases,
@@ -75,6 +76,10 @@ def fair_matrix(
         typer.echo(f"summary\t{summary_path}")
         for label, artifact_path in _trend_artifact_paths(summary_path).items():
             typer.echo(f"{label}\t{artifact_path}")
+
+    workspace_artifacts = refresh_workspace_reports(workspace=Path(workspace))
+    typer.echo(f"workspace_dashboard\t{workspace_artifacts['dashboard']}")
+    typer.echo(f"workspace_dashboard_data\t{workspace_artifacts['dashboard_data']}")
 
 
 def _trend_artifact_paths(summary_path: Path) -> dict[str, Path]:
