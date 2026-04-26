@@ -16,6 +16,7 @@ from evonn_compare.orchestration.fair_matrix import (
     _build_lane_metadata,
     _build_trend_records,
     _native_runtime_available,
+    _write_trend_artifacts,
     run_fair_matrix_case,
 )
 from evonn_compare.reporting.fair_matrix_md import render_fair_matrix_markdown
@@ -234,6 +235,68 @@ def test_build_matrix_trend_rows_capture_minimum_longitudinal_dimensions(tmp_pat
     assert first.fairness_metadata["benchmark_pack_id"] == pack.name
     assert first.fairness_metadata["seed"] == 42
     assert first.fairness_metadata["evaluation_count"] == 64
+
+
+def test_write_trend_artifacts_persists_case_and_workspace_reports(tmp_path: Path) -> None:
+    pack = load_parity_pack(PACK_PATH)
+    prism_dir = tmp_path / "prism"
+    topograph_dir = tmp_path / "topograph"
+    _write_run(prism_dir, system="prism", score_shift=0.02)
+    _write_run(topograph_dir, system="topograph")
+
+    prism = SystemIngestor(prism_dir)
+    topograph = SystemIngestor(topograph_dir)
+    runs = {
+        "prism": (prism.load_manifest(), prism.load_results()),
+        "topograph": (topograph.load_manifest(), topograph.load_results()),
+    }
+    result = ComparisonEngine().compare(
+        left_manifest=runs["prism"][0],
+        left_results=runs["prism"][1],
+        right_manifest=runs["topograph"][0],
+        right_results=runs["topograph"][1],
+        pack=pack,
+    )
+    trend_rows = build_matrix_trend_rows(
+        pack=pack,
+        budget=64,
+        seed=42,
+        runs=runs,
+        pair_results={("prism", "topograph"): (result, Path("prism_vs_topograph.md"))},
+        systems=("prism", "topograph"),
+    )
+    case = MatrixCase(
+        pack_name=pack.name,
+        lane_preset="smoke",
+        seed=42,
+        budget=64,
+        pack_path=PACK_PATH,
+        prism_config_path=tmp_path / "prism.yaml",
+        topograph_config_path=tmp_path / "topograph.yaml",
+        stratograph_config_path=tmp_path / "stratograph.yaml",
+        primordia_config_path=tmp_path / "primordia.yaml",
+        contender_config_path=None,
+        prism_run_dir=prism_dir,
+        topograph_run_dir=topograph_dir,
+        stratograph_run_dir=tmp_path / "stratograph-run",
+        primordia_run_dir=tmp_path / "primordia-run",
+        contender_run_dir=None,
+        report_dir=tmp_path / "reports" / "case",
+        summary_output_path=tmp_path / "reports" / "case" / "fair_matrix_summary.md",
+        log_dir=tmp_path / "logs" / "case",
+        systems=("prism", "topograph"),
+    )
+
+    _write_trend_artifacts(case, trend_rows)
+
+    case_report = case.report_dir / "trend_report.md"
+    workspace_jsonl = case.report_dir.parent / "fair_matrix_trend_rows.jsonl"
+    workspace_report = case.report_dir.parent / "fair_matrix_trends.md"
+    assert case_report.exists()
+    assert workspace_jsonl.exists()
+    assert workspace_report.exists()
+    assert "# Fair Matrix Trends: tier1_core" in case_report.read_text(encoding="utf-8")
+    assert "- Systems: `prism, topograph`" in workspace_report.read_text(encoding="utf-8")
 
 
 def test_native_runtime_available_checks_target_project_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -36,7 +36,11 @@ from evonn_compare.orchestration.portable_smoke import (
     ensure_topograph_portable_smoke_export,
 )
 from evonn_compare.orchestration.primordia import ensure_primordia_export
-from evonn_compare.reporting import render_comparison_markdown, render_fair_matrix_markdown
+from evonn_compare.reporting import (
+    render_comparison_markdown,
+    render_fair_matrix_markdown,
+    render_fair_matrix_trend_markdown,
+)
 from evonn_compare.comparison.fair_matrix import LaneMetadata
 
 
@@ -537,18 +541,11 @@ def run_fair_matrix_case(
         json.dumps(asdict(summary), indent=2, default=str),
         encoding="utf-8",
     )
-    trend_rows_path = case.report_dir / "trend_rows.json"
-    trend_rows_path.write_text(
-        json.dumps([asdict(row) for row in summary.trend_rows], indent=2, default=str),
-        encoding="utf-8",
-    )
-    with (case.report_dir.parent / "fair_matrix_trend_rows.jsonl").open("a", encoding="utf-8") as handle:
-        for row in summary.trend_rows:
-            handle.write(json.dumps(asdict(row), default=str) + "\n")
     case.summary_output_path.with_name("lane_acceptance.json").write_text(
         json.dumps(asdict(summary.lane) if summary.lane is not None else {}, indent=2, default=str),
         encoding="utf-8",
     )
+    _write_trend_artifacts(case, summary.trend_rows)
     trend_records = _build_trend_records(case=case, pack=pack, runs=runs)
     case.summary_output_path.with_name("fair_matrix_trends.json").write_text(
         json.dumps(trend_records, indent=2),
@@ -563,6 +560,36 @@ def run_fair_matrix_case(
         for record in trend_records:
             handle.write(json.dumps(record) + "\n")
     return case.summary_output_path
+
+
+def _write_trend_artifacts(case: MatrixCase, trend_rows: list[Any]) -> None:
+    case.report_dir.mkdir(parents=True, exist_ok=True)
+    trend_rows_path = case.report_dir / "trend_rows.json"
+    trend_rows_path.write_text(
+        json.dumps([asdict(row) for row in trend_rows], indent=2, default=str),
+        encoding="utf-8",
+    )
+    trend_report_path = case.report_dir / "trend_report.md"
+    trend_report_path.write_text(
+        render_fair_matrix_trend_markdown(trend_rows),
+        encoding="utf-8",
+    )
+    workspace_jsonl = case.report_dir.parent / "fair_matrix_trend_rows.jsonl"
+    with workspace_jsonl.open("a", encoding="utf-8") as handle:
+        for row in trend_rows:
+            handle.write(json.dumps(asdict(row), default=str) + "\n")
+    row_type = type(trend_rows[0]) if trend_rows else None
+    workspace_rows = []
+    for line in workspace_jsonl.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        payload = json.loads(line)
+        workspace_rows.append(row_type(**payload) if row_type is not None else payload)
+    workspace_report_path = case.report_dir.parent / "fair_matrix_trends.md"
+    workspace_report_path.write_text(
+        render_fair_matrix_trend_markdown(workspace_rows),
+        encoding="utf-8",
+    )
 
 
 def _build_lane_metadata(
