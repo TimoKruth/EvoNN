@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from evonn_compare.comparison.engine import ComparisonEngine
-from evonn_compare.contracts.models import (
+from evonn_shared.contracts import (
     ArtifactPaths,
     BenchmarkEntry,
     BudgetEnvelope,

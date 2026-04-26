@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from evonn_compare.contracts.models import (
+from evonn_shared.contracts import (
     ArtifactPaths,
     BenchmarkEntry,
     BudgetEnvelope,
