@@ -283,6 +283,7 @@ def test_write_trend_artifacts_persists_case_and_workspace_reports(tmp_path: Pat
         contender_run_dir=None,
         report_dir=tmp_path / "reports" / "case",
         summary_output_path=tmp_path / "reports" / "case" / "fair_matrix_summary.md",
+        trend_dataset_path=tmp_path / "trends" / "fair_matrix_trends.jsonl",
         log_dir=tmp_path / "logs" / "case",
         systems=("prism", "topograph"),
     )
