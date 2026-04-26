@@ -2,11 +2,13 @@
 
 > **For Hermes:** Use `subagent-driven-development` when executing this plan. Stay in plan mode for now.
 
-**Goal:** Raise `EvoNN-Primordia` from a credible primitive-first smoke engine into a stronger daily research engine whose run quality, observability, and compare results are closer to Prism, Topograph, and Stratograph without erasing Primordia’s distinct primitive-first thesis.
+**Goal:** Raise `EvoNN-Primordia` from a credible primitive-first smoke engine into a genuinely high-quality engine whose search quality, observability, and compare results move materially closer to Prism, Topograph, and Stratograph without erasing Primordia’s distinct primitive-first thesis.
 
-**Architecture:** Keep Primordia distinct internally, but improve it along three axes: (1) search quality, (2) runtime maturity/observability, and (3) fairness/research usefulness on the shared compare substrate. The main change is to replace the current round-robin mutated-seed evaluator with a bounded primitive-search loop that has memory, selection pressure, and reproducible artifacts.
+**Architecture:** Keep Primordia distinct internally, but improve it along four axes: (1) benchmark completeness/correctness, (2) search quality, (3) runtime maturity/observability, and (4) fairness/research usefulness on the shared compare substrate. The main change is to replace the current round-robin mutated-seed evaluator with a bounded primitive-search loop that has memory, selection pressure, and reproducible artifacts.
 
 **Tech Stack:** Python, MLX, Pydantic, uv workspace, shared-benchmarks, EvoNN-Compare fair-matrix substrate, markdown/JSON artifacts.
+
+**Scope note:** This plan is intentionally a **full-engine advancement plan** for a dedicated Primordia branch. It is not limited by the current quarter-critical scope in `EVONN_90_DAY_PLAN.md`. That repo-level plan may prioritize the shared daily lane first; this plan assumes we are deliberately investing in Primordia itself as a serious engine. Merge-back should therefore happen in slices, but the branch goal is unapologetically engine advancement rather than minimum-quarter compliance.
 
 ---
 
@@ -50,8 +52,9 @@ The current core limitations appear to be:
 
 Primordia should become:
 
-- a **trusted primitive-search lane** rather than only a compare participant
-- capable of stronger results on tabular/image/text smoke and tier-1 research packs
+- a **trusted primitive-search engine** rather than only a compare participant
+- benchmark-complete on its named shared lanes, including current regression tasks
+- capable of materially stronger results on tabular/image/text smoke and tier-1 research packs
 - observably improving over time through trend artifacts and repeated runs
 - able to emit **higher-confidence seed artifacts** for Topograph/Prism/Stratograph seeding studies
 - still cheaper than architecture-scale search
@@ -59,10 +62,26 @@ Primordia should become:
 Success does **not** mean “turn Primordia into Prism.”
 
 Success means:
+- reliable benchmark completion on the official lanes
 - stronger primitive search under bounded budgets
 - better artifacts and operator observability
 - more stable best-of-run quality
 - better downstream usefulness of discovered primitives
+
+## Explicit Branch Targets
+
+This branch should aim higher than “good enough for the current quarter.” The target is:
+
+1. Primordia becomes **benchmark-complete and budget-auditable** on `smoke` and `tier1_core`.
+2. Primordia becomes **meaningfully more competitive** on `tier1_core` at `64`, `256`, and `1000`.
+3. Primordia becomes **operationally trustworthy** through status, resume, and artifact quality.
+4. Primordia becomes **scientifically useful downstream** via stronger, more stable seed outputs.
+
+Non-target:
+
+- Do not try to turn Primordia into a direct Prism clone.
+- Do not chase large-scale frontier benchmark coverage before `smoke` and `tier1_core` are strong.
+- Do not add expensive search machinery whose cost erases Primordia’s strategic role.
 
 ---
 
@@ -70,18 +89,24 @@ Success means:
 
 Prioritize work in this order:
 
-1. **Search-loop quality first**
-2. **Runtime maturity and reproducibility second**
-3. **Fairness / budget semantics third**
-4. **Downstream seeding validation fourth**
+1. **Benchmark completeness and correctness first**
+2. **Search-loop quality second**
+3. **Objective shaping and training quality third**
+4. **Runtime maturity and reproducibility fourth**
+5. **Fairness / budget semantics fifth**
+6. **Downstream seeding validation sixth**
 
-That ordering matters because better reports around a weak search loop will not materially improve Primordia’s comparative results.
+That ordering matters because:
+
+- advanced search work is wasted if the engine still fails named lane benchmarks
+- better reports around a weak search loop will not materially improve comparative results
+- stronger seeding claims are only credible once the engine itself is complete and stable
 
 ---
 
-## Phase 1 — Establish a real Primordia maturity baseline
+## Phase 1 — Establish a real Primordia baseline and close benchmark-completeness gaps
 
-**Objective:** Make current Primordia measurable enough that later improvements can be judged honestly.
+**Objective:** Make current Primordia measurable enough that later improvements can be judged honestly, while fixing the obvious “not yet a complete engine” gaps on official lanes.
 
 **Files to modify:**
 - Create: `EvoNN-Primordia/configs/smoke.yaml`
@@ -91,22 +116,42 @@ That ordering matters because better reports around a weak search loop will not 
 - Modify: `EvoNN-Primordia/README.md`
 - Modify: `EvoNN-Primordia/tests/test_cli.py`
 - Modify: `EvoNN-Primordia/tests/test_smoke.py`
+- Modify: `EvoNN-Primordia/src/evonn_primordia/pipeline.py`
+- Modify: `EvoNN-Primordia/src/evonn_primordia/runtime/training.py`
+- Modify: `EvoNN-Primordia/tests/test_parity.py`
 
 **Work:**
 1. Add canonical Primordia config files for repeated local runs.
 2. Document one official smoke lane and one official tier-1 lane.
 3. Add tests proving config loading and CLI examples stay valid.
-4. Record a baseline evaluation matrix for later comparison:
+4. Make benchmark-completeness an explicit tracked surface:
    - smoke
    - tier1_core @ 64 evals
    - tier1_core @ 256 evals
    - tier1_core @ 1000 evals
+   - classification coverage
+   - regression coverage
+   - any remaining language-modeling caveats
+5. Record a baseline evaluation matrix for later comparison:
+   - smoke
+   - tier1_core @ 64 evals
+   - tier1_core @ 256 evals
+   - tier1_core @ 1000 evals
+6. Fix the current named benchmark failures that prevent Primordia from being benchmark-complete on the official shared lane, especially regression failures.
 
-**Why first:** Without repeatable configs and named lanes, later “quality improvements” are hard to trust.
+**Why first:** Without repeatable configs, named lanes, and benchmark completion on those lanes, later “quality improvements” are hard to trust.
 
 **Validation:**
 - `uv run --package evonn-primordia --extra dev pytest -q EvoNN-Primordia/tests/test_cli.py EvoNN-Primordia/tests/test_smoke.py`
+- `uv run --package evonn-primordia --extra dev pytest -q EvoNN-Primordia/tests/test_parity.py`
 - one real `primordia run` for smoke
+- one real `tier1_core` rerun confirming whether Primordia is benchmark-complete or not
+
+**Exit criteria:**
+- official configs exist and are documented
+- benchmark failures on the named official lanes are enumerated and reproducible
+- current regression failures are fixed or reduced to an explicit blocked list
+- the baseline scoreboard is recorded for later phase-to-phase comparison
 
 ---
 
@@ -151,12 +196,18 @@ That ordering matters because better reports around a weak search loop will not 
    - `novelty_score`
    - `complexity_score`
 5. Keep the loop cheap-first; do **not** add expensive crossover or giant archives in the first pass.
+6. Make the search policy observable from artifacts so we can tell whether improvement comes from better search pressure rather than random luck.
 
 **Why this is the highest-value improvement:** Current Primordia mostly samples and lightly mutates. Stronger results will come more from better search pressure than from more report polish.
 
 **Validation:**
 - targeted new tests for elite retention, per-benchmark budget exhaustion, and lineage fields
 - `uv run --package evonn-primordia --extra dev pytest -q EvoNN-Primordia/tests/test_search_state.py EvoNN-Primordia/tests/test_smoke.py`
+
+**Exit criteria:**
+- slot-index-driven search is gone from the core loop
+- lineage fields exist and are non-trivial in real run artifacts
+- at least one named lane shows better best-of-run outcomes without breaking budget accounting
 
 ---
 
@@ -189,11 +240,17 @@ That ordering matters because better reports around a weak search loop will not 
    - degenerate output exclusion
    - unstable loss exclusion beyond current NaN handling
 5. Surface the composite score and ranking rationale in run artifacts.
+6. Add ablation-friendly artifact fields so we can compare “metric-only selection” vs “composite selection” honestly.
 
 **Important guardrail:** Compare exports must still report the true benchmark metric, not the internal composite score.
 
 **Validation:**
 - `uv run --package evonn-primordia --extra dev pytest -q EvoNN-Primordia/tests/test_objectives.py EvoNN-Primordia/tests/test_smoke.py`
+
+**Exit criteria:**
+- compare-facing metric remains untouched
+- internal search ranking is explainable from artifacts
+- objective shaping improves at least one named lane without increasing benchmark failure rate
 
 ---
 
@@ -222,6 +279,7 @@ That ordering matters because better reports around a weak search loop will not 
    - lightweight regularization improvements
 3. Add per-family training overrides in config, not hardcoded special cases in the loop.
 4. Ensure each improvement is benchmarked against wall-clock cost.
+5. Prioritize fixes that improve regression robustness and cheap image/text candidates before adding new family breadth.
 
 **Do not do yet:**
 - giant model families
@@ -231,6 +289,11 @@ That ordering matters because better reports around a weak search loop will not 
 **Validation:**
 - smoke still passes
 - one real tier1_core run shows non-regressive wall-clock and better best-of-run metrics on at least a subset of tasks
+
+**Exit criteria:**
+- trainer changes are measurable in artifacts, not just “felt”
+- wall-clock per evaluation remains within an explicitly accepted bound
+- official lanes remain benchmark-complete
 
 ---
 
@@ -262,12 +325,17 @@ That ordering matters because better reports around a weak search loop will not 
    - best primitive lineage
    - failure pattern summaries
 4. Keep artifacts compatible with compare/export surfaces.
+5. Make interruption/restart behavior boring and safe enough for longer `tier1_core` and future larger runs.
 
 **Why this matters:** Prism/Stratograph are not only stronger because of models; they are also easier to trust and inspect mid-run.
 
 **Validation:**
 - targeted tests for checkpoint/status/resume
 - artifact-backed CLI smoke for `inspect` and `report`
+
+**Exit criteria:**
+- interrupted runs can be resumed without silently corrupting artifacts
+- package-local inspection is good enough to reason about a live or partial run without opening raw JSON by hand
 
 ---
 
@@ -294,12 +362,18 @@ That ordering matters because better reports around a weak search loop will not 
 2. Persist both raw and normalized budget fields.
 3. Align compare export so `manifest.json` and `summary.json` explain exactly what counted.
 4. Add tolerance tests against compare expectations.
+5. Ensure quality-improvement work from earlier phases did not quietly distort evaluation accounting.
 
 **Key point:** This does not make Primordia identical to other engines; it makes the budget semantics auditable.
 
 **Validation:**
 - parity/export tests
 - one Compare fair-matrix smoke run with Primordia checked for budget/fairness acceptance
+
+**Exit criteria:**
+- exported budget fields are explicit and explainable
+- Compare accepts Primordia artifacts without special pleading
+- the engine can improve without losing compare honesty
 
 ---
 
@@ -311,8 +385,6 @@ That ordering matters because better reports around a weak search loop will not 
 - Modify: `EvoNN-Primordia/src/evonn_primordia/export/seeding.py`
 - Modify: `EvoNN-Primordia/src/evonn_primordia/export/report.py`
 - Modify: `EvoNN-Primordia/src/evonn_primordia/pipeline.py`
-- Modify: `EvoNN-Topograph` seeding consumer paths (future execution phase)
-- Modify: `EvoNN-Prism` seeding consumer paths (future execution phase)
 - Create: `EvoNN-Primordia/tests/test_seeding.py`
 
 **Work:**
@@ -328,8 +400,14 @@ That ordering matters because better reports around a weak search loop will not 
 3. Add one controlled downstream experiment:
    - Primordia-seeded vs unseeded Topograph smoke/tier1_core
 4. Treat downstream win rate as a primary Primordia KPI.
+5. Keep downstream consumer integration work as a dependent follow-up slice, not part of the core Primordia branch implementation unless needed for the experiment harness.
 
 **Why this matters:** Primordia’s strongest long-term claim is likely transfer value, not raw head-to-head dominance on every benchmark.
+
+**Exit criteria:**
+- seed rankings are no longer simple one-shot winners
+- provenance is rich enough to audit why a seed was recommended
+- one seeded-vs-unseeded experiment exists with honest results, even if the result is “not yet better”
 
 ---
 
@@ -352,10 +430,18 @@ That ordering matters because better reports around a weak search loop will not 
    - downstream seed usefulness
 2. Define “close to parity” in operational terms instead of vibes.
 3. Add a small table comparing Primordia vs Prism/Topograph/Stratograph on shared lanes.
+4. Record both absolute performance and relative ranking so “improved but still far behind” is visible.
 
 **Suggested parity target:**
 - not equal absolute quality on every task
 - but within a declared band on smoke/tier1_core while remaining materially cheaper and useful for seeding
+
+**Suggested operational targets:**
+- benchmark-complete on `smoke` and `tier1_core`
+- no unresolved accounting caveat on exported compare artifacts
+- improved rank or win share on at least one named `tier1_core` budget
+- lower failure rate than the current baseline
+- stable enough reruns that seed recommendations stop looking random
 
 ---
 
@@ -387,14 +473,32 @@ That ordering matters because better reports around a weak search loop will not 
 - smoke run via official config
 - tier1_core eval64 run
 - tier1_core eval256 run
+- tier1_core eval1000 run
 - Compare `fair-matrix --preset smoke`
-- later Compare tier1_core lane when budget semantics are hardened
+- Compare `tier1_core` lane at `64`
+- Compare `tier1_core` lane at `256`
+- Compare `tier1_core` lane at `1000`
 
 ### Evidence requirement before calling the effort successful
-- Primordia best-of-run quality improves on at least one shared lane
-- failure rate does not regress badly
+- Primordia becomes benchmark-complete on the official named lanes
+- Primordia best-of-run quality improves on at least one shared lane and one named `tier1_core` budget
+- failure rate does not regress badly and preferably improves
 - budget accounting remains compare-auditable
 - seed artifacts become more stable across reruns
+- one downstream seeded-vs-unseeded result exists and is artifact-backed
+
+## Merge-Back Strategy
+
+Because this plan is intentionally broader than the current quarter-critical repo scope, merge-back should happen in disciplined slices:
+
+1. correctness/completeness fixes
+2. search-loop infrastructure
+3. objective-shaping and trainer improvements
+4. runtime maturity surfaces
+5. budget/export semantics
+6. seeding evidence improvements
+
+This branch should optimize for engine advancement, but integration back into `main` should stay reviewable.
 
 ---
 
