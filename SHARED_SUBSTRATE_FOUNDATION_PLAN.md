@@ -148,10 +148,14 @@ Current read:
 - shared fairness/signature helpers are already landed and reused across the relevant exporters
 - shared JSON artifact writing helpers are landed
 - shared summary-core logic is landed and already reused across multiple exporters
-- remaining work is to decide how far to push toward a true canonical manifest builder versus keeping some per-package manifest assembly while sharing the derived/core logic
+- the current preferred boundary is now clearer: keep final manifest assembly package-local while pushing canonical derived/core pieces into shared helpers
 - the quality bar here must be semantic compatibility, not just reduced duplication
 
 Implementation notes:
+- explicit boundary decision for now:
+  - `evonn_shared` should own canonical derived manifest pieces (fairness envelopes, benchmark signatures, artifact-writing patterns, summary-core derivation, and other semantics that must match across packages)
+  - package-local exporters may keep final manifest assembly where they need system-specific context, extra telemetry, or run-layout details
+  - a true one-size-fits-all manifest builder should only be introduced if multiple packages converge on the exact same final assembly semantics
 - a practical substrate line has emerged:
   - share fairness/signature helpers
   - share JSON artifact writing
@@ -184,9 +188,17 @@ Current read:
 - the remaining gap is less about basic export contract shape and more about compare-lane orchestration, adapter simplification, and elimination of leftover Compare-local special handling
 
 Concrete leftovers to close:
-- reduce or explicitly bless compatibility re-exports that still exist only to preserve older Compare import paths
-- replace brittle Compare-side orchestration behavior that depends on matching human-readable contender cache-miss text
 - document which Compare-side engine-specific branches are still intentional after the export surface converges
+- keep shrinking package-local orchestration where it does not encode a real engine/runtime difference
+
+Intentional remaining Compare-side engine-specific branches:
+- benchmark/module resolution stays system-specific because each engine still owns its own benchmark registry and native benchmark identifiers
+- config generation and command invocation stay system-specific because Prism, Topograph, Stratograph, Primordia, and Contenders still expose different CLIs/runtime prerequisites
+- portable smoke exporters may keep small system-local fields when they describe real runtime differences rather than shared compare semantics
+
+Current debt to keep targeting:
+- any Compare branch that exists only because shared contracts/helpers were not adopted yet
+- any per-engine special handling that changes comparability semantics instead of reflecting a genuine runtime capability difference
 
 ### Milestone 4 — Small-budget compare lane
 
@@ -310,20 +322,17 @@ Additional detail captured from later discussion:
 
 ## Recommended Execution Order From Here
 
-1. finish the remaining shared-contract / compatibility cleanup
-2. decide whether to introduce a fuller canonical manifest builder or keep manifest assembly package-local while the shared derived/core helpers grow
-3. finish export convergence for the engines that matter to the low-cost compare lane first
-4. treat Compare preset `smoke` as the provisional smallest lane and finish its acceptance criteria, comparability rules, and routine rerun path
-5. wire that lane through Compare/reporting so it is genuinely repeatable and trend-ingestible
-6. harden artifact/report structure for trend tracking
-7. switch more docs/workflows to Prism as default while preserving Topograph as the first challenger
+1. finish export convergence for the engines that matter to the low-cost compare lane first
+2. treat Compare preset `smoke` as the provisional smallest lane and finish its acceptance criteria, comparability rules, and routine rerun path
+3. wire that lane through Compare/reporting so it is genuinely repeatable and trend-ingestible
+4. harden artifact/report structure for trend tracking
+5. switch more docs/workflows to Prism as default while preserving Topograph as the first challenger
 
 ## Open Technical Leftovers
 
-- `evonn_compare.contracts.models` is still a compatibility re-export layer and should either be retired or declared stable on purpose
-- Compare-side contender orchestration still has at least one brittle string-matching path around baseline cache misses
-- the boundary between canonical shared manifest derivation and package-local manifest assembly still needs an explicit decision
-- Compare should document which remaining engine-specific branches are intentional after substrate convergence and which are debt
+- finish documenting and testing the `smoke` lane as the routine rerun path, not just a portable fallback
+- keep reducing Compare-local orchestration that does not reflect a genuine runtime difference
+- continue narrowing unexplained engine-specific branches until the remaining set is both intentional and tested
 
 ## Known Risks / Watchouts
 
