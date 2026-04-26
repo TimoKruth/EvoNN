@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import platform
 import subprocess
 from datetime import datetime, timezone
@@ -11,7 +10,6 @@ from typing import Any
 
 from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
 
-import stratograph
 from stratograph.benchmarks import get_benchmark
 from stratograph.benchmarks.parity import fallback_native_id, load_parity_pack
 from stratograph.config import load_config

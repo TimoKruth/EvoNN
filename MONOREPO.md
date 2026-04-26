@@ -117,6 +117,33 @@ uv run --package stratograph --extra dev pytest -q EvoNN-Stratograph/tests
 uv run --package topograph --extra dev pytest -q EvoNN-Topograph/tests
 ```
 
+## Validation Matrix
+
+The trust-layer CI intentionally distinguishes Linux-safe packages from the
+MLX-native macOS packages.
+
+Linux GitHub Actions (`.github/workflows/trust-layer-linux-ci.yml`):
+- core trust layer:
+  - `EvoNN-Shared` → `scripts/ci/shared-checks.sh`
+  - `EvoNN-Compare` → `scripts/ci/compare-checks.sh`
+- quarter-critical challenger floor:
+  - `EvoNN-Contenders` → `scripts/ci/contenders-checks.sh`
+- secondary challengers for the current window:
+  - `EvoNN-Primordia` → `scripts/ci/primordia-checks.sh`
+  - `EvoNN-Stratograph` → `scripts/ci/stratograph-checks.sh`
+
+macOS GitHub Actions:
+- `EvoNN-Prism` → `.github/workflows/prism-ci.yml` via `scripts/ci/prism-checks.sh`
+- `EvoNN-Topograph` → `.github/workflows/topograph-ci.yml` via `scripts/ci/topograph-checks.sh`
+
+Interpretation for the 90-day lane:
+- Shared + Compare + Contenders are the quarter-critical trust surface for the
+  daily lane
+- Primordia + Stratograph stay under automated validation, but remain secondary
+  challengers until the core lane is trusted
+- Prism + Topograph keep macOS CI because MLX runtime truth matters there even
+  while non-MLX sibling packages run on Linux
+
 ## Adding More Packages
 
 When another package is ready for monorepo ownership:
