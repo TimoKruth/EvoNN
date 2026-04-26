@@ -73,6 +73,19 @@ def fair_matrix(
             parallel=parallel,
         )
         typer.echo(f"summary\t{summary_path}")
+        for label, artifact_path in _trend_artifact_paths(summary_path).items():
+            typer.echo(f"{label}\t{artifact_path}")
+
+
+def _trend_artifact_paths(summary_path: Path) -> dict[str, Path]:
+    case_dir = summary_path.parent
+    workspace_dir = case_dir.parent
+    return {
+        "trend_rows": case_dir / "trend_rows.json",
+        "trend_report": case_dir / "trend_report.md",
+        "workspace_trend_rows": workspace_dir / "fair_matrix_trend_rows.jsonl",
+        "workspace_trend_report": workspace_dir / "fair_matrix_trends.md",
+    }
 
 
 def _parse_csv_ints(raw: str) -> list[int]:

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from evonn_compare.cli import fair_matrix as fair_matrix_cli
 from evonn_compare.cli.main import app
 from evonn_compare.comparison.fair_matrix import build_matrix_trend_rows
 from evonn_compare.comparison.engine import ComparisonEngine
@@ -101,6 +102,37 @@ def test_fair_matrix_execute_surfaces_manifest_and_trend_dataset(tmp_path, monke
     assert "manifest\t" in result.stdout
     assert "trend-dataset\t" in result.stdout
     assert "summary\t" in result.stdout
+
+
+def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) -> None:
+    summary_path = tmp_path / "reports" / "case" / "fair_matrix_summary.md"
+
+    def fake_prepare_fair_matrix_cases(**_kwargs):
+        case = type("Case", (), {"__dict__": {"summary_output_path": summary_path}})()
+        paths = type(
+            "Paths",
+            (),
+            {
+                "manifest_path": tmp_path / "matrix.yaml",
+                "trends_dir": tmp_path / "trends",
+            },
+        )()
+        return paths, [case]
+
+    def fake_run_fair_matrix_case(*_args, **_kwargs):
+        return summary_path
+
+    monkeypatch.setattr(fair_matrix_cli, "prepare_fair_matrix_cases", fake_prepare_fair_matrix_cases)
+    monkeypatch.setattr(fair_matrix_cli, "run_fair_matrix_case", fake_run_fair_matrix_case)
+
+    result = runner.invoke(app, ["fair-matrix", "--pack", "tier1_core", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert f"summary\t{summary_path}" in result.stdout
+    assert f"trend_rows\t{summary_path.parent / 'trend_rows.json'}" in result.stdout
+    assert f"trend_report\t{summary_path.parent / 'trend_report.md'}" in result.stdout
+    assert f"workspace_trend_rows\t{summary_path.parent.parent / 'fair_matrix_trend_rows.jsonl'}" in result.stdout
+    assert f"workspace_trend_report\t{summary_path.parent.parent / 'fair_matrix_trends.md'}" in result.stdout
 
 
 def test_trend_report_filters_rows_and_writes_outputs(tmp_path: Path) -> None:
