@@ -14,8 +14,15 @@ Package metadata stays in [pyproject.toml](./pyproject.toml). Workspace lock liv
 
 ## Fair-matrix smoke lane
 
-The provisional low-cost repeatable lane is the `smoke` preset. Both
-`fair-matrix` and `campaign` default to this lane when neither `--pack` nor
+The local-first preset ladder now exposes the quarter-critical `tier1_core`
+budgets directly:
+
+- `smoke` → `tier1_core_smoke` @ `16`
+- `local` → `tier1_core` @ `64`
+- `overnight` → `tier1_core` @ `256`
+- `weekend` → `tier1_core` @ `1000`
+
+`fair-matrix` and `campaign` default to `smoke` when neither `--pack` nor
 `--preset` is supplied:
 
 ```bash
@@ -24,6 +31,14 @@ uv run --package evonn-compare python -m evonn_compare fair-matrix \
 
 uv run --package evonn-compare python -m evonn_compare campaign \
   --workspace .tmp/campaign-smoke
+
+uv run --package evonn-compare python -m evonn_compare fair-matrix \
+  --preset overnight \
+  --workspace .tmp/fair-matrix-overnight
+
+uv run --package evonn-compare python -m evonn_compare fair-matrix \
+  --preset weekend \
+  --workspace .tmp/fair-matrix-weekend
 ```
 
 Phase-1 acceptance for milestones 4-5 is captured directly in the emitted artifacts:

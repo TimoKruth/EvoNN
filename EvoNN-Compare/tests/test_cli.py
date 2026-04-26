@@ -34,6 +34,8 @@ def test_campaign_help() -> None:
     assert "--workspace" in result.stdout
     assert "smoke" in result.stdout
     assert "local" in result.stdout
+    assert "overnight" in result.stdout
+    assert "weekend" in result.stdout
 
 
 def test_fair_matrix_help() -> None:
@@ -44,6 +46,8 @@ def test_fair_matrix_help() -> None:
     assert "--preset" in result.stdout
     assert "smoke" in result.stdout
     assert "local" in result.stdout
+    assert "overnight" in result.stdout
+    assert "weekend" in result.stdout
 
 
 def test_trend_report_help() -> None:
@@ -102,6 +106,19 @@ def test_fair_matrix_defaults_to_smoke_dry_run(tmp_path) -> None:
     assert "tier1_core_smoke_eval16" in result.stdout
     assert "trend-dataset\t" in result.stdout
     assert "fair_matrix_trends.jsonl" in result.stdout
+
+
+def test_campaign_preset_overnight_dry_run(tmp_path) -> None:
+    result = runner.invoke(app, ["campaign", "--preset", "overnight", "--workspace", str(tmp_path), "--dry-run"])
+    assert result.exit_code == 0
+    assert "tier1_core_eval256" in result.stdout
+
+
+def test_fair_matrix_preset_weekend_dry_run(tmp_path) -> None:
+    result = runner.invoke(app, ["fair-matrix", "--preset", "weekend", "--workspace", str(tmp_path), "--dry-run"])
+    assert result.exit_code == 0
+    assert "tier1_core_eval1000" in result.stdout
+    assert "trend-dataset\t" in result.stdout
 
 
 def test_fair_matrix_execute_surfaces_manifest_and_trend_dataset(tmp_path, monkeypatch) -> None:
@@ -468,6 +485,12 @@ def test_resolve_lane_preset_rejects_unknown_name() -> None:
         assert "available" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_resolve_lane_preset_exposes_tier1_core_budget_ladder() -> None:
+    assert resolve_lane_preset("local").budgets == (64,)
+    assert resolve_lane_preset("overnight").budgets == (256,)
+    assert resolve_lane_preset("weekend").budgets == (1000,)
 
 
 def _dashboard_row(
