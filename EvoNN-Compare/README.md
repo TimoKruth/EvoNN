@@ -51,3 +51,21 @@ Minimum longitudinal fields preserved per record:
 - outcome status
 - metric direction/value
 - fairness metadata
+
+## Intentional remaining engine-specific branches
+
+After the shared-substrate convergence work, Compare still keeps a small set of
+engine-specific branches on purpose:
+
+- benchmark/module resolution remains system-specific because each engine still
+  owns native benchmark identifiers and its own registry/runtime loading path
+- config generation and command invocation remain system-specific because
+  Prism, Topograph, Stratograph, Primordia, and Contenders still expose
+  different CLIs and runtime prerequisites
+- portable smoke exporters may keep small system-local fields when they
+  describe a real runtime difference rather than shared compare semantics
+
+These branches are intentional. The debt that still needs elimination is any
+Compare-side branch that exists only because shared contracts/helpers were not
+adopted yet, or any special handling that changes comparability semantics
+without reflecting a real engine/runtime difference.
