@@ -79,6 +79,10 @@ def _coerce_trend_row(entry: dict) -> MatrixTrendRow:
             wall_clock_seconds=None if entry.get("wall_clock_seconds") is None else float(entry["wall_clock_seconds"]),
             matrix_scope="fair" if not entry.get("reference_only") else "reference",
             fairness_metadata=dict(entry.get("fairness") or {}),
+            lane_operating_state=str((entry.get("lane") or {}).get("operating_state") or (entry.get("fairness") or {}).get("lane_operating_state") or ("fair" if not entry.get("reference_only") else "reference-only")),
+            system_operating_state=str(entry.get("system_operating_state") or (entry.get("fairness") or {}).get("system_operating_state") or "unknown"),
+            lane_repeatability_ready=bool((entry.get("lane") or {}).get("repeatability_ready")),
+            lane_budget_accounting_ok=bool((entry.get("lane") or {}).get("budget_accounting_ok") or (entry.get("fairness") or {}).get("budget_accounting_ok")),
         )
     return MatrixTrendRow(
         pack_name=str(entry["pack_name"]),
@@ -98,4 +102,8 @@ def _coerce_trend_row(entry: dict) -> MatrixTrendRow:
         wall_clock_seconds=None if entry.get("wall_clock_seconds") is None else float(entry["wall_clock_seconds"]),
         matrix_scope=str(entry["matrix_scope"]),
         fairness_metadata=dict(entry.get("fairness_metadata") or {}),
+        lane_operating_state=str(entry.get("lane_operating_state") or (entry.get("fairness_metadata") or {}).get("lane_operating_state") or "reference-only"),
+        system_operating_state=str(entry.get("system_operating_state") or (entry.get("fairness_metadata") or {}).get("system_operating_state") or "unknown"),
+        lane_repeatability_ready=bool(entry.get("lane_repeatability_ready")),
+        lane_budget_accounting_ok=bool(entry.get("lane_budget_accounting_ok") or (entry.get("fairness_metadata") or {}).get("budget_accounting_ok")),
     )

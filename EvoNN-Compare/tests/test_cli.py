@@ -248,7 +248,7 @@ def test_trend_report_accepts_structured_fair_matrix_trends_jsonl(tmp_path: Path
     assert result.exit_code == 0
     assert "# Fair Matrix Trends: tier1_core_smoke" in result.stdout
     assert "- Systems: `prism`" in result.stdout
-    assert "| prism | iris_classification | 1 | 0.810000 | 0.810000 | 0.000000 | ok | 16 | 42 | fair |" in result.stdout
+    assert "| prism | iris_classification | 1 | 0.810000 | 0.810000 | 0.000000 | ok | 16 | 42 | fair | fair | unknown |" in result.stdout
 
 
 def test_dashboard_recomputes_project_only_winners(tmp_path: Path) -> None:
@@ -265,12 +265,23 @@ def test_dashboard_recomputes_project_only_winners(tmp_path: Path) -> None:
                     "pack_name": "tier1_core_eval64",
                     "expected_budget": 64,
                     "expected_seed": 42,
+                    "operating_state": "trusted-extended",
                     "artifact_completeness_ok": True,
                     "fairness_ok": True,
                     "task_coverage_ok": True,
                     "budget_consistency_ok": True,
                     "seed_consistency_ok": True,
+                    "budget_accounting_ok": True,
+                    "core_systems_complete_ok": True,
+                    "extended_systems_complete_ok": True,
                     "observed_task_kinds": ["classification"],
+                    "system_operating_states": {
+                        "prism": "benchmark-complete",
+                        "topograph": "benchmark-complete",
+                        "stratograph": "benchmark-complete",
+                        "primordia": "benchmark-complete",
+                        "contenders": "benchmark-complete",
+                    },
                     "acceptance_notes": [],
                     "repeatability_ready": True,
                 },
@@ -308,8 +319,11 @@ def test_dashboard_recomputes_project_only_winners(tmp_path: Path) -> None:
     assert all_scope["topograph"]["solo_wins"] == 0
     assert project_scope["topograph"]["solo_wins"] == 1
     assert project_scope["prism"]["solo_wins"] == 1
+    assert run["lane"]["operating_state"] == "trusted-extended"
     assert run["project_scope"]["skipped"] == 0
-    assert "Overall Leaderboard: Projects Only" in output_path.read_text(encoding="utf-8")
+    html = output_path.read_text(encoding="utf-8")
+    assert "Overall Leaderboard: Projects Only" in html
+    assert "Trusted Extended" in html
 
 
 def test_dashboard_opens_browser_by_default(tmp_path: Path, monkeypatch) -> None:
@@ -325,14 +339,19 @@ def test_dashboard_opens_browser_by_default(tmp_path: Path, monkeypatch) -> None
                     "pack_name": "tier1_core_eval64",
                     "expected_budget": 64,
                     "expected_seed": 42,
+                    "operating_state": "contract-fair",
                     "artifact_completeness_ok": True,
                     "fairness_ok": True,
                     "task_coverage_ok": True,
                     "budget_consistency_ok": True,
                     "seed_consistency_ok": True,
+                    "budget_accounting_ok": True,
+                    "core_systems_complete_ok": False,
+                    "extended_systems_complete_ok": False,
                     "observed_task_kinds": ["classification"],
+                    "system_operating_states": {"prism": "benchmark-complete"},
                     "acceptance_notes": [],
-                    "repeatability_ready": True,
+                    "repeatability_ready": False,
                 },
                 "fair_rows": [],
                 "reference_rows": [],

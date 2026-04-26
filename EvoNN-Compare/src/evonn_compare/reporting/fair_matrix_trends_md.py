@@ -20,6 +20,7 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
     budgets = sorted({row.budget for row in trend_rows})
     seeds = sorted({row.seed for row in trend_rows})
     scopes = sorted({row.matrix_scope for row in trend_rows})
+    lane_states = sorted({row.lane_operating_state for row in trend_rows})
 
     lines = [
         f"# Fair Matrix Trends: {pack_names[0]}",
@@ -31,6 +32,7 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
         f"- Budgets: `{', '.join(str(value) for value in budgets)}`",
         f"- Seeds: `{', '.join(str(value) for value in seeds)}`",
         f"- Fairness Scope: `{', '.join(scopes)}`",
+        f"- Lane States: `{', '.join(lane_states)}`",
         f"- Rows: `{len(trend_rows)}`",
         "",
         "## Outcome Status by System",
@@ -54,8 +56,8 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
             "",
             "## Benchmark Trend View",
             "",
-            "| System | Benchmark | Runs | Latest | Best | Delta | Latest Status | Budget | Seed | Scope |",
-            "|---|---|---:|---:|---:|---:|---|---:|---:|---|",
+            "| System | Benchmark | Runs | Latest | Best | Delta | Latest Status | Budget | Seed | Scope | Lane State | System State |",
+            "|---|---|---:|---:|---:|---:|---|---:|---:|---|---|---|",
         ]
     )
 
@@ -75,7 +77,8 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
             delta_value = 0.0 if metric_values else None
         lines.append(
             f"| {system} | {benchmark_id} | {len(ordered)} | {latest_metric} | {best_metric} | "
-            f"{_float_cell(delta_value)} | {latest.outcome_status} | {latest.budget} | {latest.seed} | {latest.matrix_scope} |"
+            f"{_float_cell(delta_value)} | {latest.outcome_status} | {latest.budget} | {latest.seed} | {latest.matrix_scope} | "
+            f"{latest.lane_operating_state} | {latest.system_operating_state} |"
         )
 
     return "\n".join(lines)
