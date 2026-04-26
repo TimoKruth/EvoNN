@@ -7,7 +7,7 @@ from pathlib import Path
 
 from evonn_compare.comparison.statistics import two_sided_sign_test
 from evonn_compare.comparison.wilcoxon import bootstrap_confidence_interval, wilcoxon_signed_rank
-from evonn_compare.contracts.models import SearchTelemetry
+from evonn_shared.contracts import SearchTelemetry
 
 
 @dataclass(frozen=True)

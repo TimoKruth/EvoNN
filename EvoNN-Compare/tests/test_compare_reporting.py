@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from evonn_compare.comparison.fair_matrix import build_matrix_trend_rows
 from evonn_compare.comparison.engine import ComparisonEngine
-from evonn_compare.contracts.models import (
+from evonn_compare.comparison.fair_matrix import build_matrix_trend_rows
+from evonn_shared.contracts import (
     ArtifactPaths,
     BenchmarkEntry,
     BudgetEnvelope,

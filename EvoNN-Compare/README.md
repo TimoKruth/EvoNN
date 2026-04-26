@@ -12,6 +12,46 @@ uv run --package evonn-compare python -m evonn_compare --help
 
 Package metadata stays in [pyproject.toml](./pyproject.toml). Workspace lock lives at monorepo root.
 
+## Fair-matrix smoke lane
+
+The provisional low-cost repeatable lane is the `smoke` preset. Both
+`fair-matrix` and `campaign` default to this lane when neither `--pack` nor
+`--preset` is supplied:
+
+```bash
+uv run --package evonn-compare python -m evonn_compare fair-matrix \
+  --workspace .tmp/fair-matrix-smoke
+
+uv run --package evonn-compare python -m evonn_compare campaign \
+  --workspace .tmp/campaign-smoke
+```
+
+Phase-1 acceptance for milestones 4-5 is captured directly in the emitted artifacts:
+
+- `reports/<case>/lane_acceptance.json`
+  - artifact completeness
+  - pairwise fairness status
+  - classification + regression task coverage
+  - budget consistency against the requested lane budget
+  - seed consistency against the requested lane seed
+- `reports/<case>/fair_matrix_summary.json`
+  - machine-readable fair/reference/parity summary
+- `reports/<case>/fair_matrix_trends.jsonl`
+  - structured longitudinal records derived from JSON artifacts only
+- `trends/fair_matrix_trends.jsonl`
+  - append-only workspace trend dataset for repeated reruns
+
+Minimum longitudinal fields preserved per record:
+
+- engine
+- benchmark
+- pack
+- budget
+- seed
+- outcome status
+- metric direction/value
+- fairness metadata
+
 ## Milestone 5: trend-capable reporting
 
 EvoNN-Compare now treats fair-matrix outputs as longitudinal research artifacts instead of markdown-only snapshots.
@@ -33,30 +73,6 @@ Each fair-matrix workspace also accumulates:
 After `fair-matrix` execution, the CLI now prints the paths for the case summary, case trend artifacts, and workspace-level trend dataset/report so reruns can be inspected or fed into `trend-report` immediately.
 
 This means repeated `smoke` lane runs can be appended to one shared trend dataset without per-engine parsers or markdown scraping.
-
-### Fixed minimum longitudinal dimensions
-
-Every trend row preserves the shared Milestone-5 dimensions:
-
-- `system`
-- `benchmark_id`
-- `pack_name`
-- `budget`
-- `seed`
-- `run_id`
-- `outcome_status`
-- `failure_reason`
-- `metric_name`
-- `metric_direction`
-- `metric_value`
-- `evaluation_count`
-- `epochs_per_candidate`
-- `budget_policy_name`
-- `wall_clock_seconds`
-- `matrix_scope`
-- `fairness_metadata`
-
-`fairness_metadata` keeps the comparison context visible in downstream reports, including benchmark-pack identity, seed, evaluation count, budget-policy disclosure, data-signature provenance, code version, and whether the matrix remained fully fair or fell back to reference-only scope.
 
 ### Trend reporting CLI
 
@@ -86,3 +102,21 @@ When `--output` is provided, the command writes:
 
 - markdown report at the requested path
 - filtered JSON rows beside it as the same path with `.json` suffix
+
+## Intentional remaining engine-specific branches
+
+After the shared-substrate convergence work, Compare still keeps a small set of
+engine-specific branches on purpose:
+
+- benchmark/module resolution remains system-specific because each engine still
+  owns native benchmark identifiers and its own registry/runtime loading path
+- config generation and command invocation remain system-specific because
+  Prism, Topograph, Stratograph, Primordia, and Contenders still expose
+  different CLIs and runtime prerequisites
+- portable smoke exporters may keep small system-local fields when they
+  describe a real runtime difference rather than shared compare semantics
+
+These branches are intentional. The debt that still needs elimination is any
+Compare-side branch that exists only because shared contracts/helpers were not
+adopted yet, or any special handling that changes comparability semantics
+without reflecting a real engine/runtime difference.

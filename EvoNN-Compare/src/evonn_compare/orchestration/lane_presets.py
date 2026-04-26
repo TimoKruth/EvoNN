@@ -32,6 +32,21 @@ LANE_PRESETS: dict[str, LanePreset] = {
 }
 
 
+def lane_preset_help(*, default_name: str | None = None) -> str:
+    available = ", ".join(
+        f"{preset.name} ({preset.description})"
+        for preset in (LANE_PRESETS[name] for name in sorted(LANE_PRESETS))
+    )
+    if default_name:
+        return (
+            "Named lane preset "
+            f"(defaults to {default_name} when neither --pack nor --preset is supplied; "
+            f"available: {available})"
+        )
+    return f"Named lane preset (available: {available})"
+
+
+
 def resolve_lane_preset(name: str) -> LanePreset:
     try:
         return LANE_PRESETS[name]

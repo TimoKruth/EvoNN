@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import TypeAdapter
 
-from evonn_compare.contracts.models import ResultRecord, RunManifest
+from evonn_shared.contracts import ResultRecord, RunManifest
 from evonn_compare.contracts.parity import ParityPack, load_parity_pack
 from evonn_compare.contracts.validation import ValidationReport, validate_contract
 from evonn_shared.manifests import default_artifact, default_data_signature

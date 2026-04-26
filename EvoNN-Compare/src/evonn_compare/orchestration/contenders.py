@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+BASELINE_CACHE_MISS_MARKER = "missing from baseline cache"
+
+
 @dataclass(frozen=True)
 class ContenderArtifacts:
     run_dir: Path
@@ -45,7 +48,7 @@ def ensure_contender_run(
     )
     if outcome.returncode == 0:
         return run_dir
-    if "missing from baseline cache" not in outcome.stderr and "missing from baseline cache" not in outcome.stdout:
+    if not _is_baseline_cache_miss(outcome):
         raise RuntimeError(
             f"contender materialize failed in {contenders_root}:\n{(outcome.stdout or '')}{(outcome.stderr or '')}"
         )
@@ -110,6 +113,11 @@ def ensure_contender_export(
         manifest_path=resolved_output_dir / "manifest.json",
         results_path=resolved_output_dir / "results.json",
     )
+
+
+def _is_baseline_cache_miss(outcome: subprocess.CompletedProcess[str]) -> bool:
+    combined = f"{outcome.stdout or ''}\n{outcome.stderr or ''}".lower()
+    return BASELINE_CACHE_MISS_MARKER in combined
 
 
 def _run(

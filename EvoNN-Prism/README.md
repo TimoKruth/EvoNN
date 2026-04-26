@@ -2,7 +2,14 @@
 
 Family-based evolutionary neural architecture search for Apple Silicon.
 
-Prism searches across multiple model families instead of tuning one template. It runs local-first with MLX, stores lineage and metrics in DuckDB, and can export Symbiosis-compatible artifacts for cross-system comparison.
+Prism is the default operating engine for the current EvoNN local-first search
+workflow. It searches across multiple model families instead of tuning one
+template, runs with MLX, stores lineage and metrics in DuckDB, and can export
+Symbiosis-compatible artifacts for cross-system comparison.
+
+That default does not demote Topograph: Topograph remains the first serious
+challenger lane in Compare, so Prism stays the everyday path without weakening
+fair head-to-head evidence.
 
 ## Scope
 

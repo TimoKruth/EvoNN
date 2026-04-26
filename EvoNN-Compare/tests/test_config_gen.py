@@ -340,6 +340,7 @@ def test_prepare_fair_matrix_cases_writes_all_system_configs(tmp_path: Path) -> 
     )
 
     assert paths.manifest_path.exists()
+    manifest_payload = yaml.safe_load(paths.manifest_path.read_text(encoding="utf-8"))
     assert len(cases) == 1
     case = cases[0]
     assert case.prism_config_path.exists()
@@ -347,6 +348,10 @@ def test_prepare_fair_matrix_cases_writes_all_system_configs(tmp_path: Path) -> 
     assert case.stratograph_config_path.exists()
     assert case.contender_config_path.exists()
     assert case.lane_preset is None
+    assert case.trend_dataset_path == paths.trends_dir / "fair_matrix_trends.jsonl"
+    assert paths.trends_dir.exists()
+    assert manifest_payload["trends_dir"] == str(paths.trends_dir)
+    assert manifest_payload["trend_dataset"] == str(paths.trends_dir / "fair_matrix_trends.jsonl")
 
 
 def test_prepare_fair_matrix_cases_can_skip_contenders(tmp_path: Path) -> None:

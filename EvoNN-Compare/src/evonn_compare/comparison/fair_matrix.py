@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from evonn_compare.comparison.engine import ComparisonResult
-from evonn_compare.contracts.models import ResultRecord, RunManifest
+from evonn_shared.contracts import ResultRecord, RunManifest
 from evonn_compare.contracts.parity import ParityPack
 
 
@@ -49,6 +49,11 @@ class LaneMetadata:
     expected_seed: int
     artifact_completeness_ok: bool
     fairness_ok: bool
+    task_coverage_ok: bool
+    budget_consistency_ok: bool
+    seed_consistency_ok: bool
+    observed_task_kinds: tuple[str, ...]
+    acceptance_notes: tuple[str, ...]
     repeatability_ready: bool
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from evonn_compare.contracts.models import RunManifest
+from evonn_shared.contracts import RunManifest
 from evonn_compare.contracts.parity import ParityPack
 
 

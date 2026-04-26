@@ -8,7 +8,7 @@ from pathlib import Path
 import typer
 
 from evonn_compare.contracts.parity import resolve_pack_path
-from evonn_compare.orchestration.lane_presets import resolve_lane_preset
+from evonn_compare.orchestration.lane_presets import lane_preset_help, resolve_lane_preset
 from evonn_compare.orchestration.fair_matrix import (
     prepare_fair_matrix_cases,
     run_fair_matrix_case,
@@ -17,7 +17,7 @@ from evonn_compare.orchestration.fair_matrix import (
 
 def fair_matrix(
     pack: str | None = typer.Option(None, "--pack", help="Parity pack name or YAML path"),
-    preset: str | None = typer.Option(None, "--preset", help="Named lane preset (for example: smoke, local)"),
+    preset: str | None = typer.Option(None, "--preset", help=lane_preset_help(default_name="smoke")),
     seeds: str | None = typer.Option(None, "--seeds", help="Comma-separated seeds"),
     budgets: str | None = typer.Option(None, "--budgets", help="Comma-separated budgets"),
     workspace: str = typer.Option(..., "--workspace", help="Campaign workspace"),
@@ -32,10 +32,9 @@ def fair_matrix(
 ) -> None:
     """Generate and optionally execute fair four-way compare cases."""
 
-    preset_spec = resolve_lane_preset(preset) if preset else None
+    preset_name = preset or (None if pack else "smoke")
+    preset_spec = resolve_lane_preset(preset_name) if preset_name else None
     pack_name = pack or (preset_spec.pack if preset_spec else None)
-    if pack_name is None:
-        raise typer.BadParameter("either --pack or --preset is required")
 
     pack_path = resolve_pack_path(pack_name)
     paths, cases = prepare_fair_matrix_cases(
@@ -54,12 +53,15 @@ def fair_matrix(
     )
     if dry_run:
         typer.echo("mode\tdry-run")
-        typer.echo(str(paths.manifest_path))
+        typer.echo(f"manifest\t{paths.manifest_path}")
+        typer.echo(f"trend-dataset\t{paths.trends_dir / 'fair_matrix_trends.jsonl'}")
         for case in cases:
             typer.echo(json.dumps({key: str(value) if isinstance(value, Path) else value for key, value in case.__dict__.items()}))
         return
 
     typer.echo("mode\texecute")
+    typer.echo(f"manifest\t{paths.manifest_path}")
+    typer.echo(f"trend-dataset\t{paths.trends_dir / 'fair_matrix_trends.jsonl'}")
     for case in cases:
         summary_path = run_fair_matrix_case(
             case,

@@ -76,6 +76,15 @@ In short:
 
 ## Commands
 
+### Default operating path
+
+For the current local-first workflow:
+
+- Prism is the default operating engine for day-to-day search runs
+- Topograph remains the first serious challenger in Compare
+- `evonn-compare fair-matrix` and `campaign` default to the low-cost `smoke`
+  lane when no explicit pack or preset is supplied
+
 Install package dev dependencies from root:
 
 ```bash

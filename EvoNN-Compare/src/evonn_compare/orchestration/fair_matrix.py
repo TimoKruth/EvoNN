@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 import itertools
 import json
 from pathlib import Path
@@ -62,6 +63,7 @@ class MatrixPaths:
     primordia_configs_dir: Path
     contender_configs_dir: Path
     reports_dir: Path
+    trends_dir: Path
     logs_dir: Path
     manifest_path: Path
 
@@ -85,6 +87,7 @@ class MatrixCase:
     contender_run_dir: Path | None
     report_dir: Path
     summary_output_path: Path
+    trend_dataset_path: Path
     log_dir: Path
     systems: tuple[str, ...]
 
@@ -122,6 +125,7 @@ def prepare_fair_matrix_cases(
         primordia_configs_dir=workspace / "configs" / "primordia",
         contender_configs_dir=workspace / "configs" / "contenders",
         reports_dir=workspace / "reports",
+        trends_dir=workspace / "trends",
         logs_dir=workspace / "logs",
         manifest_path=workspace / "matrix.yaml",
     )
@@ -134,6 +138,7 @@ def prepare_fair_matrix_cases(
         paths.stratograph_configs_dir,
         paths.primordia_configs_dir,
         paths.reports_dir,
+        paths.trends_dir,
         paths.logs_dir,
     ]
     if include_contenders:
@@ -173,6 +178,7 @@ def prepare_fair_matrix_cases(
                 contender_run_dir=(paths.run_roots_dir / "contenders" / case_name) if include_contenders else None,
                 report_dir=report_dir,
                 summary_output_path=report_dir / "fair_matrix_summary.md",
+                trend_dataset_path=paths.trends_dir / "fair_matrix_trends.jsonl",
                 log_dir=paths.logs_dir / case_name,
                 systems=systems,
             )
@@ -217,6 +223,8 @@ def prepare_fair_matrix_cases(
         "seeds": seeds,
         "budgets": budgets,
         "systems": list(systems),
+        "trends_dir": str(paths.trends_dir),
+        "trend_dataset": str(paths.trends_dir / "fair_matrix_trends.jsonl"),
         "cases": [
             {
                 key: str(value) if isinstance(value, Path) else value
@@ -533,7 +541,24 @@ def run_fair_matrix_case(
         json.dumps(asdict(summary), indent=2, default=str),
         encoding="utf-8",
     )
+    case.summary_output_path.with_name("lane_acceptance.json").write_text(
+        json.dumps(asdict(summary.lane) if summary.lane is not None else {}, indent=2, default=str),
+        encoding="utf-8",
+    )
     _write_trend_artifacts(case, summary.trend_rows)
+    trend_records = _build_trend_records(case=case, pack=pack, runs=runs)
+    case.summary_output_path.with_name("fair_matrix_trends.json").write_text(
+        json.dumps(trend_records, indent=2),
+        encoding="utf-8",
+    )
+    case.summary_output_path.with_name("fair_matrix_trends.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in trend_records),
+        encoding="utf-8",
+    )
+    case.trend_dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    with case.trend_dataset_path.open("a", encoding="utf-8") as handle:
+        for record in trend_records:
+            handle.write(json.dumps(record) + "\n")
     return case.summary_output_path
 
 
@@ -567,7 +592,6 @@ def _write_trend_artifacts(case: MatrixCase, trend_rows: list[Any]) -> None:
     )
 
 
-
 def _build_lane_metadata(
     *,
     case: MatrixCase,
@@ -575,17 +599,41 @@ def _build_lane_metadata(
     pair_results: dict[tuple[str, str], tuple[Any, Path]],
 ) -> LaneMetadata:
     artifact_completeness_ok = True
+    observed_task_kinds: set[str] = set()
+    budget_consistency_ok = True
+    seed_consistency_ok = True
     for system, (manifest, _results) in runs.items():
         run_dir = _run_dir_for_system(case, system)
-        required = [run_dir / "manifest.json", run_dir / "results.json", run_dir / "report.md"]
+        required = [
+            run_dir / "manifest.json",
+            run_dir / "results.json",
+            run_dir / "summary.json",
+            run_dir / "report.md",
+        ]
         dataset_manifest = getattr(manifest.artifacts, "dataset_manifest_json", None)
         if dataset_manifest:
             required.append(run_dir / str(dataset_manifest))
         if not all(path.exists() for path in required):
             artifact_completeness_ok = False
-            break
+        if manifest.budget.evaluation_count != case.budget:
+            budget_consistency_ok = False
+        if manifest.seed != case.seed:
+            seed_consistency_ok = False
+        observed_task_kinds.update(entry.task_kind for entry in manifest.benchmarks)
 
     fairness_ok = all(result.parity_status == "fair" for result, _report_path in pair_results.values())
+    task_coverage_ok = {"classification", "regression"}.issubset(observed_task_kinds)
+    acceptance_notes: list[str] = []
+    if not artifact_completeness_ok:
+        acceptance_notes.append("missing required artifacts")
+    if not fairness_ok:
+        acceptance_notes.append("pairwise fairness checks not all fair")
+    if not task_coverage_ok:
+        acceptance_notes.append("lane must cover both classification and regression")
+    if not budget_consistency_ok:
+        acceptance_notes.append("manifest evaluation counts drift from requested lane budget")
+    if not seed_consistency_ok:
+        acceptance_notes.append("manifest seeds drift from requested lane seed")
     return LaneMetadata(
         preset=case.lane_preset,
         pack_name=case.pack_name,
@@ -593,7 +641,18 @@ def _build_lane_metadata(
         expected_seed=case.seed,
         artifact_completeness_ok=artifact_completeness_ok,
         fairness_ok=fairness_ok,
-        repeatability_ready=artifact_completeness_ok and fairness_ok,
+        task_coverage_ok=task_coverage_ok,
+        budget_consistency_ok=budget_consistency_ok,
+        seed_consistency_ok=seed_consistency_ok,
+        observed_task_kinds=tuple(sorted(observed_task_kinds)),
+        acceptance_notes=tuple(acceptance_notes),
+        repeatability_ready=(
+            artifact_completeness_ok
+            and fairness_ok
+            and task_coverage_ok
+            and budget_consistency_ok
+            and seed_consistency_ok
+        ),
     )
 
 
@@ -609,6 +668,61 @@ def _run_dir_for_system(case: MatrixCase, system: str) -> Path:
     if run_dir is None:
         raise ValueError(f"no run dir for system {system}")
     return run_dir
+
+
+def _build_trend_records(
+    *,
+    case: MatrixCase,
+    pack: Any,
+    runs: dict[str, tuple[Any, list[Any]]],
+) -> list[dict[str, Any]]:
+    generated_at = datetime.now(timezone.utc).isoformat()
+    trend_records: list[dict[str, Any]] = []
+
+    for system in case.systems:
+        manifest, results = runs[system]
+        results_by_benchmark = {record.benchmark_id: record for record in results}
+        fairness = manifest.fairness
+        for benchmark in pack.benchmarks:
+            record = results_by_benchmark.get(benchmark.benchmark_id)
+            trend_records.append(
+                {
+                    "generated_at": generated_at,
+                    "lane_preset": case.lane_preset,
+                    "pack": case.pack_name,
+                    "benchmark": benchmark.benchmark_id,
+                    "task_kind": benchmark.task_kind,
+                    "engine": system,
+                    "run_id": manifest.run_id,
+                    "run_name": manifest.run_name,
+                    "created_at": manifest.created_at.isoformat(),
+                    "seed": manifest.seed,
+                    "budget": manifest.budget.evaluation_count,
+                    "outcome_status": record.status if record is not None else "missing",
+                    "metric_name": benchmark.metric_name,
+                    "metric_direction": benchmark.metric_direction,
+                    "metric_value": float(record.metric_value) if record is not None and record.metric_value is not None else None,
+                    "quality": float(record.quality) if record is not None and record.quality is not None else None,
+                    "failure_reason": record.failure_reason if record is not None else None,
+                    "fairness": {
+                        "benchmark_pack_id": fairness.benchmark_pack_id if fairness is not None else manifest.pack_name,
+                        "seed": fairness.seed if fairness is not None else manifest.seed,
+                        "evaluation_count": fairness.evaluation_count if fairness is not None else manifest.budget.evaluation_count,
+                        "budget_policy_name": fairness.budget_policy_name if fairness is not None else manifest.budget.budget_policy_name,
+                        "data_signature": fairness.data_signature if fairness is not None else None,
+                        "code_version": fairness.code_version if fairness is not None else None,
+                    },
+                    "artifact_paths": {
+                        "manifest": str(_run_dir_for_system(case, system) / "manifest.json"),
+                        "results": str(_run_dir_for_system(case, system) / "results.json"),
+                        "summary": str(_run_dir_for_system(case, system) / "summary.json"),
+                        "report": str(_run_dir_for_system(case, system) / "report.md"),
+                    },
+                }
+            )
+
+    trend_records.sort(key=lambda item: (item["engine"], item["benchmark"]))
+    return trend_records
 
 
 def _run_command(spec: CommandSpec, *, log_dir: Path) -> None:
