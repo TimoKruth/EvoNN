@@ -109,7 +109,14 @@ def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) ->
 
     def fake_prepare_fair_matrix_cases(**_kwargs):
         case = type("Case", (), {"__dict__": {"summary_output_path": summary_path}})()
-        paths = type("Paths", (), {"manifest_path": tmp_path / "matrix.yaml"})()
+        paths = type(
+            "Paths",
+            (),
+            {
+                "manifest_path": tmp_path / "matrix.yaml",
+                "trends_dir": tmp_path / "trends",
+            },
+        )()
         return paths, [case]
 
     def fake_run_fair_matrix_case(*_args, **_kwargs):
