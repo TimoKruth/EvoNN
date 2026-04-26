@@ -55,3 +55,12 @@ def test_result_record_requires_failure_reason_for_failed_status() -> None:
             metric_value=None,
             status="failed",
         )
+
+
+def test_budget_envelope_requires_resume_source_for_resumed_evaluations() -> None:
+    with pytest.raises(ValueError, match="resumed_from_run_id"):
+        BudgetEnvelope(
+            evaluation_count=64,
+            epochs_per_candidate=20,
+            resumed_evaluations=5,
+        )

@@ -113,6 +113,15 @@ def export_symbiosis_contract(
             generations=1,
             population_size=budget_meta.get("evaluation_count", len(contenders)),
             budget_policy_name=exported_budget_policy_name,
+            actual_evaluations=budget_meta.get("evaluation_count", len(contenders)),
+            cached_evaluations=0,
+            failed_evaluations=sum(1 for record in result_records if record.status == "failed"),
+            invalid_evaluations=0,
+            partial_run=any(record.status != "ok" for record in result_records),
+            evaluation_semantics=(
+                "one contender fit/eval pass counted per contender in the configured pool; "
+                "failed fits still count, cache hits do not apply"
+            ),
         ),
         device=DeviceInfo(
             device_name=platform.machine(),
@@ -187,6 +196,12 @@ def _build_contract_summary(*, run: dict[str, Any], manifest: RunManifest, resul
         "run_id": manifest.run_id,
         "status": "ok" if not failed else "partial",
         "total_evaluations": manifest.budget.evaluation_count,
+        "actual_evaluations": manifest.budget.actual_evaluations,
+        "cached_evaluations": manifest.budget.cached_evaluations,
+        "failed_evaluations": manifest.budget.failed_evaluations,
+        "invalid_evaluations": manifest.budget.invalid_evaluations,
+        "partial_run": manifest.budget.partial_run,
+        "evaluation_semantics": manifest.budget.evaluation_semantics,
         "generations_completed": manifest.budget.generations,
         "epochs_per_candidate": manifest.budget.epochs_per_candidate,
         "population_size": manifest.budget.population_size,
