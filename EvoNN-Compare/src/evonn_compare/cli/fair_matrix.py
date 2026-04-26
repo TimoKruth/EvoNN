@@ -17,7 +17,7 @@ from evonn_compare.orchestration.fair_matrix import (
 
 def fair_matrix(
     pack: str | None = typer.Option(None, "--pack", help="Parity pack name or YAML path"),
-    preset: str | None = typer.Option(None, "--preset", help="Named lane preset (for example: smoke, local)"),
+    preset: str | None = typer.Option(None, "--preset", help="Named lane preset (defaults to smoke when neither --pack nor --preset is supplied)"),
     seeds: str | None = typer.Option(None, "--seeds", help="Comma-separated seeds"),
     budgets: str | None = typer.Option(None, "--budgets", help="Comma-separated budgets"),
     workspace: str = typer.Option(..., "--workspace", help="Campaign workspace"),
@@ -32,10 +32,9 @@ def fair_matrix(
 ) -> None:
     """Generate and optionally execute fair four-way compare cases."""
 
-    preset_spec = resolve_lane_preset(preset) if preset else None
+    preset_name = preset or (None if pack else "smoke")
+    preset_spec = resolve_lane_preset(preset_name) if preset_name else None
     pack_name = pack or (preset_spec.pack if preset_spec else None)
-    if pack_name is None:
-        raise typer.BadParameter("either --pack or --preset is required")
 
     pack_path = resolve_pack_path(pack_name)
     paths, cases = prepare_fair_matrix_cases(

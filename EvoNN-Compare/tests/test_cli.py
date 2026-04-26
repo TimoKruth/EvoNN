@@ -45,8 +45,22 @@ def test_campaign_preset_smoke_dry_run(tmp_path) -> None:
     assert "tier1_core_smoke_eval16" in result.stdout
 
 
+def test_campaign_defaults_to_smoke_dry_run(tmp_path) -> None:
+    result = runner.invoke(app, ["campaign", "--workspace", str(tmp_path), "--dry-run"])
+    assert result.exit_code == 0
+    assert "tier1_core_smoke_eval16" in result.stdout
+
+
 def test_fair_matrix_preset_smoke_dry_run(tmp_path) -> None:
     result = runner.invoke(app, ["fair-matrix", "--preset", "smoke", "--workspace", str(tmp_path), "--dry-run"])
+    assert result.exit_code == 0
+    assert "tier1_core_smoke_eval16" in result.stdout
+    assert "trend-dataset\t" in result.stdout
+    assert "fair_matrix_trends.jsonl" in result.stdout
+
+
+def test_fair_matrix_defaults_to_smoke_dry_run(tmp_path) -> None:
+    result = runner.invoke(app, ["fair-matrix", "--workspace", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0
     assert "tier1_core_smoke_eval16" in result.stdout
     assert "trend-dataset\t" in result.stdout

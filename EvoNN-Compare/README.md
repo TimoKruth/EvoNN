@@ -14,11 +14,11 @@ Package metadata stays in [pyproject.toml](./pyproject.toml). Workspace lock liv
 
 ## Fair-matrix smoke lane
 
-The provisional low-cost repeatable lane is the `smoke` preset:
+The provisional low-cost repeatable lane is the `smoke` preset. `fair-matrix`
+defaults to this lane when neither `--pack` nor `--preset` is supplied:
 
 ```bash
 uv run --package evonn-compare python -m evonn_compare fair-matrix \
-  --preset smoke \
   --workspace .tmp/fair-matrix-smoke
 ```
 
