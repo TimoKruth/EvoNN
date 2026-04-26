@@ -17,6 +17,7 @@ This means the project should move from mostly infrastructure progress to a comp
 By day 90, EvoNN should have:
 
 - one trusted daily compare lane: `tier1_core`
+  with an explicit operating state for each participating system
 - explicit project-wide budget/accounting semantics
 - trend artifacts used as the default decision surface
 - CI coverage for the trust layer, not just selected engines
@@ -75,7 +76,15 @@ The biggest current maturity gap is not missing engines. It is whether higher-bu
   - `64`
   - `256`
   - `1000`
-- stable end-to-end Compare path for Prism, Topograph, and Contenders
+- explicit lane-scope definition:
+  - quarter-critical core systems:
+    - Prism
+    - Topograph
+    - Contenders
+  - secondary challenger participants for this window:
+    - Stratograph
+    - Primordia
+- stable end-to-end Compare path for the quarter-critical core systems
 - artifact completeness and fairness checks treated as required, not optional
 - repeat reruns stored in one canonical trend workspace
 
@@ -83,6 +92,30 @@ The biggest current maturity gap is not missing engines. It is whether higher-bu
 - repeated `tier1_core` reruns produce comparable artifacts without manual caveats
 - fairness failures are explicit and actionable when they happen
 - no ambiguity remains about whether a run belongs in the trusted daily lane
+- the lane has explicit operating-state labels rather than a single binary
+  "trusted/not trusted" claim
+
+### Lane operating states
+- `contract-fair`
+  - shared budget/accounting semantics, seed, and data signature are valid
+  - compare artifacts are structurally fair
+  - benchmark failures or missing benchmark results may still exist
+- `trusted-core`
+  - the lane is `contract-fair`
+  - Prism, Topograph, and Contenders are benchmark-complete on the lane in
+    question
+  - repeated reruns do not require manual caveats for the core systems
+- `trusted-extended`
+  - the lane is `trusted-core`
+  - Stratograph and Primordia are also benchmark-complete on the lane in
+    question
+  - the five-system comparison can be treated as routine rather than
+    experimental
+
+Interpretation rule:
+- do not call a lane simply "trusted" without naming which operating state it
+  is in
+- a lane may be fair without yet being benchmark-complete across all systems
 
 ---
 
@@ -160,6 +193,8 @@ The trust layer cannot depend mainly on manual local checks.
 - every core package has a clear automated validation path
 - substrate regressions are caught before merge more often than after
 - Linux-safe vs macOS-only coverage boundaries are explicit
+- CI naming and docs reflect the quarter-critical core lane scope versus
+  secondary challenger coverage where that distinction matters
 
 ---
 
@@ -281,6 +316,13 @@ The most coherent default claim for this quarter is:
 - `64/256/1000` all have a defined interpretation and operating status
 - the repo has one explicit quarter-level research claim
 
+### Cut line
+- if `1000` is not at least `contract-fair` by the end of week 8, seeded
+  experiment work slips behind lane stabilization
+- if `64` and `256` are not at least `trusted-core` by the end of week 8, the
+  quarter remains focused on lane trust, CI, and contender/budget truth rather
+  than broader transfer claims
+
 ## Weeks 9-10
 - implement the first auditable seeding consumer path
 - run seeded vs unseeded comparison on the trusted lane
@@ -313,7 +355,12 @@ The most coherent default claim for this quarter is:
 ### Milestone B: Trusted Tier1 Lane
 - `tier1_core` is the daily lane
 - `64/256/1000` runs are interpretable and repeatable
+- operating state is explicit per budget:
+  - `contract-fair`
+  - `trusted-core`
+  - `trusted-extended`
 - fairness caveats are explicit and rare
+- benchmark failures are not silently collapsed into a generic "trusted" label
 
 ### Milestone C: Trend-First Workflow
 - trend datasets are append-only and stable

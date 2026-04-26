@@ -19,6 +19,10 @@ data migration work:
 - defer larger benchmark-catalog cleanup that does not materially affect
   `tier1_core`, trendability, or budget/fairness truth
 
+This status note is intentionally only a quarter-alignment pointer. The active
+execution source of truth for quarter priorities remains
+`EVONN_90_DAY_PLAN.md`.
+
 Decision for this plan: **Plan A**.
 
 Plan A means:

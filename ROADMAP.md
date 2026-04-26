@@ -211,7 +211,9 @@ execution document beneath this roadmap.
 
 Priority 1:
 make `tier1_core` the trusted daily research lane, with repeatable compare
-artifacts and explicit operating status at budgets `64`, `256`, and `1000`.
+artifacts and explicit operating status at budgets `64`, `256`, and `1000`,
+using the state terms defined in `EVONN_90_DAY_PLAN.md` rather than a binary
+"trusted/not trusted" label.
 
 Priority 2:
 define and enforce project-wide budget/accounting semantics so fair comparison

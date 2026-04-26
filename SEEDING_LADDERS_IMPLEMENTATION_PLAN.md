@@ -28,6 +28,9 @@ Recommended quarter focus:
 4. defer full staged-ladder expansion until the daily lane and budget truth are
    stable enough to trust the result
 
+This alignment note is intentionally scoped to seeding-specific interpretation.
+The quarter execution source of truth remains `EVONN_90_DAY_PLAN.md`.
+
 ---
 
 ## Research Question

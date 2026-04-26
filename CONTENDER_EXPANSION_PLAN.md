@@ -41,6 +41,9 @@ Near-term contender priority order:
 5. defer CNN, transformer, and evolutionary-adapter expansion unless they are
    directly needed for the primary quarter claim
 
+This alignment section is intentionally not a second quarter plan. Quarter
+execution priority remains owned by `EVONN_90_DAY_PLAN.md`.
+
 ## Recommended Order
 
 Best order:
