@@ -1,6 +1,5 @@
 from pathlib import Path
 import subprocess
-
 import pytest
 
 from evonn_compare.comparison.fair_matrix import (
@@ -11,7 +10,7 @@ from evonn_compare.comparison.fair_matrix import (
 from evonn_compare.comparison.engine import ComparisonEngine
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.ingest.loader import SystemIngestor
-from evonn_compare.orchestration.fair_matrix import _native_runtime_available
+from evonn_compare.orchestration.fair_matrix import _build_trend_records, _native_runtime_available
 from evonn_compare.reporting.fair_matrix_md import render_fair_matrix_markdown
 from test_compare import PACK_PATH, _write_run
 
@@ -256,3 +255,47 @@ def test_native_runtime_available_returns_false_when_probe_cannot_launch(monkeyp
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     assert _native_runtime_available(tmp_path, "prism.pipeline.coordinator") is False
+
+
+def test_build_trend_records_preserves_longitudinal_fields(tmp_path: Path) -> None:
+    pack = load_parity_pack(PACK_PATH)
+    run_dirs = {
+        "prism": tmp_path / "prism",
+        "topograph": tmp_path / "topograph",
+    }
+    _write_run(run_dirs["prism"], system="prism", score_shift=0.02, budget_policy_name="evolutionary_search")
+    _write_run(run_dirs["topograph"], system="topograph", budget_policy_name="evolutionary_search")
+
+    ingestors = {system: SystemIngestor(path) for system, path in run_dirs.items()}
+    runs = {
+        system: (ingestor.load_manifest(), ingestor.load_results())
+        for system, ingestor in ingestors.items()
+    }
+
+    class CaseStub:
+        lane_preset = "smoke"
+        pack_name = pack.name
+        systems = ("prism", "topograph")
+        prism_run_dir = run_dirs["prism"]
+        topograph_run_dir = run_dirs["topograph"]
+        stratograph_run_dir = tmp_path / "stratograph"
+        primordia_run_dir = tmp_path / "primordia"
+        contender_run_dir = None
+
+    trend_records = _build_trend_records(case=CaseStub(), pack=pack, runs=runs)
+
+    assert len(trend_records) == len(pack.benchmarks) * 2
+    first = trend_records[0]
+    assert first["lane_preset"] == "smoke"
+    assert first["pack"] == pack.name
+    assert first["engine"] in {"prism", "topograph"}
+    assert first["benchmark"]
+    assert first["task_kind"] in {"classification", "regression", "language_modeling"}
+    assert first["seed"] == 42
+    assert first["budget"] == 64
+    assert first["outcome_status"] == "ok"
+    assert first["metric_name"]
+    assert first["metric_direction"] in {"max", "min"}
+    assert first["fairness"]["benchmark_pack_id"] == pack.name
+    assert first["fairness"]["evaluation_count"] == 64
+    assert first["artifact_paths"]["manifest"].endswith("manifest.json")

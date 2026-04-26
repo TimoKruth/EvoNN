@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 import itertools
 import json
 from pathlib import Path
@@ -537,6 +538,15 @@ def run_fair_matrix_case(
     with (case.report_dir.parent / "fair_matrix_trend_rows.jsonl").open("a", encoding="utf-8") as handle:
         for row in summary.trend_rows:
             handle.write(json.dumps(asdict(row), default=str) + "\n")
+    trend_records = _build_trend_records(case=case, pack=pack, runs=runs)
+    case.summary_output_path.with_name("fair_matrix_trends.json").write_text(
+        json.dumps(trend_records, indent=2),
+        encoding="utf-8",
+    )
+    case.summary_output_path.with_name("fair_matrix_trends.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in trend_records),
+        encoding="utf-8",
+    )
     return case.summary_output_path
 
 
@@ -581,6 +591,60 @@ def _run_dir_for_system(case: MatrixCase, system: str) -> Path:
     if run_dir is None:
         raise ValueError(f"no run dir for system {system}")
     return run_dir
+
+
+def _build_trend_records(
+    *,
+    case: MatrixCase,
+    pack: Any,
+    runs: dict[str, tuple[Any, list[Any]]],
+) -> list[dict[str, Any]]:
+    generated_at = datetime.now(timezone.utc).isoformat()
+    trend_records: list[dict[str, Any]] = []
+
+    for system in case.systems:
+        manifest, results = runs[system]
+        results_by_benchmark = {record.benchmark_id: record for record in results}
+        fairness = manifest.fairness
+        for benchmark in pack.benchmarks:
+            record = results_by_benchmark.get(benchmark.benchmark_id)
+            trend_records.append(
+                {
+                    "generated_at": generated_at,
+                    "lane_preset": case.lane_preset,
+                    "pack": case.pack_name,
+                    "benchmark": benchmark.benchmark_id,
+                    "task_kind": benchmark.task_kind,
+                    "engine": system,
+                    "run_id": manifest.run_id,
+                    "run_name": manifest.run_name,
+                    "created_at": manifest.created_at.isoformat(),
+                    "seed": manifest.seed,
+                    "budget": manifest.budget.evaluation_count,
+                    "outcome_status": record.status if record is not None else "missing",
+                    "metric_name": benchmark.metric_name,
+                    "metric_direction": benchmark.metric_direction,
+                    "metric_value": float(record.metric_value) if record is not None and record.metric_value is not None else None,
+                    "quality": float(record.quality) if record is not None and record.quality is not None else None,
+                    "failure_reason": record.failure_reason if record is not None else None,
+                    "fairness": {
+                        "benchmark_pack_id": fairness.benchmark_pack_id if fairness is not None else manifest.pack_name,
+                        "seed": fairness.seed if fairness is not None else manifest.seed,
+                        "evaluation_count": fairness.evaluation_count if fairness is not None else manifest.budget.evaluation_count,
+                        "budget_policy_name": fairness.budget_policy_name if fairness is not None else manifest.budget.budget_policy_name,
+                        "data_signature": fairness.data_signature if fairness is not None else None,
+                        "code_version": fairness.code_version if fairness is not None else None,
+                    },
+                    "artifact_paths": {
+                        "manifest": str(_run_dir_for_system(case, system) / "manifest.json"),
+                        "results": str(_run_dir_for_system(case, system) / "results.json"),
+                        "report": str(_run_dir_for_system(case, system) / "report.md"),
+                    },
+                }
+            )
+
+    trend_records.sort(key=lambda item: (item["engine"], item["benchmark"]))
+    return trend_records
 
 
 def _run_command(spec: CommandSpec, *, log_dir: Path) -> None:
