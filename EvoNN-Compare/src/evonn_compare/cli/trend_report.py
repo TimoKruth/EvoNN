@@ -13,7 +13,7 @@ from evonn_compare.reporting.fair_matrix_trends_md import render_fair_matrix_tre
 
 
 def trend_report(
-    inputs: list[str] = typer.Argument(..., help="One or more trend_rows.json, fair_matrix_summary.json, or fair_matrix_trend_rows.jsonl files"),
+    inputs: list[str] = typer.Argument(..., help="One or more trend_rows.json, fair_matrix_summary.json, fair_matrix_trend_rows.jsonl, fair_matrix_trends.json, or fair_matrix_trends.jsonl files"),
     system: str | None = typer.Option(None, "--system", help="Filter to one system"),
     benchmark: str | None = typer.Option(None, "--benchmark", help="Filter to one benchmark_id"),
     pack: str | None = typer.Option(None, "--pack", help="Filter to one pack name"),
@@ -60,6 +60,26 @@ def _read_payload(path: Path):
 
 
 def _coerce_trend_row(entry: dict) -> MatrixTrendRow:
+    if "pack_name" not in entry and "pack" in entry:
+        return MatrixTrendRow(
+            pack_name=str(entry["pack"]),
+            budget=int(entry["budget"]),
+            seed=int(entry["seed"]),
+            system=str(entry["engine"]),
+            run_id=str(entry["run_id"]),
+            benchmark_id=str(entry["benchmark"]),
+            metric_name=str(entry["metric_name"]),
+            metric_direction=str(entry["metric_direction"]),
+            metric_value=None if entry.get("metric_value") is None else float(entry["metric_value"]),
+            outcome_status=str(entry["outcome_status"]),
+            failure_reason=None if entry.get("failure_reason") is None else str(entry["failure_reason"]),
+            evaluation_count=int((entry.get("fairness") or {}).get("evaluation_count") or entry["budget"]),
+            epochs_per_candidate=int(entry.get("epochs_per_candidate") or 0),
+            budget_policy_name=None if (entry.get("fairness") or {}).get("budget_policy_name") is None else str((entry.get("fairness") or {})["budget_policy_name"]),
+            wall_clock_seconds=None if entry.get("wall_clock_seconds") is None else float(entry["wall_clock_seconds"]),
+            matrix_scope="fair" if not entry.get("reference_only") else "reference",
+            fairness_metadata=dict(entry.get("fairness") or {}),
+        )
     return MatrixTrendRow(
         pack_name=str(entry["pack_name"]),
         budget=int(entry["budget"]),

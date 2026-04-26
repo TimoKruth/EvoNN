@@ -91,6 +91,8 @@ Accepted inputs:
 - `trend_rows.json`
 - `fair_matrix_summary.json`
 - `fair_matrix_trend_rows.jsonl`
+- `fair_matrix_trends.json`
+- `fair_matrix_trends.jsonl`
 
 Optional filters:
 
