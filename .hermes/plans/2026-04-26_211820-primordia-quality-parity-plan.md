@@ -4,7 +4,7 @@
 
 **Goal:** Raise `EvoNN-Primordia` from a credible primitive-first smoke engine into a genuinely high-quality engine whose search quality, observability, and compare results move materially closer to Prism, Topograph, and Stratograph without erasing Primordia’s distinct primitive-first thesis.
 
-**Architecture:** Keep Primordia distinct internally, but improve it along four axes: (1) benchmark completeness/correctness, (2) search quality, (3) runtime maturity/observability, and (4) fairness/research usefulness on the shared compare substrate. The main change is to replace the current round-robin mutated-seed evaluator with a bounded primitive-search loop that has memory, selection pressure, and reproducible artifacts.
+**Architecture:** Keep Primordia distinct internally, but improve it along five axes: (1) backend portability, (2) benchmark completeness/correctness, (3) search quality, (4) runtime maturity/observability, and (5) fairness/research usefulness on the shared compare substrate. The main changes are: first, introduce a Linux-capable fallback backend for correctness/CI and non-Apple-Silicon operation; second, replace the current round-robin mutated-seed evaluator with a bounded primitive-search loop that has memory, selection pressure, and reproducible artifacts.
 
 **Tech Stack:** Python, MLX, Pydantic, uv workspace, shared-benchmarks, EvoNN-Compare fair-matrix substrate, markdown/JSON artifacts.
 
@@ -53,6 +53,7 @@ The current core limitations appear to be:
 Primordia should become:
 
 - a **trusted primitive-search engine** rather than only a compare participant
+- runnable on both Apple Silicon MLX and a Linux-capable fallback path
 - benchmark-complete on its named shared lanes, including current regression tasks
 - capable of materially stronger results on tabular/image/text smoke and tier-1 research packs
 - observably improving over time through trend artifacts and repeated runs
@@ -62,6 +63,7 @@ Primordia should become:
 Success does **not** mean “turn Primordia into Prism.”
 
 Success means:
+- backend portability without losing artifact/compare compatibility
 - reliable benchmark completion on the official lanes
 - stronger primitive search under bounded budgets
 - better artifacts and operator observability
@@ -73,9 +75,10 @@ Success means:
 This branch should aim higher than “good enough for the current quarter.” The target is:
 
 1. Primordia becomes **benchmark-complete and budget-auditable** on `smoke` and `tier1_core`.
-2. Primordia becomes **meaningfully more competitive** on `tier1_core` at `64`, `256`, and `1000`.
-3. Primordia becomes **operationally trustworthy** through status, resume, and artifact quality.
-4. Primordia becomes **scientifically useful downstream** via stronger, more stable seed outputs.
+2. Primordia gains a **Linux-capable fallback backend** that preserves run/export/report semantics even if it is not yet quality-par with MLX.
+3. Primordia becomes **meaningfully more competitive** on `tier1_core` at `64`, `256`, and `1000`.
+4. Primordia becomes **operationally trustworthy** through status, resume, and artifact quality.
+5. Primordia becomes **scientifically useful downstream** via stronger, more stable seed outputs.
 
 Non-target:
 
@@ -89,22 +92,80 @@ Non-target:
 
 Prioritize work in this order:
 
-1. **Benchmark completeness and correctness first**
-2. **Search-loop quality second**
-3. **Objective shaping and training quality third**
-4. **Runtime maturity and reproducibility fourth**
-5. **Fairness / budget semantics fifth**
-6. **Downstream seeding validation sixth**
+1. **Backend portability first**
+2. **Benchmark completeness and correctness second**
+3. **Search-loop quality third**
+4. **Objective shaping and training quality fourth**
+5. **Runtime maturity and reproducibility fifth**
+6. **Fairness / budget semantics sixth**
+7. **Downstream seeding validation seventh**
 
 That ordering matters because:
 
+- a strong engine that only runs on one hardware/runtime surface is strategically fragile
 - advanced search work is wasted if the engine still fails named lane benchmarks
 - better reports around a weak search loop will not materially improve comparative results
 - stronger seeding claims are only credible once the engine itself is complete and stable
 
 ---
 
-## Phase 1 — Establish a real Primordia baseline and close benchmark-completeness gaps
+## Phase 1 — Introduce a Linux-capable fallback backend
+
+**Objective:** Make Primordia runnable beyond Apple Silicon by introducing a fallback backend that preserves artifacts, budget semantics, and compare/export surfaces on Linux and non-MLX hosts.
+
+**Files to modify:**
+- Modify: `EvoNN-Primordia/src/evonn_primordia/pipeline.py`
+- Modify: `EvoNN-Primordia/src/evonn_primordia/runtime/training.py`
+- Modify: `EvoNN-Primordia/src/evonn_primordia/families/compiler.py`
+- Modify: `EvoNN-Primordia/src/evonn_primordia/families/models.py`
+- Modify: `EvoNN-Primordia/src/evonn_primordia/config.py`
+- Create: `EvoNN-Primordia/src/evonn_primordia/runtime/backends.py`
+- Create: `EvoNN-Primordia/tests/test_runtime_backends.py`
+- Modify: `EvoNN-Primordia/README.md`
+
+**Work:**
+1. Introduce an explicit runtime/backend selector instead of an implicit MLX-only path.
+2. Keep MLX as the high-quality primary backend on Apple Silicon.
+3. Add a Linux-capable fallback backend for:
+   - smoke runs
+   - export/report generation
+   - compare/fairness validation
+   - package tests and CI
+4. Preserve the same top-level run artifacts across backends:
+   - `summary.json`
+   - `trial_records.json`
+   - `primitive_bank_summary.json`
+   - `seed_candidates.json`
+   - compare/export artifacts
+5. Make backend identity explicit in artifacts:
+   - `runtime_backend`
+   - `runtime_version`
+   - any fallback marker needed for honest interpretation
+6. Prefer a minimal correctness backend first, not a rushed “high-quality Linux parity” implementation.
+7. Keep the design open for a later stronger Linux backend without forcing that into phase 1.
+
+**Recommended design direction:**
+- mirror the spirit of Stratograph’s `mlx` vs `numpy-fallback` split
+- make the portability surface explicit in code rather than hiding it behind scattered imports
+- do not move model-runtime code into `evonn_shared`
+- do not promise metric parity between MLX and fallback in this phase
+
+**Why first:** Portability is not just convenience. It reduces platform lock-in, makes CI and non-Mac validation real, and gives later Primordia quality work a broader execution surface.
+
+**Validation:**
+- `uv run --package evonn-primordia --extra dev pytest -q EvoNN-Primordia/tests/test_runtime_backends.py EvoNN-Primordia/tests/test_smoke.py`
+- one smoke run on MLX
+- one smoke run on the fallback backend
+
+**Exit criteria:**
+- Primordia can execute a smoke run on a non-MLX host
+- artifact schema stays compare-compatible across backends
+- backend metadata is explicit and honest in package and compare exports
+- CI/package tests can exercise at least one non-MLX runtime path
+
+---
+
+## Phase 2 — Establish a real Primordia baseline and close benchmark-completeness gaps
 
 **Objective:** Make current Primordia measurable enough that later improvements can be judged honestly, while fixing the obvious “not yet a complete engine” gaps on official lanes.
 
@@ -155,7 +216,7 @@ That ordering matters because:
 
 ---
 
-## Phase 2 — Replace slot-based search with a bounded elite/archive loop
+## Phase 3 — Replace slot-based search with a bounded elite/archive loop
 
 **Objective:** Upgrade Primordia from round-robin candidate evaluation to a minimal but real evolutionary search process.
 
@@ -211,7 +272,7 @@ That ordering matters because:
 
 ---
 
-## Phase 3 — Improve objective shaping so “best primitive” means something
+## Phase 4 — Improve objective shaping so “best primitive” means something
 
 **Objective:** Make candidate ranking less naive and more robust across benchmark families.
 
@@ -254,7 +315,7 @@ That ordering matters because:
 
 ---
 
-## Phase 4 — Strengthen training/runtime quality without exploding cost
+## Phase 5 — Strengthen training/runtime quality without exploding cost
 
 **Objective:** Raise result quality per evaluation while preserving Primordia’s cheap-first role.
 
@@ -297,7 +358,7 @@ That ordering matters because:
 
 ---
 
-## Phase 5 — Add runtime maturity features expected of stronger engines
+## Phase 6 — Add runtime maturity features expected of stronger engines
 
 **Objective:** Make Primordia feel like a serious engine operationally, not only algorithmically.
 
@@ -339,7 +400,7 @@ That ordering matters because:
 
 ---
 
-## Phase 6 — Harden Primordia budget semantics for fairer compare results
+## Phase 7 — Harden Primordia budget semantics for fairer compare results
 
 **Objective:** Make Primordia’s “evaluation_count” honest and stable enough for tier1_core fair-matrix use.
 
@@ -377,7 +438,7 @@ That ordering matters because:
 
 ---
 
-## Phase 7 — Turn primitive-bank outputs into stronger downstream seed evidence
+## Phase 8 — Turn primitive-bank outputs into stronger downstream seed evidence
 
 **Objective:** Make Primordia’s value visible not just through its own metrics but through downstream transfer usefulness.
 
@@ -411,7 +472,7 @@ That ordering matters because:
 
 ---
 
-## Phase 8 — Introduce a real Primordia evaluation scoreboard
+## Phase 9 — Introduce a real Primordia evaluation scoreboard
 
 **Objective:** Decide whether Primordia is actually closing the gap to the stronger engines.
 
@@ -447,14 +508,15 @@ That ordering matters because:
 
 ## Likely Execution Order
 
-1. Phase 1 baseline configs/docs
-2. Phase 2 elite/archive search loop
-3. Phase 3 objective shaping
-4. Phase 4 trainer/runtime improvements
-5. Phase 5 resume/status maturity
-6. Phase 6 budget semantics hardening
-7. Phase 7 downstream seeding validation
-8. Phase 8 scorecard/docs
+1. Phase 1 backend portability surface
+2. Phase 2 baseline configs/docs and benchmark completion
+3. Phase 3 elite/archive search loop
+4. Phase 4 objective shaping
+5. Phase 5 trainer/runtime improvements
+6. Phase 6 resume/status maturity
+7. Phase 7 budget semantics hardening
+8. Phase 8 downstream seeding validation
+9. Phase 9 scorecard/docs
 
 ---
 
@@ -464,12 +526,14 @@ That ordering matters because:
 - `uv run --package evonn-primordia --extra dev pytest -q EvoNN-Primordia/tests`
 
 ### Focused tests to add/run
+- `EvoNN-Primordia/tests/test_runtime_backends.py`
 - `EvoNN-Primordia/tests/test_search_state.py`
 - `EvoNN-Primordia/tests/test_objectives.py`
 - `EvoNN-Primordia/tests/test_status.py`
 - `EvoNN-Primordia/tests/test_seeding.py`
 
 ### Runtime checks
+- smoke run via fallback backend
 - smoke run via official config
 - tier1_core eval64 run
 - tier1_core eval256 run
@@ -491,12 +555,13 @@ That ordering matters because:
 
 Because this plan is intentionally broader than the current quarter-critical repo scope, merge-back should happen in disciplined slices:
 
-1. correctness/completeness fixes
-2. search-loop infrastructure
-3. objective-shaping and trainer improvements
-4. runtime maturity surfaces
-5. budget/export semantics
-6. seeding evidence improvements
+1. backend portability surface
+2. correctness/completeness fixes
+3. search-loop infrastructure
+4. objective-shaping and trainer improvements
+5. runtime maturity surfaces
+6. budget/export semantics
+7. seeding evidence improvements
 
 This branch should optimize for engine advancement, but integration back into `main` should stay reviewable.
 
