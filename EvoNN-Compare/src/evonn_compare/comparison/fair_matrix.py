@@ -49,6 +49,11 @@ class LaneMetadata:
     expected_seed: int
     artifact_completeness_ok: bool
     fairness_ok: bool
+    task_coverage_ok: bool
+    budget_consistency_ok: bool
+    seed_consistency_ok: bool
+    observed_task_kinds: tuple[str, ...]
+    acceptance_notes: tuple[str, ...]
     repeatability_ready: bool
 
 

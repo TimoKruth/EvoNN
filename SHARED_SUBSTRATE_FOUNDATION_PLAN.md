@@ -101,8 +101,9 @@ Current status by milestone:
 - Milestone 1: largely advanced, though some compatibility re-export cleanup may still remain
 - Milestone 2: materially underway; shared manifest/fairness helpers, shared JSON writers, and shared summary-core logic now exist and are in active use
 - Milestone 3: underway; Prism, Contenders, Topograph, Primordia, Stratograph, and Compare portable smoke have all been moved closer to the same compare/export substrate
-- Milestone 4: partly advanced; named lane presets now exist in Compare, but the lane still needs explicit acceptance rules, repeatability checks, and routine execution
-- Milestones 5-6: still ahead; these now depend more on reporting/trend surfaces and workflow default decisions than on basic substrate scaffolding
+- Milestone 4: phase-1 done; Compare `smoke` now carries explicit lane acceptance metadata for artifact completeness, pairwise fairness, classification+regression coverage, and budget/seed consistency, with a machine-readable `lane_acceptance.json`
+- Milestone 5: phase-1 done; fair-matrix reruns emit appendable structured trend JSON/JSONL artifacts from compare contracts only, and the minimum longitudinal dimensions are now documented in Compare README
+- Milestone 6: still ahead; it now depends more on workflow default decisions and preserving a credible challenger lane than on basic substrate scaffolding
 
 ## Milestones
 

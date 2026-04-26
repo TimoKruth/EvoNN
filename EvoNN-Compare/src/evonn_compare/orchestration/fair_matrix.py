@@ -545,6 +545,10 @@ def run_fair_matrix_case(
     with (case.report_dir.parent / "fair_matrix_trend_rows.jsonl").open("a", encoding="utf-8") as handle:
         for row in summary.trend_rows:
             handle.write(json.dumps(asdict(row), default=str) + "\n")
+    case.summary_output_path.with_name("lane_acceptance.json").write_text(
+        json.dumps(asdict(summary.lane) if summary.lane is not None else {}, indent=2, default=str),
+        encoding="utf-8",
+    )
     trend_records = _build_trend_records(case=case, pack=pack, runs=runs)
     case.summary_output_path.with_name("fair_matrix_trends.json").write_text(
         json.dumps(trend_records, indent=2),
@@ -568,6 +572,9 @@ def _build_lane_metadata(
     pair_results: dict[tuple[str, str], tuple[Any, Path]],
 ) -> LaneMetadata:
     artifact_completeness_ok = True
+    observed_task_kinds: set[str] = set()
+    budget_consistency_ok = True
+    seed_consistency_ok = True
     for system, (manifest, _results) in runs.items():
         run_dir = _run_dir_for_system(case, system)
         required = [
@@ -581,9 +588,25 @@ def _build_lane_metadata(
             required.append(run_dir / str(dataset_manifest))
         if not all(path.exists() for path in required):
             artifact_completeness_ok = False
-            break
+        if manifest.budget.evaluation_count != case.budget:
+            budget_consistency_ok = False
+        if manifest.seed != case.seed:
+            seed_consistency_ok = False
+        observed_task_kinds.update(entry.task_kind for entry in manifest.benchmarks)
 
     fairness_ok = all(result.parity_status == "fair" for result, _report_path in pair_results.values())
+    task_coverage_ok = {"classification", "regression"}.issubset(observed_task_kinds)
+    acceptance_notes: list[str] = []
+    if not artifact_completeness_ok:
+        acceptance_notes.append("missing required artifacts")
+    if not fairness_ok:
+        acceptance_notes.append("pairwise fairness checks not all fair")
+    if not task_coverage_ok:
+        acceptance_notes.append("lane must cover both classification and regression")
+    if not budget_consistency_ok:
+        acceptance_notes.append("manifest evaluation counts drift from requested lane budget")
+    if not seed_consistency_ok:
+        acceptance_notes.append("manifest seeds drift from requested lane seed")
     return LaneMetadata(
         preset=case.lane_preset,
         pack_name=case.pack_name,
@@ -591,7 +614,18 @@ def _build_lane_metadata(
         expected_seed=case.seed,
         artifact_completeness_ok=artifact_completeness_ok,
         fairness_ok=fairness_ok,
-        repeatability_ready=artifact_completeness_ok and fairness_ok,
+        task_coverage_ok=task_coverage_ok,
+        budget_consistency_ok=budget_consistency_ok,
+        seed_consistency_ok=seed_consistency_ok,
+        observed_task_kinds=tuple(sorted(observed_task_kinds)),
+        acceptance_notes=tuple(acceptance_notes),
+        repeatability_ready=(
+            artifact_completeness_ok
+            and fairness_ok
+            and task_coverage_ok
+            and budget_consistency_ok
+            and seed_consistency_ok
+        ),
     )
 
 

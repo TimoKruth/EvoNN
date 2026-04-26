@@ -83,6 +83,11 @@ def test_fair_matrix_markdown_includes_lane_metadata() -> None:
             expected_seed=42,
             artifact_completeness_ok=True,
             fairness_ok=True,
+            task_coverage_ok=True,
+            budget_consistency_ok=True,
+            seed_consistency_ok=True,
+            observed_task_kinds=("classification", "regression"),
+            acceptance_notes=(),
             repeatability_ready=True,
         ),
         fair_rows=[],
@@ -94,6 +99,7 @@ def test_fair_matrix_markdown_includes_lane_metadata() -> None:
 
     assert "## Lane Metadata" in markdown
     assert "- Preset: `smoke`" in markdown
+    assert "- Task Coverage: `ok` (classification, regression)" in markdown
     assert "- Repeatability Ready: `yes`" in markdown
 
 
@@ -350,8 +356,10 @@ def test_build_lane_metadata_requires_summary_artifact_for_repeatability(tmp_pat
     )
 
     assert lane.fairness_ok is True
+    assert lane.task_coverage_ok is True
     assert lane.artifact_completeness_ok is False
     assert lane.repeatability_ready is False
+    assert "missing required artifacts" in lane.acceptance_notes
 
 
 def test_run_fair_matrix_case_emits_trend_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -410,10 +418,12 @@ def test_run_fair_matrix_case_emits_trend_artifacts(tmp_path: Path, monkeypatch:
 
     trend_json = case.report_dir / "fair_matrix_trends.json"
     trend_jsonl = case.report_dir / "fair_matrix_trends.jsonl"
+    lane_acceptance = case.report_dir / "lane_acceptance.json"
     assert summary_path == case.summary_output_path
     assert summary_path.exists()
     assert trend_json.exists()
     assert trend_jsonl.exists()
+    assert lane_acceptance.exists()
     assert case.trend_dataset_path.exists()
 
     trend_records = json.loads(trend_json.read_text(encoding="utf-8"))
@@ -421,3 +431,53 @@ def test_run_fair_matrix_case_emits_trend_artifacts(tmp_path: Path, monkeypatch:
     assert all(record["artifact_paths"]["summary"].endswith("summary.json") for record in trend_records)
     assert sum(1 for _line in trend_jsonl.read_text(encoding="utf-8").splitlines() if _line.strip()) == len(trend_records)
     assert sum(1 for _line in case.trend_dataset_path.read_text(encoding="utf-8").splitlines() if _line.strip()) == len(trend_records)
+
+
+def test_build_lane_metadata_rejects_task_or_budget_seed_drift(tmp_path: Path) -> None:
+    pack = load_parity_pack(PACK_PATH)
+    run_dirs = {
+        "prism": tmp_path / "prism",
+        "topograph": tmp_path / "topograph",
+    }
+    _write_run(run_dirs["prism"], system="prism", evaluation_count=64)
+    _write_run(run_dirs["topograph"], system="topograph", evaluation_count=32)
+
+    manifest_payload = json.loads((run_dirs["topograph"] / "manifest.json").read_text(encoding="utf-8"))
+    manifest_payload["seed"] = 7
+    (run_dirs["topograph"] / "manifest.json").write_text(json.dumps(manifest_payload, indent=2), encoding="utf-8")
+
+    ingestors = {system: SystemIngestor(path) for system, path in run_dirs.items()}
+    runs = {
+        system: (ingestor.load_manifest(), ingestor.load_results())
+        for system, ingestor in ingestors.items()
+    }
+    pair_result = ComparisonEngine().compare(
+        left_manifest=runs["prism"][0],
+        left_results=runs["prism"][1],
+        right_manifest=runs["topograph"][0],
+        right_results=runs["topograph"][1],
+        pack=pack,
+    )
+
+    class CaseStub:
+        lane_preset = "smoke"
+        pack_name = pack.name
+        budget = 64
+        seed = 42
+        prism_run_dir = run_dirs["prism"]
+        topograph_run_dir = run_dirs["topograph"]
+        stratograph_run_dir = tmp_path / "stratograph"
+        primordia_run_dir = tmp_path / "primordia"
+        contender_run_dir = None
+
+    lane = _build_lane_metadata(
+        case=CaseStub(),
+        runs=runs,
+        pair_results={("prism", "topograph"): (pair_result, Path("prism_vs_topograph.md"))},
+    )
+
+    assert lane.budget_consistency_ok is False
+    assert lane.seed_consistency_ok is False
+    assert lane.repeatability_ready is False
+    assert "manifest evaluation counts drift from requested lane budget" in lane.acceptance_notes
+    assert "manifest seeds drift from requested lane seed" in lane.acceptance_notes
