@@ -31,11 +31,14 @@ def trend_report(
     markdown = render_fair_matrix_trend_markdown(rows)
     if output is not None:
         output_path = Path(output)
+        json_output_path = output_path.with_suffix(".json")
         output_path.write_text(markdown, encoding="utf-8")
-        output_path.with_suffix(".json").write_text(
+        json_output_path.write_text(
             json.dumps([asdict(row) for row in rows], indent=2, default=str),
             encoding="utf-8",
         )
+        typer.echo(f"report\t{output_path}")
+        typer.echo(f"report_json\t{json_output_path}")
     typer.echo(markdown)
 
 

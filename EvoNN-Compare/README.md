@@ -151,6 +151,9 @@ When `--output` is provided, the command writes:
 - markdown report at the requested path
 - filtered JSON rows beside it as the same path with `.json` suffix
 
+The CLI also prints both output paths directly so the generated trend artifacts can
+be picked up without inspecting the filesystem manually.
+
 ### Static dashboard
 
 Use `dashboard` to scan one or more fair-matrix workspaces or summary files and

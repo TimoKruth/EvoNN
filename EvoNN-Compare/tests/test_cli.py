@@ -246,6 +246,8 @@ def test_trend_report_filters_rows_and_writes_outputs(tmp_path: Path) -> None:
     assert cli_result.exit_code == 0
     assert output_path.exists()
     assert output_path.with_suffix(".json").exists()
+    assert f"report\t{output_path}" in cli_result.stdout
+    assert f"report_json\t{output_path.with_suffix('.json')}" in cli_result.stdout
     markdown = output_path.read_text(encoding="utf-8")
     assert "# Fair Matrix Trends: tier1_core" in markdown
     assert "- Systems: `prism`" in markdown
