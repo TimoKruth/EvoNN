@@ -59,6 +59,7 @@ class MatrixPaths:
     primordia_configs_dir: Path
     contender_configs_dir: Path
     reports_dir: Path
+    trends_dir: Path
     logs_dir: Path
     manifest_path: Path
 
@@ -82,6 +83,7 @@ class MatrixCase:
     contender_run_dir: Path | None
     report_dir: Path
     summary_output_path: Path
+    trend_dataset_path: Path
     log_dir: Path
     systems: tuple[str, ...]
 
@@ -119,6 +121,7 @@ def prepare_fair_matrix_cases(
         primordia_configs_dir=workspace / "configs" / "primordia",
         contender_configs_dir=workspace / "configs" / "contenders",
         reports_dir=workspace / "reports",
+        trends_dir=workspace / "trends",
         logs_dir=workspace / "logs",
         manifest_path=workspace / "matrix.yaml",
     )
@@ -131,6 +134,7 @@ def prepare_fair_matrix_cases(
         paths.stratograph_configs_dir,
         paths.primordia_configs_dir,
         paths.reports_dir,
+        paths.trends_dir,
         paths.logs_dir,
     ]
     if include_contenders:
@@ -170,6 +174,7 @@ def prepare_fair_matrix_cases(
                 contender_run_dir=(paths.run_roots_dir / "contenders" / case_name) if include_contenders else None,
                 report_dir=report_dir,
                 summary_output_path=report_dir / "fair_matrix_summary.md",
+                trend_dataset_path=paths.trends_dir / "fair_matrix_trends.jsonl",
                 log_dir=paths.logs_dir / case_name,
                 systems=systems,
             )
@@ -547,6 +552,10 @@ def run_fair_matrix_case(
         "".join(json.dumps(record) + "\n" for record in trend_records),
         encoding="utf-8",
     )
+    case.trend_dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    with case.trend_dataset_path.open("a", encoding="utf-8") as handle:
+        for record in trend_records:
+            handle.write(json.dumps(record) + "\n")
     return case.summary_output_path
 
 

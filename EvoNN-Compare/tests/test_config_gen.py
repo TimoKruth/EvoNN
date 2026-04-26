@@ -347,6 +347,8 @@ def test_prepare_fair_matrix_cases_writes_all_system_configs(tmp_path: Path) -> 
     assert case.stratograph_config_path.exists()
     assert case.contender_config_path.exists()
     assert case.lane_preset is None
+    assert case.trend_dataset_path == paths.trends_dir / "fair_matrix_trends.jsonl"
+    assert paths.trends_dir.exists()
 
 
 def test_prepare_fair_matrix_cases_can_skip_contenders(tmp_path: Path) -> None:

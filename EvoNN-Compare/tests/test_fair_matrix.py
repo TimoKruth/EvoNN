@@ -373,6 +373,7 @@ def test_run_fair_matrix_case_emits_trend_artifacts(tmp_path: Path, monkeypatch:
         contender_run_dir=None,
         report_dir=tmp_path / "reports",
         summary_output_path=tmp_path / "reports" / "fair_matrix_summary.md",
+        trend_dataset_path=tmp_path / "trends" / "fair_matrix_trends.jsonl",
         log_dir=tmp_path / "logs",
         systems=("prism", "topograph", "stratograph", "primordia"),
     )
@@ -413,8 +414,10 @@ def test_run_fair_matrix_case_emits_trend_artifacts(tmp_path: Path, monkeypatch:
     assert summary_path.exists()
     assert trend_json.exists()
     assert trend_jsonl.exists()
+    assert case.trend_dataset_path.exists()
 
     trend_records = json.loads(trend_json.read_text(encoding="utf-8"))
     assert len(trend_records) == len(load_parity_pack(PACK_PATH).benchmarks) * 4
     assert all(record["artifact_paths"]["summary"].endswith("summary.json") for record in trend_records)
     assert sum(1 for _line in trend_jsonl.read_text(encoding="utf-8").splitlines() if _line.strip()) == len(trend_records)
+    assert sum(1 for _line in case.trend_dataset_path.read_text(encoding="utf-8").splitlines() if _line.strip()) == len(trend_records)
