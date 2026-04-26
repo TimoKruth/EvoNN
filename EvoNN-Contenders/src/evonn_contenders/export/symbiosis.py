@@ -141,6 +141,7 @@ def export_symbiosis_contract(
     results_path = output_dir / "results.json"
     manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     write_json(results_path, [record.model_dump(mode="json") for record in result_records])
+    write_json(output_dir / "summary.json", _build_contract_summary(run=run, manifest=manifest, results=result_records))
     return manifest_path, results_path
 
 
@@ -167,8 +168,54 @@ def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]])
     return candidates[0]
 
 
+def _build_contract_summary(*, run: dict[str, Any], manifest: RunManifest, results: list[ResultRecord]) -> dict[str, Any]:
+    successful = [record for record in results if record.status == "ok"]
+    metric_values = [float(record.metric_value) for record in successful if record.metric_value is not None]
+    parameter_counts = [int(record.parameter_count) for record in successful if record.parameter_count is not None]
+    qualities = [float(record.quality) for record in successful if record.quality is not None]
+    failed = [record for record in results if record.status != "ok"]
+    failure_patterns: dict[str, int] = {}
+    for record in failed:
+        label = record.failure_reason or record.status or "unknown"
+        failure_patterns[label] = failure_patterns.get(label, 0) + 1
+    return {
+        "system": "contenders",
+        "run_id": manifest.run_id,
+        "status": "ok" if not failed else "partial",
+        "total_evaluations": manifest.budget.evaluation_count,
+        "generations_completed": manifest.budget.generations,
+        "epochs_per_candidate": manifest.budget.epochs_per_candidate,
+        "population_size": manifest.budget.population_size,
+        "runtime_backend": manifest.device.framework,
+        "runtime_version": manifest.device.framework_version,
+        "precision_mode": manifest.device.precision_mode,
+        "best_fitness": max(metric_values) if metric_values else None,
+        "median_parameter_count": _median_int(parameter_counts),
+        "median_benchmark_quality": _median_float(qualities),
+        "failure_count": len(failed),
+        "failure_patterns": failure_patterns,
+        "benchmarks_evaluated": len(results),
+    }
+
+
+
 def _write_summary_json(path: Path, payload: Any) -> None:
     write_json(path, payload)
+
+
+def _median_float(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2.0
+
+
+def _median_int(values: list[int]) -> int | None:
+    median = _median_float([float(value) for value in values])
+    return None if median is None else int(round(median))
 
 
 def _export_budget_policy_name(name: Any) -> str:

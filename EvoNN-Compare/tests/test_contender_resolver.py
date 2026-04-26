@@ -31,6 +31,7 @@ def test_contender_export_materialize_then_export(monkeypatch, tmp_path: Path) -
     assert calls[1][3:6] == ["symbiosis", "export", "--run-dir"]
     assert artifacts.manifest_path.name == "manifest.json"
     assert artifacts.results_path.name == "results.json"
+    assert artifacts.summary_path.name == "summary.json"
     assert (log_dir / "contenders_materialize.log").exists()
     assert (log_dir / "contenders_export.log").exists()
 

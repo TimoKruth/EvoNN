@@ -15,6 +15,7 @@ class ContenderArtifacts:
     run_dir: Path
     manifest_path: Path
     results_path: Path
+    summary_path: Path
 
 
 def ensure_contender_run(
@@ -112,6 +113,7 @@ def ensure_contender_export(
         run_dir=run_dir,
         manifest_path=resolved_output_dir / "manifest.json",
         results_path=resolved_output_dir / "results.json",
+        summary_path=resolved_output_dir / "summary.json",
     )
 
 
