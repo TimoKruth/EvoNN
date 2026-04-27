@@ -393,6 +393,7 @@ def test_trend_report_filters_rows_and_writes_outputs(tmp_path: Path) -> None:
     markdown = output_path.read_text(encoding="utf-8")
     assert "# Fair Matrix Trends: tier1_core" in markdown
     assert "- Systems: `prism`" in markdown
+    assert "- Budget Accounting: `incomplete`" in markdown
     assert "| prism | iris_classification | 1 | 0.820000 |" in markdown
 
 
@@ -443,7 +444,8 @@ def test_trend_report_accepts_structured_fair_matrix_trends_jsonl(tmp_path: Path
     assert result.exit_code == 0
     assert "# Fair Matrix Trends: tier1_core_smoke" in result.stdout
     assert "- Systems: `prism`" in result.stdout
-    assert "| prism | iris_classification | 1 | 0.810000 | 0.810000 | 0.000000 | ok | 16 | 42 | fair | fair | unknown |" in result.stdout
+    assert "- Budget Accounting: `incomplete`" in result.stdout
+    assert "| prism | iris_classification | 1 | 0.810000 | 0.810000 | 0.000000 | ok | 16 | 42 | fair | fair | incomplete | not-ready | unknown |" in result.stdout
 
 
 def test_compare_output_surfaces_report_paths(tmp_path: Path) -> None:
