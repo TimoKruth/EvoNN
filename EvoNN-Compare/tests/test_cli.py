@@ -83,12 +83,24 @@ def test_hybrid_help() -> None:
 def test_campaign_preset_smoke_dry_run(tmp_path) -> None:
     result = runner.invoke(app, ["campaign", "--preset", "smoke", "--workspace", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0
+    assert "manifest\t" in result.stdout
+    assert "report\t" in result.stdout
+    assert "report_json\t" in result.stdout
+    assert "prism_run_dir\t" in result.stdout
+    assert "topograph_run_dir\t" in result.stdout
+    assert "log_dir\t" in result.stdout
     assert "tier1_core_smoke_eval16" in result.stdout
 
 
 def test_campaign_defaults_to_smoke_dry_run(tmp_path) -> None:
     result = runner.invoke(app, ["campaign", "--workspace", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0
+    assert "manifest\t" in result.stdout
+    assert "report\t" in result.stdout
+    assert "report_json\t" in result.stdout
+    assert "prism_run_dir\t" in result.stdout
+    assert "topograph_run_dir\t" in result.stdout
+    assert "log_dir\t" in result.stdout
     assert "tier1_core_smoke_eval16" in result.stdout
 
 
@@ -119,6 +131,37 @@ def test_fair_matrix_preset_weekend_dry_run(tmp_path) -> None:
     assert result.exit_code == 0
     assert "tier1_core_eval1000" in result.stdout
     assert "trend-dataset\t" in result.stdout
+
+
+def test_campaign_execute_surfaces_manifest(tmp_path, monkeypatch) -> None:
+    class FakeRunner:
+        def __init__(self, **_kwargs):
+            pass
+
+        def prism_run_dir(self, case):
+            return Path("/tmp") / case.prism_config_path.stem
+
+        def execution_commands(self, _case):
+            return []
+
+        def execution_stages(self, _case):
+            return []
+
+        def compare_exports(self, **_kwargs):
+            return None
+
+    monkeypatch.setattr("evonn_compare.cli.campaign.CampaignRunner", FakeRunner)
+
+    result = runner.invoke(app, ["campaign", "--preset", "smoke", "--workspace", str(tmp_path), "--serial"])
+    assert result.exit_code == 0
+    assert "mode\texecute" in result.stdout
+    assert "manifest\t" in result.stdout
+    assert "compared\t" in result.stdout
+    assert "report\t" in result.stdout
+    assert "report_json\t" in result.stdout
+    assert "prism_run_dir\t" in result.stdout
+    assert "topograph_run_dir\t" in result.stdout
+    assert "log_dir\t" in result.stdout
 
 
 def test_fair_matrix_execute_surfaces_manifest_and_trend_dataset(tmp_path, monkeypatch) -> None:

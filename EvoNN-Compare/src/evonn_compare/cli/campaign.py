@@ -50,12 +50,16 @@ def campaign(
 
     if dry_run:
         typer.echo("mode\tdry-run")
+        typer.echo(f"manifest\t{paths.manifest_path}")
         for case in cases:
+            for label, artifact_path in _campaign_artifact_paths(paths=paths, runner=runner, case=case).items():
+                typer.echo(f"{label}\t{artifact_path}")
             for spec in runner.planned_commands(case):
                 typer.echo(json.dumps({"name": spec.name, "cwd": str(spec.cwd), "argv": spec.argv}))
         return
 
     typer.echo("mode\texecute")
+    typer.echo(f"manifest\t{paths.manifest_path}")
     for case in cases:
         prism_run_dir = runner.prism_run_dir(case)
         log_dir = paths.logs_dir / f"{case.pack_name}_seed{case.seed}"
@@ -72,6 +76,20 @@ def campaign(
             output_path=case.comparison_output_path,
         )
         typer.echo(f"compared\t{case.comparison_output_path}")
+        for label, artifact_path in _campaign_artifact_paths(paths=paths, runner=runner, case=case).items():
+            typer.echo(f"{label}\t{artifact_path}")
+
+
+def _campaign_artifact_paths(*, paths, runner, case) -> dict[str, Path]:
+    return {
+        "report": case.comparison_output_path,
+        "report_json": case.comparison_output_path.with_suffix(".json"),
+        "prism_run_dir": runner.prism_run_dir(case),
+        "topograph_run_dir": case.topograph_run_dir,
+        "log_dir": paths.logs_dir / f"{case.pack_name}_seed{case.seed}",
+    }
+
+
 def _parse_csv_ints(raw: str) -> list[int]:
     values = [item.strip() for item in raw.split(",") if item.strip()]
     if not values:

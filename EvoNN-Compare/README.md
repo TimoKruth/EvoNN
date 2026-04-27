@@ -41,6 +41,11 @@ uv run --package evonn-compare python -m evonn_compare fair-matrix \
   --workspace .tmp/fair-matrix-weekend
 ```
 
+For `campaign`, the CLI prints the generated `campaign.yaml` manifest,
+per-case compare markdown/JSON report paths, Prism/Topograph run directories,
+and per-case log directory so the core two-system lane can be inspected without
+manually walking the workspace tree.
+
 Phase-1 acceptance for milestones 4-5 is captured directly in the emitted artifacts:
 
 - `reports/<case>/lane_acceptance.json`
