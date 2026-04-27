@@ -220,6 +220,21 @@ def test_fair_matrix_default_smoke_persists_lane_preset(monkeypatch, tmp_path: P
     assert captured["lane_preset"] == "smoke"
 
 
+def test_campaign_default_smoke_persists_lane_preset(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_prepare_campaign_cases(**kwargs):
+        captured.update(kwargs)
+        return type("Paths", (), {"logs_dir": tmp_path / "logs"})(), []
+
+    monkeypatch.setattr("evonn_compare.cli.campaign.prepare_campaign_cases", fake_prepare_campaign_cases)
+
+    result = runner.invoke(app, ["campaign", "--workspace", str(tmp_path), "--dry-run"])
+
+    assert result.exit_code == 0
+    assert captured["lane_preset"] == "smoke"
+
+
 def test_trend_report_filters_rows_and_writes_outputs(tmp_path: Path) -> None:
     pack = load_parity_pack(PACK_PATH)
     prism_dir = tmp_path / "prism"

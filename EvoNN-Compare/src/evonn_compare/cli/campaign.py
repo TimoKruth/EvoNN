@@ -44,6 +44,7 @@ def campaign(
         budgets=budget_values,
         workspace=Path(workspace),
         topograph_root=topograph_root_path,
+        lane_preset=preset_name,
     )
     runner = CampaignRunner(prism_root=prism_root_path, topograph_root=topograph_root_path)
 
