@@ -81,6 +81,11 @@ Canonical named configs now live under `EvoNN-Primordia/configs/`:
 - `tier1_core_eval256.yaml`
 - `tier1_core_eval1000.yaml`
 
+The `tier1_core` configs include both the classification/synthetic/image tasks and
+the current regression pair (`diabetes`, `friedman1`) so Primordia's named tier-1
+lane stays closer to the compare/parity-pack coverage instead of silently dropping
+regression from the official branch baseline.
+
 `primordia report` now refreshes `report.md` from the current run artifacts when
 `summary.json` is present, so stale markdown snapshots can be rebuilt after
 export or telemetry updates without deleting the old report first.

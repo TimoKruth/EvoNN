@@ -30,6 +30,9 @@ def test_named_configs_exist_and_load() -> None:
     assert tier1_256.search.target_evaluation_count == 256
     assert tier1_1000.search.target_evaluation_count == 1000
     assert tier1_64.benchmark_pool.name == "tier1_core"
+    assert "diabetes" in tier1_64.benchmark_pool.benchmarks
+    assert "friedman1" in tier1_64.benchmark_pool.benchmarks
+    assert tier1_64.benchmark_pool.benchmarks == tier1_256.benchmark_pool.benchmarks == tier1_1000.benchmark_pool.benchmarks
 
 
 def test_inspect_renders_compact_run_summary(tmp_path: Path) -> None:

@@ -11,6 +11,8 @@ benchmark_pack:
     - digits
     - moons
     - circles
+    - diabetes
+    - friedman1
 search:
   mode: budget_matched
   target_evaluation_count: 1000
