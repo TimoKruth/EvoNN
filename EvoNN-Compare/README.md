@@ -23,9 +23,9 @@ budgets directly:
 - `weekend` → `tier1_core` @ `1000`
 
 `fair-matrix` and `campaign` default to `smoke` when neither `--pack` nor
-`--preset` is supplied. If you target `tier1_core` directly with `--pack`
-without a preset, the default lane budget stays on the canonical 64-eval tier
-unless you override `--budgets` explicitly:
+`--preset` is supplied. If you target a parity pack directly with `--pack`
+without a preset, the default budget now comes from that pack's declared
+`budget_policy.evaluation_count` unless you override `--budgets` explicitly:
 
 ```bash
 uv run --package evonn-compare python -m evonn_compare fair-matrix \

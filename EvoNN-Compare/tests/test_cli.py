@@ -268,7 +268,7 @@ def test_fair_matrix_default_smoke_persists_lane_preset(monkeypatch, tmp_path: P
     assert captured["lane_preset"] == "smoke"
 
 
-def test_fair_matrix_pack_without_preset_defaults_to_tier1_budget_64(monkeypatch, tmp_path: Path) -> None:
+def test_fair_matrix_pack_without_preset_defaults_to_pack_budget(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
     def fake_prepare_fair_matrix_cases(**kwargs):
@@ -284,11 +284,11 @@ def test_fair_matrix_pack_without_preset_defaults_to_tier1_budget_64(monkeypatch
 
     monkeypatch.setattr(fair_matrix_cli, "prepare_fair_matrix_cases", fake_prepare_fair_matrix_cases)
 
-    result = runner.invoke(app, ["fair-matrix", "--pack", "tier1_core", "--workspace", str(tmp_path), "--dry-run"])
+    result = runner.invoke(app, ["fair-matrix", "--pack", "tier1_core_smoke", "--workspace", str(tmp_path), "--dry-run"])
 
     assert result.exit_code == 0
     assert captured["lane_preset"] is None
-    assert captured["budgets"] == [64]
+    assert captured["budgets"] == [16]
 
 
 def test_campaign_default_smoke_persists_lane_preset(monkeypatch, tmp_path: Path) -> None:
@@ -296,7 +296,14 @@ def test_campaign_default_smoke_persists_lane_preset(monkeypatch, tmp_path: Path
 
     def fake_prepare_campaign_cases(**kwargs):
         captured.update(kwargs)
-        return type("Paths", (), {"logs_dir": tmp_path / "logs"})(), []
+        return type(
+            "Paths",
+            (),
+            {
+                "manifest_path": tmp_path / "campaign.yaml",
+                "logs_dir": tmp_path / "logs",
+            },
+        )(), []
 
     monkeypatch.setattr("evonn_compare.cli.campaign.prepare_campaign_cases", fake_prepare_campaign_cases)
 
@@ -304,6 +311,29 @@ def test_campaign_default_smoke_persists_lane_preset(monkeypatch, tmp_path: Path
 
     assert result.exit_code == 0
     assert captured["lane_preset"] == "smoke"
+
+
+def test_campaign_pack_without_preset_defaults_to_pack_budget(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_prepare_campaign_cases(**kwargs):
+        captured.update(kwargs)
+        return type(
+            "Paths",
+            (),
+            {
+                "manifest_path": tmp_path / "campaign.yaml",
+                "logs_dir": tmp_path / "logs",
+            },
+        )(), []
+
+    monkeypatch.setattr("evonn_compare.cli.campaign.prepare_campaign_cases", fake_prepare_campaign_cases)
+
+    result = runner.invoke(app, ["campaign", "--pack", "tier1_core_smoke", "--workspace", str(tmp_path), "--dry-run"])
+
+    assert result.exit_code == 0
+    assert captured["lane_preset"] is None
+    assert captured["budgets"] == [16]
 
 
 def test_trend_report_filters_rows_and_writes_outputs(tmp_path: Path) -> None:
