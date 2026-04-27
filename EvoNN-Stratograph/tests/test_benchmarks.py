@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import yaml
+
+import stratograph.benchmarks.datasets as benchmark_datasets
 from stratograph.benchmarks import get_benchmark, list_benchmarks, load_pack_specs, load_parity_pack
 from stratograph.benchmarks.spec import BenchmarkSpec
 
@@ -72,3 +75,45 @@ def test_tier1_core_pack_resolves_stratograph_regression_specs(repo_root) -> Non
 
     assert "diabetes" in names
     assert "friedman1" in names
+
+
+def test_catalog_specs_are_cached_for_repeated_lookup(monkeypatch, tmp_path) -> None:
+    catalog_dir = tmp_path / "catalog"
+    catalog_dir.mkdir()
+    (catalog_dir / "toy_cached.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "name": "toy_cached",
+                "task": "classification",
+                "source": "sklearn",
+                "dataset": "load_iris",
+                "input_dim": 4,
+                "num_classes": 3,
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("STRATOGRAPH_CATALOG_DIR", str(catalog_dir))
+    benchmark_datasets._catalog_specs_for_roots.cache_clear()
+
+    original = BenchmarkSpec.from_yaml.__func__
+    call_count = 0
+
+    def counting_from_yaml(cls, path):
+        nonlocal call_count
+        call_count += 1
+        return original(cls, path)
+
+    monkeypatch.setattr(BenchmarkSpec, "from_yaml", classmethod(counting_from_yaml))
+
+    first = get_benchmark("toy_cached")
+    first_call_count = call_count
+    second = get_benchmark("toy_cached")
+    listed = [spec.name for spec in list_benchmarks()]
+
+    assert first.name == "toy_cached"
+    assert second.name == "toy_cached"
+    assert "toy_cached" in listed
+    assert first_call_count > 0
+    assert call_count == first_call_count
