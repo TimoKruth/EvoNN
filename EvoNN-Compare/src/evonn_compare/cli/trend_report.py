@@ -53,7 +53,42 @@ def load_trend_rows(paths: list[Path]) -> list[MatrixTrendRow]:
         else:
             raise ValueError(f"unsupported trend payload in {path}")
         rows.extend(_coerce_trend_row(entry) for entry in candidate_rows)
-    return rows
+    return _dedupe_trend_rows(rows)
+
+
+def _dedupe_trend_rows(rows: list[MatrixTrendRow]) -> list[MatrixTrendRow]:
+    deduped: dict[tuple[object, ...], MatrixTrendRow] = {}
+    for row in rows:
+        deduped[_trend_row_key(row)] = row
+    return sorted(
+        deduped.values(),
+        key=lambda row: (row.pack_name, row.budget, row.seed, row.system, row.benchmark_id, row.run_id),
+    )
+
+
+def _trend_row_key(row: MatrixTrendRow) -> tuple[object, ...]:
+    return (
+        row.pack_name,
+        row.budget,
+        row.seed,
+        row.system,
+        row.run_id,
+        row.benchmark_id,
+        row.metric_name,
+        row.metric_direction,
+        row.metric_value,
+        row.outcome_status,
+        row.failure_reason,
+        row.evaluation_count,
+        row.epochs_per_candidate,
+        row.budget_policy_name,
+        row.wall_clock_seconds,
+        row.matrix_scope,
+        row.lane_operating_state,
+        row.system_operating_state,
+        row.lane_repeatability_ready,
+        row.lane_budget_accounting_ok,
+    )
 
 
 def _read_payload(path: Path):

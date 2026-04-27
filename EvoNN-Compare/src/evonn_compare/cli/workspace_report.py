@@ -51,7 +51,7 @@ def refresh_workspace_reports(
     open_browser: bool = False,
 ) -> dict[str, str | int]:
     workspace_path = workspace.resolve()
-    trend_dataset_path = workspace_path / "trends" / "fair_matrix_trend_rows.jsonl"
+    trend_dataset_path = _resolve_trend_dataset_path(workspace_path)
     trend_report_path = trend_output or (workspace_path / "trends" / "fair_matrix_trends.md")
     trend_report_data_path = trend_report_path.with_suffix(".json")
     dashboard_output_path = dashboard_output or (workspace_path / "fair_matrix_dashboard.html")
@@ -65,6 +65,12 @@ def refresh_workspace_reports(
     trend_report_path.parent.mkdir(parents=True, exist_ok=True)
     if trend_dataset_path.exists():
         trend_rows = load_trend_rows([trend_dataset_path])
+        canonical_dataset_path = trend_report_path.parent / "fair_matrix_trend_rows.jsonl"
+        canonical_dataset_path.write_text(
+            "".join(json.dumps(asdict(row), default=str) + "\n" for row in trend_rows),
+            encoding="utf-8",
+        )
+        trend_dataset_path = canonical_dataset_path
         trend_report_path.write_text(render_fair_matrix_trend_markdown(trend_rows), encoding="utf-8")
         trend_report_data_path.write_text(
             json.dumps([asdict(row) for row in trend_rows], indent=2, default=str),
@@ -106,3 +112,13 @@ def refresh_workspace_reports(
         "dashboard": str(dashboard_output_path),
         "dashboard_data": str(dashboard_output_path.with_suffix('.json')),
     }
+
+
+def _resolve_trend_dataset_path(workspace_path: Path) -> Path:
+    canonical = workspace_path / "trends" / "fair_matrix_trend_rows.jsonl"
+    legacy = workspace_path / "fair_matrix_trend_rows.jsonl"
+    if canonical.exists():
+        return canonical
+    if legacy.exists():
+        return legacy
+    return canonical

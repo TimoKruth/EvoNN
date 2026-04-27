@@ -23,6 +23,7 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
     lane_states = sorted({row.lane_operating_state for row in trend_rows})
     accounting_states = sorted({"ok" if row.lane_budget_accounting_ok else "incomplete" for row in trend_rows})
     repeatability_states = sorted({"ready" if row.lane_repeatability_ready else "not-ready" for row in trend_rows})
+    unique_lane_runs = sorted({(row.pack_name, row.budget, row.seed) for row in trend_rows})
 
     lines = [
         f"# Fair Matrix Trends: {pack_names[0]}",
@@ -38,12 +39,36 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
         f"- Budget Accounting: `{', '.join(accounting_states)}`",
         f"- Repeatability: `{', '.join(repeatability_states)}`",
         f"- Rows: `{len(trend_rows)}`",
+        f"- Unique Lane Runs: `{len(unique_lane_runs)}`",
         "",
-        "## Outcome Status by System",
+        "## Lane Health By Budget",
         "",
-        "| System | ok | failed | skipped | unsupported | missing |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| Budget | Runs | Lane States | Accounting | Repeatability |",
+        "|---:|---:|---|---|---|",
     ]
+
+    budget_rows: dict[int, list[MatrixTrendRow]] = defaultdict(list)
+    for row in trend_rows:
+        budget_rows[row.budget].append(row)
+    for budget in sorted(budget_rows):
+        entries = budget_rows[budget]
+        run_count = len({(row.seed, row.run_id) for row in entries})
+        budget_lane_states = ", ".join(sorted({row.lane_operating_state for row in entries}))
+        budget_accounting_states = ", ".join(sorted({"ok" if row.lane_budget_accounting_ok else "incomplete" for row in entries}))
+        budget_repeatability_states = ", ".join(sorted({"ready" if row.lane_repeatability_ready else "not-ready" for row in entries}))
+        lines.append(
+            f"| {budget} | {run_count} | {budget_lane_states} | {budget_accounting_states} | {budget_repeatability_states} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Outcome Status by System",
+            "",
+            "| System | ok | failed | skipped | unsupported | missing |",
+            "|---|---:|---:|---:|---:|---:|",
+        ]
+    )
 
     status_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for row in trend_rows:

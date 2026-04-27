@@ -531,6 +531,59 @@ def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) 
     assert "Lane States" in (workspace / "trends" / "fair_matrix_trends.md").read_text(encoding="utf-8")
 
 
+def test_workspace_report_normalizes_legacy_root_dataset_and_dedupes_rows(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    reports_dir = workspace / "reports" / "tier1_core_eval64_seed42"
+    reports_dir.mkdir(parents=True)
+    row = _dashboard_row("prism", "iris_classification", 0.8)
+    (workspace / "fair_matrix_trend_rows.jsonl").write_text(
+        json.dumps(row) + "\n" + json.dumps(row) + "\n",
+        encoding="utf-8",
+    )
+    (reports_dir / "fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier1_core_eval64",
+                "systems": ["prism"],
+                "lane": {
+                    "preset": None,
+                    "pack_name": "tier1_core_eval64",
+                    "expected_budget": 64,
+                    "expected_seed": 42,
+                    "operating_state": "contract-fair",
+                    "artifact_completeness_ok": True,
+                    "fairness_ok": True,
+                    "task_coverage_ok": True,
+                    "budget_consistency_ok": True,
+                    "seed_consistency_ok": True,
+                    "budget_accounting_ok": True,
+                    "core_systems_complete_ok": False,
+                    "extended_systems_complete_ok": False,
+                    "observed_task_kinds": ["classification"],
+                    "system_operating_states": {"prism": "benchmark-complete"},
+                    "acceptance_notes": [],
+                    "repeatability_ready": False,
+                },
+                "fair_rows": [],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [row],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["workspace-report", str(workspace)])
+
+    assert result.exit_code == 0
+    canonical_dataset = workspace / "trends" / "fair_matrix_trend_rows.jsonl"
+    assert canonical_dataset.exists()
+    lines = [line for line in canonical_dataset.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert f"trend-dataset\t{canonical_dataset}" in result.stdout
+
+
 def test_dashboard_recomputes_project_only_winners(tmp_path: Path) -> None:
     summary_dir = tmp_path / "workspace" / "reports" / "tier1_core_eval64_seed42"
     summary_dir.mkdir(parents=True)
