@@ -383,8 +383,10 @@ def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) 
 
     assert result.exit_code == 0
     assert f"trend-report\t{workspace / 'trends' / 'fair_matrix_trends.md'}" in result.stdout
+    assert f"trend-report-data\t{workspace / 'trends' / 'fair_matrix_trends.json'}" in result.stdout
     assert f"dashboard\t{workspace / 'fair_matrix_dashboard.html'}" in result.stdout
     assert (workspace / "trends" / "fair_matrix_trends.md").exists()
+    assert (workspace / "trends" / "fair_matrix_trends.json").exists()
     assert (workspace / "fair_matrix_dashboard.html").exists()
     assert "Lane States" in (workspace / "trends" / "fair_matrix_trends.md").read_text(encoding="utf-8")
 

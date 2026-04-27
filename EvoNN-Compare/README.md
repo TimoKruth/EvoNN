@@ -103,6 +103,7 @@ uv run --package evonn-compare evonn-compare fair-matrix \
 That command refreshes:
 
 - `.tmp/fair-matrix-smoke/trends/fair_matrix_trends.md`
+- `.tmp/fair-matrix-smoke/trends/fair_matrix_trends.json`
 - `.tmp/fair-matrix-smoke/fair_matrix_dashboard.html`
 - `.tmp/fair-matrix-smoke/fair_matrix_dashboard.json`
 
@@ -112,6 +113,8 @@ To rebuild those workspace-level views later without rerunning engines:
 uv run --package evonn-compare evonn-compare workspace-report \
   .tmp/fair-matrix-smoke
 ```
+
+`workspace-report` prints the refreshed markdown and JSON trend-report paths directly, along with the dashboard outputs.
 
 Use the workspace trend report and dashboard first for questions like:
 
