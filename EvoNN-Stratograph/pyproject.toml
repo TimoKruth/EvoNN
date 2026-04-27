@@ -5,6 +5,7 @@ description = "Hierarchy-first evolutionary neural architecture search"
 requires-python = ">=3.13"
 dependencies = [
     "duckdb>=1.1.3",
+    "evonn-shared",
     "mlx>=0.31.0; sys_platform == 'darwin'",
     "numpy>=2.2.0",
     "pydantic>=2.10.0",
