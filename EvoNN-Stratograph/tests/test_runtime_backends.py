@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 
 import yaml
+from typer.testing import CliRunner
 
+from stratograph.cli import app
 from stratograph.benchmarks import get_benchmark
 from stratograph.config import BenchmarkPoolConfig, load_config
 from stratograph.pipeline import run_evolution
@@ -127,3 +129,10 @@ def test_run_evolution_records_requested_and_resolved_runtime(repo_root, tmp_pat
     assert summary["runtime_backend_limitations"] == FALLBACK_LIMITATIONS
     assert "- Requested Runtime: `numpy-fallback`" in report
     assert "- Runtime Limitations: `" in report
+
+    runner = CliRunner()
+    inspect_result = runner.invoke(app, ["inspect", "--run-dir", str(run_dir)])
+    assert inspect_result.exit_code == 0
+    assert "Requested Runtime" in inspect_result.stdout
+    assert "numpy-fallback" in inspect_result.stdout
+    assert "Runtime Limitations" in inspect_result.stdout

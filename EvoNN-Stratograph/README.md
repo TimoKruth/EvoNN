@@ -24,6 +24,12 @@ Current state:
   `auto`, `mlx`, or `numpy-fallback`, plus `runtime.allow_fallback`
 - Full long-horizon hierarchy-specialized trainer optimization still pending
 
+Fallback runtime notes:
+- `numpy-fallback` is intended for correctness, CI portability, and
+  compare/export validation on non-MLX hosts
+- it is not a promise of MLX-quality parity or equivalent performance
+- use MLX for serious local research runs when available
+
 Core docs:
 - `VISION.md`
 - `IMPLEMENTATION_PLAN.md`
