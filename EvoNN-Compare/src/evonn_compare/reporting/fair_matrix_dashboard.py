@@ -47,6 +47,9 @@ def build_dashboard_payload(summary_paths: list[Path], *, output_path: Path) -> 
         "budgets": sorted({item["budget"] for item in runs}),
         "lane_counts": {
             "fair": sum(1 for item in runs if item["lane"]["fairness_ok"]),
+            "contract_fair": sum(1 for item in runs if item["lane"]["operating_state"] != "reference-only"),
+            "trusted_core": sum(1 for item in runs if item["lane"]["operating_state"] in {"trusted-core", "trusted-extended"}),
+            "trusted_extended": sum(1 for item in runs if item["lane"]["operating_state"] == "trusted-extended"),
             "repeatable": sum(1 for item in runs if item["lane"]["repeatability_ready"]),
             "artifact_complete": sum(1 for item in runs if item["lane"]["artifact_completeness_ok"]),
         },
@@ -93,13 +96,15 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
         "</div>",
         "</section>",
         "<section class='cards'>",
-        _stat_card("Fair Lanes", str(lane_counts["fair"])),
+        _stat_card("Contract-Fair", str(lane_counts["contract_fair"])),
+        _stat_card("Trusted Core", str(lane_counts["trusted_core"])),
+        _stat_card("Trusted Extended", str(lane_counts["trusted_extended"])),
         _stat_card("Repeatable", str(lane_counts["repeatable"])),
-        _stat_card("Artifact Complete", str(lane_counts["artifact_complete"])),
         _stat_card("Runs Loaded", str(summary_count)),
         "</section>",
         "<section class='panel'>",
         "<h2>How To Read This</h2>",
+        "<p><strong>Operating State</strong> is the lane-level trust label. <strong>reference-only</strong> means fairness or accounting caveats remain. <strong>contract-fair</strong> means the lane is structurally fair but not yet benchmark-complete for the core systems. <strong>trusted-core</strong> and <strong>trusted-extended</strong> add benchmark-complete coverage for the quarter-critical core and then the secondary challengers.</p>",
         "<p><strong>Solo Wins</strong> means a system was uniquely best on a benchmark in the chosen scope. "
         "<strong>Shared Wins</strong> means a tie for best. <strong>Benchmark Failures</strong> and "
         "<strong>Missing Results</strong> are per-system outcome counts, not lane-level fairness failures.</p>",
@@ -137,6 +142,7 @@ def _build_run_entry(*, path: Path, payload: dict[str, Any], output_path: Path) 
     output_parent = output_path.parent.resolve()
     summary_md_path = path.with_name("fair_matrix_summary.md")
     report_dir = path.parent
+    operating_state = _coerce_operating_state(lane)
     return {
         "pack_name": str(payload["pack_name"]),
         "budget": int(lane.get("expected_budget") or _infer_budget(payload)),
@@ -145,12 +151,17 @@ def _build_run_entry(*, path: Path, payload: dict[str, Any], output_path: Path) 
         "summary_md_path": _relative_path(summary_md_path, output_parent),
         "report_dir": _relative_path(report_dir, output_parent),
         "lane": {
+            "operating_state": operating_state,
             "fairness_ok": bool(lane.get("fairness_ok")),
             "repeatability_ready": bool(lane.get("repeatability_ready")),
             "artifact_completeness_ok": bool(lane.get("artifact_completeness_ok")),
             "budget_consistency_ok": bool(lane.get("budget_consistency_ok")),
             "seed_consistency_ok": bool(lane.get("seed_consistency_ok")),
             "task_coverage_ok": bool(lane.get("task_coverage_ok")),
+            "budget_accounting_ok": bool(lane.get("budget_accounting_ok")),
+            "core_systems_complete_ok": bool(lane.get("core_systems_complete_ok")),
+            "extended_systems_complete_ok": bool(lane.get("extended_systems_complete_ok")),
+            "system_operating_states": dict(lane.get("system_operating_states") or {}),
         },
         "all_scope": _scope_summary(trend_rows, systems=ALL_SYSTEMS),
         "project_scope": _scope_summary(trend_rows, systems=PROJECT_SYSTEMS),
@@ -258,7 +269,7 @@ def _run_scope_table(runs: list[dict[str, Any]], *, scope_key: str, systems: lis
     lines = [
         "<table>",
         "<thead><tr><th>Pack</th><th>Budget</th><th>Seed</th>"
-        "<th>Lane</th><th>Repeatable</th>"
+        "<th>Operating State</th><th>Repeatable</th>"
         f"{header_cells}<th>Ties</th><th>Skipped Benchmarks</th><th>Summary</th></tr></thead>",
         "<tbody>",
     ]
@@ -276,7 +287,7 @@ def _run_scope_table(runs: list[dict[str, Any]], *, scope_key: str, systems: lis
                 meta.append(f"missing {row['missing_results']}")
             suffix = f"<span class='cell-meta'>{html.escape(', '.join(meta))}</span>" if meta else ""
             system_cells.append(f"<td>{html.escape(cell)}{suffix}</td>")
-        lane_tag = "fair" if run["lane"]["fairness_ok"] else "reference"
+        lane_tag = run["lane"]["operating_state"]
         lines.append(
             "<tr>"
             f"<td><code>{html.escape(run['pack_name'])}</code></td>"
@@ -297,8 +308,8 @@ def _run_scope_table(runs: list[dict[str, Any]], *, scope_key: str, systems: lis
 def _recent_runs_table(runs: list[dict[str, Any]]) -> str:
     lines = [
         "<table>",
-        "<thead><tr><th>Pack</th><th>Budget</th><th>Seed</th><th>Fair</th><th>Repeatable</th>"
-        "<th>Artifact Complete</th><th>Budget OK</th><th>Seed OK</th><th>Report Dir</th></tr></thead>",
+        "<thead><tr><th>Pack</th><th>Budget</th><th>Seed</th><th>State</th><th>Fair</th><th>Repeatable</th>"
+        "<th>Accounting</th><th>Core Complete</th><th>Extended Complete</th><th>Artifact Complete</th><th>Budget OK</th><th>Seed OK</th><th>Report Dir</th></tr></thead>",
         "<tbody>",
     ]
     for run in runs:
@@ -308,8 +319,12 @@ def _recent_runs_table(runs: list[dict[str, Any]]) -> str:
             f"<td><code>{html.escape(run['pack_name'])}</code></td>"
             f"<td>{run['budget']}</td>"
             f"<td>{run['seed']}</td>"
+            f"<td><span class='tag tag-{html.escape(lane['operating_state'])}'>{html.escape(lane['operating_state'])}</span></td>"
             f"<td>{'yes' if lane['fairness_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['repeatability_ready'] else 'no'}</td>"
+            f"<td>{'yes' if lane['budget_accounting_ok'] else 'no'}</td>"
+            f"<td>{'yes' if lane['core_systems_complete_ok'] else 'no'}</td>"
+            f"<td>{'yes' if lane['extended_systems_complete_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['artifact_completeness_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['budget_consistency_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['seed_consistency_ok'] else 'no'}</td>"
@@ -332,6 +347,23 @@ def _infer_seed(payload: dict[str, Any]) -> int:
     if fair_rows:
         return int(fair_rows[0]["seed"])
     raise ValueError("cannot infer seed from fair-matrix summary payload")
+
+
+def _coerce_operating_state(lane: dict[str, Any]) -> str:
+    state = lane.get("operating_state")
+    if state:
+        return str(state)
+    if lane.get("repeatability_ready"):
+        return "trusted-core"
+    if (
+        lane.get("fairness_ok")
+        and lane.get("artifact_completeness_ok")
+        and lane.get("budget_consistency_ok")
+        and lane.get("seed_consistency_ok")
+        and lane.get("task_coverage_ok")
+    ):
+        return "contract-fair"
+    return "reference-only"
 
 
 def _relative_path(target: Path, base_dir: Path) -> str:
@@ -500,11 +532,19 @@ code {
   letter-spacing: 0.06em;
   font-size: 0.7rem;
 }
-.tag-fair {
+.tag-contract-fair {
   background: rgba(31, 107, 82, 0.12);
   color: var(--good);
 }
-.tag-reference {
+.tag-trusted-core {
+  background: rgba(31, 107, 82, 0.18);
+  color: var(--good);
+}
+.tag-trusted-extended {
+  background: rgba(31, 107, 82, 0.24);
+  color: var(--good);
+}
+.tag-reference-only {
   background: rgba(143, 91, 0, 0.12);
   color: var(--warn);
 }

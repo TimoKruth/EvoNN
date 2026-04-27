@@ -14,9 +14,18 @@ Package metadata stays in [pyproject.toml](./pyproject.toml). Workspace lock liv
 
 ## Fair-matrix smoke lane
 
-The provisional low-cost repeatable lane is the `smoke` preset. Both
-`fair-matrix` and `campaign` default to this lane when neither `--pack` nor
-`--preset` is supplied:
+The local-first preset ladder now exposes the quarter-critical `tier1_core`
+budgets directly:
+
+- `smoke` → `tier1_core_smoke` @ `16`
+- `local` → `tier1_core` @ `64`
+- `overnight` → `tier1_core` @ `256`
+- `weekend` → `tier1_core` @ `1000`
+
+`fair-matrix` and `campaign` default to `smoke` when neither `--pack` nor
+`--preset` is supplied. If you target a parity pack directly with `--pack`
+without a preset, the default budget now comes from that pack's declared
+`budget_policy.evaluation_count` unless you override `--budgets` explicitly:
 
 ```bash
 uv run --package evonn-compare python -m evonn_compare fair-matrix \
@@ -24,7 +33,20 @@ uv run --package evonn-compare python -m evonn_compare fair-matrix \
 
 uv run --package evonn-compare python -m evonn_compare campaign \
   --workspace .tmp/campaign-smoke
+
+uv run --package evonn-compare python -m evonn_compare fair-matrix \
+  --preset overnight \
+  --workspace .tmp/fair-matrix-overnight
+
+uv run --package evonn-compare python -m evonn_compare fair-matrix \
+  --preset weekend \
+  --workspace .tmp/fair-matrix-weekend
 ```
+
+For `campaign`, the CLI prints the generated `campaign.yaml` manifest,
+per-case compare markdown/JSON report paths, Prism/Topograph run directories,
+and per-case log directory so the core two-system lane can be inspected without
+manually walking the workspace tree.
 
 Phase-1 acceptance for milestones 4-5 is captured directly in the emitted artifacts:
 
@@ -69,10 +91,44 @@ Each fair-matrix workspace also accumulates:
 
 - `fair_matrix_trend_rows.jsonl`
 - `fair_matrix_trends.md`
+- `fair_matrix_dashboard.html`
+- `fair_matrix_dashboard.json`
 
-After `fair-matrix` execution, the CLI now prints the paths for the case summary, case trend artifacts, and workspace-level trend dataset/report so reruns can be inspected or fed into `trend-report` immediately.
+After `fair-matrix` execution, the CLI refreshes the workspace-level trend report and dashboard automatically from the canonical JSON artifacts. It prints the paths for the case summary markdown/JSON, lane acceptance metadata, structured case trend JSON/JSONL artifacts, workspace trend dataset/report/report-JSON, and workspace dashboard so reruns can be reviewed from the longitudinal surface first.
 
-This means repeated `smoke` lane runs can be appended to one shared trend dataset without per-engine parsers or markdown scraping.
+This means repeated `smoke` lane runs can be appended to one shared trend dataset without per-engine parsers or markdown scraping. The trend markdown now also surfaces lane accounting and repeatability state directly, so budget-truth drift is visible from the default human review surface.
+
+### Workspace-first review flow
+
+The default review surface is now the workspace, not an individual markdown snapshot:
+
+```bash
+uv run --package evonn-compare evonn-compare fair-matrix \
+  --workspace .tmp/fair-matrix-smoke
+```
+
+That command refreshes:
+
+- `.tmp/fair-matrix-smoke/trends/fair_matrix_trends.md`
+- `.tmp/fair-matrix-smoke/trends/fair_matrix_trends.json`
+- `.tmp/fair-matrix-smoke/fair_matrix_dashboard.html`
+- `.tmp/fair-matrix-smoke/fair_matrix_dashboard.json`
+
+To rebuild those workspace-level views later without rerunning engines:
+
+```bash
+uv run --package evonn-compare evonn-compare workspace-report \
+  .tmp/fair-matrix-smoke
+```
+
+`workspace-report` prints the refreshed markdown and JSON trend-report paths directly, along with the dashboard outputs.
+
+Use the workspace trend report and dashboard first for questions like:
+
+- did this improve anything?
+- did fairness/accounting status drift?
+- which lane operating state are we actually in?
+- are failures or missing benchmarks increasing over time?
 
 ### Trend reporting CLI
 
@@ -105,6 +161,9 @@ When `--output` is provided, the command writes:
 - markdown report at the requested path
 - filtered JSON rows beside it as the same path with `.json` suffix
 
+The CLI also prints both output paths directly so the generated trend artifacts can
+be picked up without inspecting the filesystem manually.
+
 ### Static dashboard
 
 Use `dashboard` to scan one or more fair-matrix workspaces or summary files and
@@ -132,6 +191,9 @@ The command writes:
 
 - HTML dashboard at `--output`
 - structured dashboard payload beside it as the same path with `.json` suffix
+
+For ad hoc `compare` runs, using `--output` also prints both the markdown report
+path and the sibling JSON artifact path directly in CLI output.
 
 ## Milestone 6: Prism default operating path
 

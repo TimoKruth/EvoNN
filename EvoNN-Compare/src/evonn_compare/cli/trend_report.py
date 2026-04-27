@@ -21,7 +21,7 @@ def trend_report(
 ) -> None:
     """Merge and query accumulated fair-matrix trend datasets."""
 
-    rows = _load_trend_rows([Path(value) for value in inputs])
+    rows = load_trend_rows([Path(value) for value in inputs])
     rows = [
         row for row in rows
         if (system is None or row.system == system)
@@ -31,15 +31,18 @@ def trend_report(
     markdown = render_fair_matrix_trend_markdown(rows)
     if output is not None:
         output_path = Path(output)
+        json_output_path = output_path.with_suffix(".json")
         output_path.write_text(markdown, encoding="utf-8")
-        output_path.with_suffix(".json").write_text(
+        json_output_path.write_text(
             json.dumps([asdict(row) for row in rows], indent=2, default=str),
             encoding="utf-8",
         )
+        typer.echo(f"report\t{output_path}")
+        typer.echo(f"report_json\t{json_output_path}")
     typer.echo(markdown)
 
 
-def _load_trend_rows(paths: list[Path]) -> list[MatrixTrendRow]:
+def load_trend_rows(paths: list[Path]) -> list[MatrixTrendRow]:
     rows: list[MatrixTrendRow] = []
     for path in paths:
         payload = _read_payload(path)
@@ -50,7 +53,42 @@ def _load_trend_rows(paths: list[Path]) -> list[MatrixTrendRow]:
         else:
             raise ValueError(f"unsupported trend payload in {path}")
         rows.extend(_coerce_trend_row(entry) for entry in candidate_rows)
-    return rows
+    return _dedupe_trend_rows(rows)
+
+
+def _dedupe_trend_rows(rows: list[MatrixTrendRow]) -> list[MatrixTrendRow]:
+    deduped: dict[tuple[object, ...], MatrixTrendRow] = {}
+    for row in rows:
+        deduped[_trend_row_key(row)] = row
+    return sorted(
+        deduped.values(),
+        key=lambda row: (row.pack_name, row.budget, row.seed, row.system, row.benchmark_id, row.run_id),
+    )
+
+
+def _trend_row_key(row: MatrixTrendRow) -> tuple[object, ...]:
+    return (
+        row.pack_name,
+        row.budget,
+        row.seed,
+        row.system,
+        row.run_id,
+        row.benchmark_id,
+        row.metric_name,
+        row.metric_direction,
+        row.metric_value,
+        row.outcome_status,
+        row.failure_reason,
+        row.evaluation_count,
+        row.epochs_per_candidate,
+        row.budget_policy_name,
+        row.wall_clock_seconds,
+        row.matrix_scope,
+        row.lane_operating_state,
+        row.system_operating_state,
+        row.lane_repeatability_ready,
+        row.lane_budget_accounting_ok,
+    )
 
 
 def _read_payload(path: Path):
@@ -79,6 +117,10 @@ def _coerce_trend_row(entry: dict) -> MatrixTrendRow:
             wall_clock_seconds=None if entry.get("wall_clock_seconds") is None else float(entry["wall_clock_seconds"]),
             matrix_scope="fair" if not entry.get("reference_only") else "reference",
             fairness_metadata=dict(entry.get("fairness") or {}),
+            lane_operating_state=str((entry.get("lane") or {}).get("operating_state") or (entry.get("fairness") or {}).get("lane_operating_state") or ("fair" if not entry.get("reference_only") else "reference-only")),
+            system_operating_state=str(entry.get("system_operating_state") or (entry.get("fairness") or {}).get("system_operating_state") or "unknown"),
+            lane_repeatability_ready=bool((entry.get("lane") or {}).get("repeatability_ready")),
+            lane_budget_accounting_ok=bool((entry.get("lane") or {}).get("budget_accounting_ok") or (entry.get("fairness") or {}).get("budget_accounting_ok")),
         )
     return MatrixTrendRow(
         pack_name=str(entry["pack_name"]),
@@ -98,4 +140,8 @@ def _coerce_trend_row(entry: dict) -> MatrixTrendRow:
         wall_clock_seconds=None if entry.get("wall_clock_seconds") is None else float(entry["wall_clock_seconds"]),
         matrix_scope=str(entry["matrix_scope"]),
         fairness_metadata=dict(entry.get("fairness_metadata") or {}),
+        lane_operating_state=str(entry.get("lane_operating_state") or (entry.get("fairness_metadata") or {}).get("lane_operating_state") or "reference-only"),
+        system_operating_state=str(entry.get("system_operating_state") or (entry.get("fairness_metadata") or {}).get("system_operating_state") or "unknown"),
+        lane_repeatability_ready=bool(entry.get("lane_repeatability_ready")),
+        lane_budget_accounting_ok=bool(entry.get("lane_budget_accounting_ok") or (entry.get("fairness_metadata") or {}).get("budget_accounting_ok")),
     )

@@ -87,7 +87,16 @@ def test_fair_matrix_markdown_includes_lane_metadata() -> None:
             task_coverage_ok=True,
             budget_consistency_ok=True,
             seed_consistency_ok=True,
+            budget_accounting_ok=True,
+            core_systems_complete_ok=True,
+            extended_systems_complete_ok=False,
             observed_task_kinds=("classification", "regression"),
+            system_operating_states={
+                "prism": "benchmark-complete",
+                "topograph": "benchmark-complete",
+                "contenders": "benchmark-complete",
+            },
+            operating_state="trusted-core",
             acceptance_notes=(),
             repeatability_ready=True,
         ),
@@ -100,6 +109,8 @@ def test_fair_matrix_markdown_includes_lane_metadata() -> None:
 
     assert "## Lane Metadata" in markdown
     assert "- Preset: `smoke`" in markdown
+    assert "- Operating State: `trusted-core`" in markdown
+    assert "- Budget Accounting: `ok`" in markdown
     assert "- Task Coverage: `ok` (classification, regression)" in markdown
     assert "- Repeatability Ready: `yes`" in markdown
 
@@ -232,6 +243,8 @@ def test_build_matrix_trend_rows_capture_minimum_longitudinal_dimensions(tmp_pat
     assert first.metric_direction == pack.benchmarks[0].metric_direction
     assert first.outcome_status == "ok"
     assert first.matrix_scope == "fair"
+    assert first.lane_operating_state == "reference-only"
+    assert first.system_operating_state == "unknown"
     assert first.fairness_metadata["benchmark_pack_id"] == pack.name
     assert first.fairness_metadata["seed"] == 42
     assert first.fairness_metadata["evaluation_count"] == 64
@@ -352,6 +365,8 @@ def test_build_trend_records_preserves_longitudinal_fields(tmp_path: Path) -> No
     class CaseStub:
         lane_preset = "smoke"
         pack_name = pack.name
+        budget = 64
+        seed = 42
         systems = ("prism", "topograph")
         prism_run_dir = run_dirs["prism"]
         topograph_run_dir = run_dirs["topograph"]
@@ -359,7 +374,20 @@ def test_build_trend_records_preserves_longitudinal_fields(tmp_path: Path) -> No
         primordia_run_dir = tmp_path / "primordia"
         contender_run_dir = None
 
-    trend_records = _build_trend_records(case=CaseStub(), pack=pack, runs=runs)
+    pair_result = ComparisonEngine().compare(
+        left_manifest=runs["prism"][0],
+        left_results=runs["prism"][1],
+        right_manifest=runs["topograph"][0],
+        right_results=runs["topograph"][1],
+        pack=pack,
+    )
+    lane = _build_lane_metadata(
+        case=CaseStub(),
+        runs=runs,
+        pair_results={("prism", "topograph"): (pair_result, Path("prism_vs_topograph.md"))},
+    )
+
+    trend_records = _build_trend_records(case=CaseStub(), pack=pack, runs=runs, lane=lane)
 
     assert len(trend_records) == len(pack.benchmarks) * 2
     first = trend_records[0]
@@ -375,6 +403,9 @@ def test_build_trend_records_preserves_longitudinal_fields(tmp_path: Path) -> No
     assert first["metric_direction"] in {"max", "min"}
     assert first["fairness"]["benchmark_pack_id"] == pack.name
     assert first["fairness"]["evaluation_count"] == 64
+    assert first["fairness"]["lane_operating_state"] == "contract-fair"
+    assert first["system_operating_state"] == "benchmark-complete"
+    assert first["lane"]["operating_state"] == "contract-fair"
     assert first["artifact_paths"]["manifest"].endswith("manifest.json")
     assert first["artifact_paths"]["summary"].endswith("summary.json")
 
@@ -493,8 +524,14 @@ def test_run_fair_matrix_case_emits_trend_artifacts(tmp_path: Path, monkeypatch:
     trend_records = json.loads(trend_json.read_text(encoding="utf-8"))
     assert len(trend_records) == len(load_parity_pack(PACK_PATH).benchmarks) * 4
     assert all(record["artifact_paths"]["summary"].endswith("summary.json") for record in trend_records)
+    assert all(record["lane"]["operating_state"] == "contract-fair" for record in trend_records)
+    assert all(record["lane"]["budget_accounting_ok"] is True for record in trend_records)
     assert sum(1 for _line in trend_jsonl.read_text(encoding="utf-8").splitlines() if _line.strip()) == len(trend_records)
     assert sum(1 for _line in case.trend_dataset_path.read_text(encoding="utf-8").splitlines() if _line.strip()) == len(trend_records)
+
+    lane_payload = json.loads(lane_acceptance.read_text(encoding="utf-8"))
+    assert lane_payload["operating_state"] == "contract-fair"
+    assert lane_payload["budget_accounting_ok"] is True
 
 
 def test_build_lane_metadata_rejects_task_or_budget_seed_drift(tmp_path: Path) -> None:
@@ -545,3 +582,58 @@ def test_build_lane_metadata_rejects_task_or_budget_seed_drift(tmp_path: Path) -
     assert lane.repeatability_ready is False
     assert "manifest evaluation counts drift from requested lane budget" in lane.acceptance_notes
     assert "manifest seeds drift from requested lane seed" in lane.acceptance_notes
+
+
+def test_build_lane_metadata_distinguishes_contract_fair_from_trusted_core(tmp_path: Path) -> None:
+    pack = load_parity_pack(PACK_PATH)
+    run_dirs = {
+        "prism": tmp_path / "prism",
+        "topograph": tmp_path / "topograph",
+        "contenders": tmp_path / "contenders",
+        "stratograph": tmp_path / "stratograph",
+    }
+    _write_run(run_dirs["prism"], system="prism", score_shift=0.02, budget_policy_name="evolutionary_search")
+    _write_run(run_dirs["topograph"], system="topograph", budget_policy_name="evolutionary_search")
+    _write_run(run_dirs["contenders"], system="contenders", budget_policy_name="evolutionary_search")
+
+    ingestors = {system: SystemIngestor(path) for system, path in run_dirs.items() if path.exists()}
+    runs = {
+        system: (ingestor.load_manifest(), ingestor.load_results())
+        for system, ingestor in ingestors.items()
+    }
+    pair_results = {}
+    for left, right in (("prism", "topograph"), ("prism", "contenders")):
+        result = ComparisonEngine().compare(
+            left_manifest=runs[left][0],
+            left_results=runs[left][1],
+            right_manifest=runs[right][0],
+            right_results=runs[right][1],
+            pack=pack,
+        )
+        pair_results[(left, right)] = (result, Path(f"{left}_vs_{right}.md"))
+
+    class CaseStub:
+        lane_preset = "local"
+        pack_name = pack.name
+        budget = 64
+        seed = 42
+        prism_run_dir = run_dirs["prism"]
+        topograph_run_dir = run_dirs["topograph"]
+        stratograph_run_dir = run_dirs["stratograph"]
+        primordia_run_dir = tmp_path / "primordia"
+        contender_run_dir = run_dirs["contenders"]
+        systems = ("prism", "topograph", "contenders")
+
+    lane = _build_lane_metadata(
+        case=CaseStub(),
+        runs=runs,
+        pair_results=pair_results,
+    )
+
+    assert lane.budget_accounting_ok is True
+    assert lane.operating_state == "trusted-core"
+    assert lane.core_systems_complete_ok is True
+    assert lane.extended_systems_complete_ok is False
+    assert lane.repeatability_ready is True
+    assert lane.system_operating_states["contenders"] == "benchmark-complete"
+    assert any("trusted-extended unmet" in note for note in lane.acceptance_notes)

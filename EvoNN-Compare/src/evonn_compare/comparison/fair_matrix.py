@@ -13,6 +13,8 @@ from evonn_compare.contracts.parity import ParityPack
 
 SYSTEM_ORDER = ("prism", "topograph", "stratograph", "primordia", "contenders")
 FOUR_PROJECT_SYSTEM_ORDER = ("prism", "topograph", "stratograph", "primordia")
+CORE_TRUSTED_SYSTEMS = ("prism", "topograph", "contenders")
+EXTENDED_TRUSTED_SYSTEMS = ("stratograph", "primordia")
 
 
 @dataclass(frozen=True)
@@ -52,7 +54,12 @@ class LaneMetadata:
     task_coverage_ok: bool
     budget_consistency_ok: bool
     seed_consistency_ok: bool
+    budget_accounting_ok: bool
+    core_systems_complete_ok: bool
+    extended_systems_complete_ok: bool
     observed_task_kinds: tuple[str, ...]
+    system_operating_states: dict[str, str]
+    operating_state: str
     acceptance_notes: tuple[str, ...]
     repeatability_ready: bool
 
@@ -76,6 +83,10 @@ class MatrixTrendRow:
     wall_clock_seconds: float | None
     matrix_scope: str
     fairness_metadata: dict[str, Any]
+    lane_operating_state: str = "reference-only"
+    system_operating_state: str = "unknown"
+    lane_repeatability_ready: bool = False
+    lane_budget_accounting_ok: bool = False
 
 
 @dataclass(frozen=True)
@@ -169,6 +180,7 @@ def build_matrix_trend_rows(
     seed: int,
     runs: dict[str, tuple[RunManifest, list[ResultRecord]]],
     pair_results: dict[tuple[str, str], tuple[ComparisonResult, Path]],
+    lane: LaneMetadata | None = None,
     systems: tuple[str, ...] = SYSTEM_ORDER,
 ) -> list[MatrixTrendRow]:
     matrix_scope = "fair" if _reference_note(pair_results) is None else "reference"
@@ -200,6 +212,9 @@ def build_matrix_trend_rows(
                 "data_signature": fairness.data_signature if fairness is not None else None,
                 "code_version": fairness.code_version if fairness is not None else None,
                 "pairwise_fairness_ok": matrix_scope == "fair",
+                "lane_operating_state": lane.operating_state if lane is not None else "reference-only",
+                "system_operating_state": lane.system_operating_states.get(system, "unknown") if lane is not None else "unknown",
+                "budget_accounting_ok": lane.budget_accounting_ok if lane is not None else False,
             }
             rows.append(
                 MatrixTrendRow(
@@ -220,6 +235,10 @@ def build_matrix_trend_rows(
                     wall_clock_seconds=manifest.budget.wall_clock_seconds,
                     matrix_scope=matrix_scope,
                     fairness_metadata=fairness_metadata,
+                    lane_operating_state=lane.operating_state if lane is not None else "reference-only",
+                    system_operating_state=lane.system_operating_states.get(system, "unknown") if lane is not None else "unknown",
+                    lane_repeatability_ready=lane.repeatability_ready if lane is not None else False,
+                    lane_budget_accounting_ok=lane.budget_accounting_ok if lane is not None else False,
                 )
             )
     return rows

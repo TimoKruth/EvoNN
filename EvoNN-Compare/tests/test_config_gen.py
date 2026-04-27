@@ -10,6 +10,7 @@ from evonn_compare.orchestration.config_gen import (
     generate_budget_pack,
     generate_prism_config,
     generate_topograph_config,
+    prepare_campaign_cases,
 )
 from evonn_compare.orchestration.fair_matrix import (
     generate_contender_config,
@@ -394,3 +395,21 @@ def test_prepare_fair_matrix_cases_persists_lane_preset(tmp_path: Path) -> None:
     )
 
     assert cases[0].lane_preset == "smoke"
+
+
+def test_prepare_campaign_cases_persists_lane_preset(tmp_path: Path) -> None:
+    base_pack = Path(__file__).resolve().parents[1] / "parity_packs" / "tier1_core_smoke.yaml"
+    paths, cases = prepare_campaign_cases(
+        pack_name="tier1_core_smoke",
+        base_pack_path=base_pack,
+        seeds=[42],
+        budgets=[16],
+        workspace=tmp_path / "campaign",
+        topograph_root=tmp_path / "Topograph",
+        lane_preset="smoke",
+    )
+
+    manifest_payload = yaml.safe_load(paths.manifest_path.read_text(encoding="utf-8"))
+    assert cases[0].lane_preset == "smoke"
+    assert manifest_payload["lane_preset"] == "smoke"
+    assert manifest_payload["cases"][0]["lane_preset"] == "smoke"
