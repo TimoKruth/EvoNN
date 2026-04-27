@@ -268,6 +268,29 @@ def test_fair_matrix_default_smoke_persists_lane_preset(monkeypatch, tmp_path: P
     assert captured["lane_preset"] == "smoke"
 
 
+def test_fair_matrix_pack_without_preset_defaults_to_tier1_budget_64(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_prepare_fair_matrix_cases(**kwargs):
+        captured.update(kwargs)
+        return type(
+            "Paths",
+            (),
+            {
+                "manifest_path": tmp_path / "matrix.yaml",
+                "trends_dir": tmp_path / "trends",
+            },
+        )(), []
+
+    monkeypatch.setattr(fair_matrix_cli, "prepare_fair_matrix_cases", fake_prepare_fair_matrix_cases)
+
+    result = runner.invoke(app, ["fair-matrix", "--pack", "tier1_core", "--workspace", str(tmp_path), "--dry-run"])
+
+    assert result.exit_code == 0
+    assert captured["lane_preset"] is None
+    assert captured["budgets"] == [64]
+
+
 def test_campaign_default_smoke_persists_lane_preset(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 

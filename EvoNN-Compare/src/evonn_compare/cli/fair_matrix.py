@@ -42,7 +42,7 @@ def fair_matrix(
         pack_name=Path(pack_path).stem,
         base_pack_path=pack_path,
         seeds=_parse_optional_csv_ints(seeds) or (list(preset_spec.seeds) if preset_spec else [42]),
-        budgets=_parse_optional_csv_ints(budgets) or (list(preset_spec.budgets) if preset_spec else [76]),
+        budgets=_parse_optional_csv_ints(budgets) or (list(preset_spec.budgets) if preset_spec else [64]),
         workspace=Path(workspace),
         prism_root=Path(prism_root),
         topograph_root=Path(topograph_root),
