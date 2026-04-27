@@ -392,6 +392,52 @@ primitive_pool:
     assert {row["metric_name"] for row in summary["best_results"]} == {"accuracy", "mse"}
 
 
+def test_search_policy_is_surfaced_and_max_candidates_cap_is_enforced(tmp_path: Path, monkeypatch) -> None:
+    runtime = FakeRuntimeBindings(runtime_backend="numpy-fallback", runtime_version="phase3-fake")
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
+    config_path = tmp_path / "phase3.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: phase3_cap
+runtime:
+  backend: numpy-fallback
+benchmark_pool:
+  name: phase3_cap
+  benchmarks: [iris]
+search:
+  mode: budget_matched
+  target_evaluation_count: 5
+  population_size: 4
+  elite_fraction: 0.5
+  mutation_rounds_per_parent: 2
+  family_exploration_floor: 1
+  max_candidates_per_benchmark: 2
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp, sparse_mlp, moe_mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "phase3_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert summary["evaluation_count"] == 2
+    assert summary["search_policy"]["max_candidates_per_benchmark"] == 2
+    assert summary["search_policy"]["mutation_rounds_per_parent"] == 2
+    assert summary["benchmark_slot_plan"][0]["raw_slots"] == 5
+    assert summary["benchmark_slot_plan"][0]["effective_slots"] == 2
+    assert "## Search Policy" in report
+    assert "## Benchmark Slot Plan" in report
+
 
 def test_export_uses_recorded_runtime_metadata(tmp_path: Path, fake_runtime) -> None:
     config_path = tmp_path / "config.yaml"

@@ -51,6 +51,7 @@ def run_search(
     executed_records: list[dict[str, Any]] = []
     best_results: list[dict[str, Any]] = []
     primitive_usage: dict[str, int] = {}
+    benchmark_slot_plan: list[dict[str, Any]] = []
     group_counts = {"tabular": 0, "synthetic": 0, "image": 0, "language_modeling": 0}
     started_at = datetime.now(timezone.utc).isoformat()
     started_clock = perf_counter()
@@ -61,6 +62,7 @@ def run_search(
         executed_records = list(checkpoint.get("executed_records") or [])
         best_results = list(checkpoint.get("best_results") or [])
         primitive_usage = dict(checkpoint.get("primitive_usage") or {})
+        benchmark_slot_plan = list(checkpoint.get("benchmark_slot_plan") or [])
         group_counts = dict(checkpoint.get("group_counts") or group_counts)
         started_at = str(checkpoint.get("started_at") or started_at)
         completed_benchmark_names = list(checkpoint.get("completed_benchmark_names") or [])
@@ -93,6 +95,18 @@ def run_search(
             benchmark_index=benchmark_index - 1,
             benchmark_total=benchmark_total,
             primitive_count=len(allowed_families),
+        )
+        raw_slots = slots
+        if config.search.max_candidates_per_benchmark is not None:
+            slots = min(slots, max(1, int(config.search.max_candidates_per_benchmark)))
+        benchmark_slot_plan.append(
+            {
+                "benchmark_name": benchmark_name,
+                "benchmark_group": group,
+                "raw_slots": raw_slots,
+                "effective_slots": slots,
+                "family_count": len(allowed_families),
+            }
         )
         if slots <= 0:
             raise ValueError(f"No evaluation slots assigned to benchmark '{benchmark_name}'")
@@ -163,6 +177,7 @@ def run_search(
                 "executed_records": executed_records,
                 "best_results": best_results,
                 "primitive_usage": primitive_usage,
+                "benchmark_slot_plan": benchmark_slot_plan,
                 "group_counts": group_counts,
                 "completed_benchmark_names": completed_benchmark_names,
             },
@@ -205,6 +220,16 @@ def run_search(
         "epochs_per_candidate": config.training.epochs_per_candidate,
         "budget_policy_name": BUDGET_POLICY_NAME,
         "selection_mode": config.search.selection_mode,
+        "search_policy": {
+            "population_size": config.search.population_size,
+            "elite_fraction": config.search.elite_fraction,
+            "mutation_rounds_per_parent": config.search.mutation_rounds_per_parent,
+            "family_exploration_floor": config.search.family_exploration_floor,
+            "novelty_weight": config.search.novelty_weight,
+            "complexity_penalty_weight": config.search.complexity_penalty_weight,
+            "max_candidates_per_benchmark": config.search.max_candidates_per_benchmark,
+        },
+        "benchmark_slot_plan": benchmark_slot_plan,
         "primitive_usage": dict(sorted(primitive_usage.items(), key=lambda item: (-item[1], item[0]))),
         "group_counts": group_counts,
         "failure_count": failure_count,

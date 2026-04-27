@@ -234,11 +234,50 @@ def write_report(run_dir: str | Path) -> Path:
             f"- Selection Mode: `{summary.get('selection_mode', 'metric_only')}`",
             f"- Wall Clock Seconds: `{float(summary.get('wall_clock_seconds', 0.0)):.3f}`",
             "",
+            "## Search Policy",
+            "",
+            "| Setting | Value |",
+            "|---|---|",
+        ]
+        search_policy = summary.get("search_policy") or {}
+        for key in [
+            "population_size",
+            "elite_fraction",
+            "mutation_rounds_per_parent",
+            "family_exploration_floor",
+            "novelty_weight",
+            "complexity_penalty_weight",
+            "max_candidates_per_benchmark",
+        ]:
+            lines.append(f"| {_render_markdown_cell(key)} | {_render_markdown_cell(search_policy.get(key), missing='default')} |")
+        lines.extend([
+            "",
+            "## Benchmark Slot Plan",
+            "",
+            "| Benchmark | Group | Raw Slots | Effective Slots | Families |",
+            "|---|---|---:|---:|---:|",
+        ])
+        slot_rows = summary.get("benchmark_slot_plan") or []
+        if slot_rows:
+            for row in slot_rows:
+                lines.append(
+                    "| {benchmark} | {group} | {raw_slots} | {effective_slots} | {family_count} |".format(
+                        benchmark=_render_markdown_cell(row.get("benchmark_name"), missing="unknown"),
+                        group=_render_markdown_cell(row.get("benchmark_group"), missing="unknown"),
+                        raw_slots=int(row.get("raw_slots", 0)),
+                        effective_slots=int(row.get("effective_slots", 0)),
+                        family_count=int(row.get("family_count", 0)),
+                    )
+                )
+        else:
+            lines.append("| none | none | 0 | 0 | 0 |")
+        lines.extend([
+            "",
             "## Primitive Usage",
             "",
             "| Primitive Family | Evaluations |",
             "|---|---:|",
-        ]
+        ])
         primitive_usage = summary.get("primitive_usage", {})
         if primitive_usage:
             for family, count in primitive_usage.items():

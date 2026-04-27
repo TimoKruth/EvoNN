@@ -27,10 +27,10 @@ Based on the current repo state:
 The current core limitations appear to be:
 
 1. `EvoNN-Primordia/src/evonn_primordia/pipeline.py`
-   - benchmark-by-benchmark round-robin evaluation
-   - no persistent population/archive state
-   - no parent selection, no cross-benchmark memory, no novelty/elite retention
-   - mutated seeds are tied to slot index, not learned search pressure
+   - the old slot-based round-robin loop has now been replaced with a bounded elite/archive loop, but the search policy is still intentionally shallow
+   - search state is benchmark-local rather than a richer cross-run or cross-benchmark memory system
+   - selection pressure exists now, but archive policy, diversity retention, and policy tuning are still closer to a first serious baseline than a mature engine
+   - lineage and resume artifacts exist, but they are not yet the same depth as stronger long-horizon engines
 
 2. `EvoNN-Primordia/src/evonn_primordia/runtime/training.py`
    - simple trainer with short local loops
