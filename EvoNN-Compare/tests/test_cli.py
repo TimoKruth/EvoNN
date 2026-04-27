@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -15,69 +16,83 @@ from test_compare import PACK_PATH, _write_run
 runner = CliRunner()
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _normalized_cli_output(text: str) -> str:
+    text = _ANSI_RE.sub("", text)
+    return re.sub(r"\s+", " ", text)
+
+
 def test_root_help() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "Prism" in result.stdout
-    assert "Topograph" in result.stdout
+    text = _normalized_cli_output(result.stdout)
+    assert "Prism" in text
+    assert "Topograph" in text
 
 
 def test_validate_help() -> None:
     result = runner.invoke(app, ["validate", "--help"])
     assert result.exit_code == 0
-    assert "--pack" in result.stdout
+    assert "--pack" in _normalized_cli_output(result.stdout)
 
 
 def test_campaign_help() -> None:
     result = runner.invoke(app, ["campaign", "--help"])
     assert result.exit_code == 0
-    assert "--workspace" in result.stdout
-    assert "smoke" in result.stdout
-    assert "local" in result.stdout
-    assert "overnight" in result.stdout
-    assert "weekend" in result.stdout
+    text = _normalized_cli_output(result.stdout)
+    assert "--workspace" in text
+    assert "smoke" in text
+    assert "local" in text
+    assert "overnight" in text
+    assert "weekend" in text
 
 
 def test_fair_matrix_help() -> None:
     result = runner.invoke(app, ["fair-matrix", "--help"])
     assert result.exit_code == 0
-    assert "--primordia-root" in result.stdout
-    assert "--no-contenders" in result.stdout
-    assert "--preset" in result.stdout
-    assert "smoke" in result.stdout
-    assert "local" in result.stdout
-    assert "overnight" in result.stdout
-    assert "weekend" in result.stdout
+    text = _normalized_cli_output(result.stdout)
+    assert "--primordia-root" in text
+    assert "--no-contenders" in text
+    assert "--preset" in text
+    assert "smoke" in text
+    assert "local" in text
+    assert "overnight" in text
+    assert "weekend" in text
 
 
 def test_trend_report_help() -> None:
     result = runner.invoke(app, ["trend-report", "--help"])
     assert result.exit_code == 0
-    assert "--system" in result.stdout
-    assert "--benchmark" in result.stdout
-    assert "--output" in result.stdout
+    text = _normalized_cli_output(result.stdout)
+    assert "--system" in text
+    assert "--benchmark" in text
+    assert "--output" in text
 
 
 def test_dashboard_help() -> None:
     result = runner.invoke(app, ["dashboard", "--help"])
     assert result.exit_code == 0
-    assert "--output" in result.stdout
-    assert "manual_compare_runs" in result.stdout
-    assert "--no-open" in result.stdout
+    text = _normalized_cli_output(result.stdout)
+    assert "--output" in text
+    assert "manual_compare_runs" in text
+    assert "--no-open" in text
 
 
 def test_workspace_report_help() -> None:
     result = runner.invoke(app, ["workspace-report", "--help"])
     assert result.exit_code == 0
-    assert "Fair-matrix workspace root" in result.stdout
-    assert "--dashboard-output" in result.stdout
-    assert "--trend-output" in result.stdout
+    text = _normalized_cli_output(result.stdout)
+    assert "Fair-matrix workspace root" in text
+    assert "--dashboard-output" in text
+    assert "--trend-output" in text
 
 
 def test_hybrid_help() -> None:
     result = runner.invoke(app, ["hybrid", "run", "--help"])
     assert result.exit_code == 0
-    assert "--population" in result.stdout
+    assert "--population" in _normalized_cli_output(result.stdout)
 
 
 def test_campaign_preset_smoke_dry_run(tmp_path) -> None:
