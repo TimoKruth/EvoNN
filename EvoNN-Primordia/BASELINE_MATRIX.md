@@ -121,5 +121,5 @@ What is not yet claimed:
 
 ## Next handoff
 
-Phase 2 can now be treated as substantially complete.
+Phase 2 should now be treated as complete for the official Primordia branch baseline.
 The next major branch step is Phase 3+ quality work against this pinned baseline, not more ambiguity about what the official Primordia baseline lane even is.
