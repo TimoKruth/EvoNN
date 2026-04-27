@@ -266,7 +266,11 @@ seed_policy:
     assert primitive_bank["precision_mode"] == summary["precision_mode"]
     assert seed_candidates["system"] == "primordia"
     assert seed_candidates["run_id"] == summary["run_id"]
-    assert seed_candidates["seed_candidates"][0]["family"] == "attention"
+    assert {entry["family"] for entry in seed_candidates["seed_candidates"]} == {"attention", "sparse_mlp"}
+    top_seed = seed_candidates["seed_candidates"][0]
+    assert "supporting_benchmarks" in top_seed
+    assert "repeat_support_count" in top_seed
+    assert "median_quality_by_group" in top_seed
     assert seed_candidates["benchmark_seeds"][0]["benchmark_group"] == "tabular"
     assert {entry["family"] for entry in primitive_bank["primitive_families"]} == {"attention", "embedding", "mlp", "sparse_mlp"}
     sparse = next(entry for entry in primitive_bank["primitive_families"] if entry["family"] == "sparse_mlp")
@@ -721,6 +725,45 @@ primitive_pool:
     assert "- Failure Count: `0`" in report
     assert "## Failure Patterns" in report
     assert "| none | 0 |" in report
+
+
+def test_search_loop_persists_lineage_and_scoring_fields(tmp_path: Path, monkeypatch) -> None:
+    runtime = FakeRuntimeBindings(runtime_backend="numpy-fallback", runtime_version="fallback-1.0")
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: lineage_fields
+benchmark_pool:
+  name: lineage_fields
+  benchmarks: [iris]
+search:
+  mode: budget_matched
+  target_evaluation_count: 5
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp, sparse_mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "lineage_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    trials = json.loads((run_dir / "trial_records.json").read_text(encoding="utf-8"))
+
+    assert len(trials) == 5
+    assert any(record["generation"] > 0 for record in trials)
+    assert any(record["parent_genome_id"] for record in trials if record["generation"] > 0)
+    assert all("search_score" in record for record in trials)
+    assert all("novelty_score" in record for record in trials)
+    assert all("complexity_penalty" in record for record in trials)
 
 
 def test_report_includes_grouped_failure_patterns_with_status_fallback(tmp_path: Path) -> None:

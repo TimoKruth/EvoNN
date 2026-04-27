@@ -7,7 +7,7 @@ import yaml
 
 from evonn_primordia.config import RunConfig
 from evonn_primordia.pipeline import run_search
-from evonn_primordia.runtime.backends import resolve_runtime_bindings
+from evonn_primordia.runtime.backends import _build_classification_estimator, resolve_runtime_bindings
 
 
 def test_resolve_runtime_bindings_respects_explicit_numpy_fallback() -> None:
@@ -104,3 +104,12 @@ primitive_pool:
     assert len(trials) == 5
     assert any(record["slot_index"] >= 2 for record in trials)
     assert any(record["status"] == "ok" for record in trials)
+
+
+def test_numpy_fallback_conv_estimators_avoid_removed_multi_class_kwarg() -> None:
+    genome = type("Genome", (), {"hidden_layers": [64, 64], "activation": "relu"})()
+
+    for family in ("conv2d", "lite_conv2d"):
+        estimator = _build_classification_estimator(family, genome, epochs=1, lr=1e-3, weight_decay=0.0)
+        params = estimator.get_params()
+        assert "multi_class" not in params or params["multi_class"] != "auto"

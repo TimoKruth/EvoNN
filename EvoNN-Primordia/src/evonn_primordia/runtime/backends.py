@@ -246,7 +246,7 @@ def _build_classification_estimator(family: str, genome: Any, epochs: int, lr: f
     if family == "moe_mlp":
         return RandomForestClassifier(n_estimators=max(32, min(128, sum(hidden_layers))), random_state=42)
     if family in {"conv2d", "lite_conv2d"}:
-        return LogisticRegression(max_iter=max_iter, multi_class="auto")
+        return LogisticRegression(max_iter=max_iter)
     return MLPClassifier(
         hidden_layer_sizes=hidden_layers,
         activation=activation_map.get(activation, "relu"),

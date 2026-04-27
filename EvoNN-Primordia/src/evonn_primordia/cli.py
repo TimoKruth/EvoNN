@@ -94,7 +94,10 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_row("Evaluation Count", str(summary.get("evaluation_count", 0)))
     overview.add_row("Target Evaluations", str(summary.get("target_evaluation_count", "n/a")))
     overview.add_row("Benchmarks", str(summary.get("benchmark_count", 0)))
+    overview.add_row("Completed Benchmarks", str(len(summary.get("completed_benchmarks") or [])))
     overview.add_row("Failure Count", str(summary.get("failure_count", 0)))
+    if summary.get("resumed"):
+        overview.add_row("Resumed", "yes")
     wall_clock = summary.get("wall_clock_seconds")
     if wall_clock is not None:
         overview.add_row("Wall Clock", f"{float(wall_clock):.1f}s")
