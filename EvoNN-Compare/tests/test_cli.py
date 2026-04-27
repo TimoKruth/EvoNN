@@ -176,6 +176,7 @@ def test_fair_matrix_execute_surfaces_manifest_and_trend_dataset(tmp_path, monke
             "summary_count": 1,
             "trend_dataset": str(Path(workspace) / "trends" / "fair_matrix_trend_rows.jsonl"),
             "trend_report": str(Path(workspace) / "trends" / "fair_matrix_trends.md"),
+            "trend_report_data": str(Path(workspace) / "trends" / "fair_matrix_trends.json"),
             "dashboard": str(Path(workspace) / "fair_matrix_dashboard.html"),
             "dashboard_data": str(Path(workspace) / "fair_matrix_dashboard.json"),
         }
@@ -189,6 +190,7 @@ def test_fair_matrix_execute_surfaces_manifest_and_trend_dataset(tmp_path, monke
     assert "manifest\t" in result.stdout
     assert "trend-dataset\t" in result.stdout
     assert "summary\t" in result.stdout
+    assert "workspace_trend_report_data\t" in result.stdout
     assert "workspace_dashboard\t" in result.stdout
     assert "workspace_dashboard_data\t" in result.stdout
 
@@ -217,6 +219,7 @@ def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) ->
             "summary_count": 1,
             "trend_dataset": str(Path(workspace) / "trends" / "fair_matrix_trend_rows.jsonl"),
             "trend_report": str(Path(workspace) / "trends" / "fair_matrix_trends.md"),
+            "trend_report_data": str(Path(workspace) / "trends" / "fair_matrix_trends.json"),
             "dashboard": str(Path(workspace) / "fair_matrix_dashboard.html"),
             "dashboard_data": str(Path(workspace) / "fair_matrix_dashboard.json"),
         }
@@ -237,6 +240,7 @@ def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) ->
     assert f"trend_records_jsonl\t{summary_path.parent / 'fair_matrix_trends.jsonl'}" in result.stdout
     assert f"workspace_trend_rows\t{summary_path.parent.parent / 'fair_matrix_trend_rows.jsonl'}" in result.stdout
     assert f"workspace_trend_report\t{summary_path.parent.parent / 'fair_matrix_trends.md'}" in result.stdout
+    assert f"workspace_trend_report_data\t{tmp_path / 'trends' / 'fair_matrix_trends.json'}" in result.stdout
     assert f"workspace_dashboard\t{tmp_path / 'fair_matrix_dashboard.html'}" in result.stdout
     assert f"workspace_dashboard_data\t{tmp_path / 'fair_matrix_dashboard.json'}" in result.stdout
 

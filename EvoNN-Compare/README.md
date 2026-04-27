@@ -92,7 +92,7 @@ Each fair-matrix workspace also accumulates:
 - `fair_matrix_dashboard.html`
 - `fair_matrix_dashboard.json`
 
-After `fair-matrix` execution, the CLI refreshes the workspace-level trend report and dashboard automatically from the canonical JSON artifacts. It prints the paths for the case summary markdown/JSON, lane acceptance metadata, structured case trend JSON/JSONL artifacts, workspace trend dataset/report, and workspace dashboard so reruns can be reviewed from the longitudinal surface first.
+After `fair-matrix` execution, the CLI refreshes the workspace-level trend report and dashboard automatically from the canonical JSON artifacts. It prints the paths for the case summary markdown/JSON, lane acceptance metadata, structured case trend JSON/JSONL artifacts, workspace trend dataset/report/report-JSON, and workspace dashboard so reruns can be reviewed from the longitudinal surface first.
 
 This means repeated `smoke` lane runs can be appended to one shared trend dataset without per-engine parsers or markdown scraping.
 

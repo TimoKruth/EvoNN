@@ -78,6 +78,7 @@ def fair_matrix(
             typer.echo(f"{label}\t{artifact_path}")
 
     workspace_artifacts = refresh_workspace_reports(workspace=Path(workspace))
+    typer.echo(f"workspace_trend_report_data\t{workspace_artifacts['trend_report_data']}")
     typer.echo(f"workspace_dashboard\t{workspace_artifacts['dashboard']}")
     typer.echo(f"workspace_dashboard_data\t{workspace_artifacts['dashboard_data']}")
 
