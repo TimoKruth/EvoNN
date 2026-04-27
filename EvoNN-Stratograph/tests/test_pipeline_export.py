@@ -66,6 +66,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert len(results) == 2
     assert {record["status"] for record in results} <= {"ok", "failed"}
     assert budget_meta["runtime_backend"] in {"mlx", "numpy-fallback"}
+    assert budget_meta["runtime_backend_requested"] in {"auto", "mlx", "numpy-fallback"}
     assert "runtime_version" in budget_meta
     assert budget_meta["precision_mode"] == "fp32"
     assert budget_meta["wall_clock_seconds"] >= 0.0
@@ -85,6 +86,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert len(exported_results) == 2
     assert summary["system"] == "stratograph"
     assert summary["runtime_backend"] == budget_meta["runtime_backend"]
+    assert summary["requested_runtime_backend"] == budget_meta["runtime_backend_requested"]
     assert summary["runtime_version"] == (budget_meta["runtime_version"] or "unknown")
     assert summary["precision_mode"] == budget_meta["precision_mode"]
     assert summary["wall_clock_seconds"] == budget_meta["wall_clock_seconds"]
@@ -105,6 +107,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
 
     report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert f"- Runtime: `{budget_meta['runtime_backend']}`" in report
+    assert f"- Requested Runtime: `{budget_meta['runtime_backend_requested']}`" in report
     expected_version = budget_meta["runtime_version"] or "unknown"
     assert f"- Runtime Version: `{expected_version}`" in report
     assert f"- Precision Mode: `{budget_meta['precision_mode']}`" in report

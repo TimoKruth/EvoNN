@@ -30,12 +30,14 @@ except ImportError:  # pragma: no cover - covered on Linux CI / non-MLX hosts
     optim = None
     MLX_AVAILABLE = False
 
-RUNTIME_BACKEND = "mlx" if MLX_AVAILABLE else "numpy-fallback"
-RUNTIME_VERSION = getattr(mlx, "__version__", None)
-
 from stratograph.benchmarks.spec import BenchmarkSpec
 from stratograph.genome import HierarchicalGenome
+from stratograph.runtime.backends import resolve_runtime_backend
 from stratograph.runtime import compile_genome
+
+DEFAULT_RUNTIME_SELECTION = resolve_runtime_backend("auto")
+RUNTIME_BACKEND = DEFAULT_RUNTIME_SELECTION.resolved_backend
+RUNTIME_VERSION = DEFAULT_RUNTIME_SELECTION.runtime_version
 
 
 @dataclass(frozen=True)
@@ -163,6 +165,7 @@ def evaluate_candidate(
     epochs: int = 1,
     batch_size: int = 32,
     learning_rate: float = 0.001,
+    runtime_backend: str = "auto",
 ) -> EvaluationRecord:
     """Backward-compatible wrapper."""
     return evaluate_candidate_with_state(
@@ -173,6 +176,7 @@ def evaluate_candidate(
         epochs=epochs,
         batch_size=batch_size,
         learning_rate=learning_rate,
+        runtime_backend=runtime_backend,
     ).record
 
 
@@ -185,16 +189,18 @@ def evaluate_candidate_with_state(
     epochs: int = 1,
     batch_size: int = 32,
     learning_rate: float = 0.001,
+    runtime_backend: str = "auto",
 ) -> EvaluationOutcome:
     """Evaluate one candidate and return optional training artifact."""
     started = time.perf_counter()
-    compiled = compile_genome(genome)
+    runtime_selection = resolve_runtime_backend(runtime_backend)
+    compiled = compile_genome(genome, runtime_backend=runtime_selection.resolved_backend)
     x_train, y_train, x_val, y_val = _cap_data(spec, data)
     training_artifact: TrainingArtifact | None = None
     parameter_count = compiled.parameter_count()
 
     try:
-        if MLX_AVAILABLE:
+        if runtime_selection.resolved_backend == "mlx":
             if spec.task == "language_modeling":
                 metric_value, training_artifact, head_params = _evaluate_language_modeling_mlx(
                     compiled,

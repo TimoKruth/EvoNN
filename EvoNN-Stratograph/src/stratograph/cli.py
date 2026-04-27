@@ -11,7 +11,7 @@ from rich.table import Table
 from stratograph.analysis import analyze_run_motifs, run_ablation_matrix, run_ablation_suite
 from stratograph.benchmarks import list_benchmarks
 from stratograph.benchmarks.lm import available_lm_caches, warm_lm_cache
-from stratograph.config import load_config
+from stratograph.config import RunConfig, load_config
 from stratograph.export import export_symbiosis_contract, write_report
 from stratograph.export.report import (
     load_report_context,
@@ -70,9 +70,17 @@ def evolve(
     config: Path = typer.Option(..., exists=True, dir_okay=False, file_okay=True),
     run_dir: Path | None = typer.Option(default=None),
     resume: bool = typer.Option(default=False, help="Resume partial run from checkpoint if present."),
+    runtime_backend: str | None = typer.Option(
+        default=None,
+        help="Override runtime.backend for this run: auto, mlx, or numpy-fallback.",
+    ),
 ) -> None:
     """Run Stratograph evolution."""
     run_config = load_config(config)
+    if runtime_backend is not None:
+        payload = run_config.model_dump(mode="python")
+        payload["runtime"] = {**payload.get("runtime", {}), "backend": runtime_backend}
+        run_config = RunConfig.model_validate(payload)
     resolved_run_dir = run_dir or Path("runs") / (run_config.run_name or f"{config.stem}_seed{run_config.seed}")
     path = run_evolution(run_config, run_dir=resolved_run_dir, config_path=config, resume=resume)
     typer.echo(str(path))
@@ -113,8 +121,11 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_row("Benchmarks", str(len(results)))
     overview.add_row("Genomes Stored", str(len(genomes)))
     overview.add_row("Runtime", runtime_meta["runtime_backend"])
+    overview.add_row("Requested Runtime", runtime_meta["requested_runtime_backend"])
     overview.add_row("Runtime Version", runtime_meta["runtime_version"])
     overview.add_row("Precision Mode", runtime_meta["precision_mode"])
+    if runtime_meta["runtime_backend_limitations"]:
+        overview.add_row("Runtime Limitations", runtime_meta["runtime_backend_limitations"])
     overview.add_row("Architecture Mode", str(budget_meta.get("architecture_mode", "unknown")))
     overview.add_row("Evaluation Count", str(budget_meta.get("evaluation_count", 0)))
     overview.add_row("Effective Training Epochs", str(budget_meta.get("effective_training_epochs", "unknown")))

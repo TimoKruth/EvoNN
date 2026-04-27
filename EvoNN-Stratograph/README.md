@@ -20,6 +20,8 @@ Current state:
 - Compare-compatible export and startup formats implemented
 - Benchmark loading + parity/export boundary implemented
 - Runtime backend/version metadata carried through compare exports
+- Runtime backend can now be selected explicitly with `runtime.backend`:
+  `auto`, `mlx`, or `numpy-fallback`, plus `runtime.allow_fallback`
 - Full long-horizon hierarchy-specialized trainer optimization still pending
 
 Core docs:
@@ -33,6 +35,7 @@ CLI:
 - `uv run stratograph warm-cache --config configs/ablation_matrix_smoke.yaml`
 - `uv run stratograph list-lm-caches`
 - `uv run stratograph evolve -c configs/working_33_plus_5_lm_smoke.yaml --run-dir runs/demo`
+- `uv run stratograph evolve -c configs/working_33_plus_5_lm_smoke.yaml --runtime-backend numpy-fallback --run-dir runs/demo_fallback`
 - `uv run stratograph report runs/demo`
 - `uv run stratograph inspect runs/demo`
 - `uv run stratograph symbiosis export runs/demo --pack /path/to/pack.yaml`

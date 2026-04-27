@@ -216,6 +216,7 @@ def _write_contract_summary_json(
     )
     budget = manifest.get("budget", {})
     device = manifest.get("device", {})
+    runtime_meta = load_runtime_metadata(report_context.get("budget_meta", {}))
     status_payload = report_context.get("status", {})
     representative_genome = report_context.get("representative_genome")
     non_ok_results = report_context.get("non_ok_results", [])
@@ -232,8 +233,10 @@ def _write_contract_summary_json(
         "architecture_mode": manifest.get("search_telemetry", {}).get("architecture_mode")
         or config.evolution.architecture_mode,
         "runtime_backend": device.get("framework", "unknown"),
+        "requested_runtime_backend": runtime_meta["requested_runtime_backend"],
         "runtime_version": device.get("framework_version") or "unknown",
         "precision_mode": device.get("precision_mode", "unknown"),
+        "runtime_backend_limitations": runtime_meta["runtime_backend_limitations"] or None,
         **core,
         "failure_patterns": dict(summarize_failure_patterns(non_ok_results)),
         "completed_benchmarks": status_payload.get("completed_count", len(results)),
