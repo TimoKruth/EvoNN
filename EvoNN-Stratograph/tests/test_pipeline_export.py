@@ -172,6 +172,79 @@ def test_inspect_command_surfaces_rich_run_summary(repo_root, tmp_path) -> None:
     assert "Reuse Ratio" in result.stdout
 
 
+def test_regression_lane_run_and_export(repo_root, tmp_path) -> None:
+    base_config = load_config(repo_root / "configs" / "working_33_plus_5_lm_smoke.yaml")
+    config = base_config.model_copy(
+        update={
+            "run_name": "regression_export_pack",
+            "benchmark_pool": BenchmarkPoolConfig(name="regression_export_pack", benchmarks=["diabetes", "friedman1"]),
+            "evolution": base_config.evolution.model_copy(update={"population_size": 2, "generations": 1}),
+            "runtime": base_config.runtime.model_copy(update={"backend": "numpy-fallback"}),
+        }
+    )
+    config_path = tmp_path / "regression_export_config.yaml"
+    config_path.write_text(yaml.safe_dump(config.model_dump(mode="python"), sort_keys=False), encoding="utf-8")
+    pack_path = tmp_path / "regression_export_pack.yaml"
+    pack_path.write_text(
+        yaml.safe_dump(
+            {
+                "name": "regression_export_pack",
+                "benchmarks": [
+                    {
+                        "benchmark_id": "diabetes_regression",
+                        "native_ids": {"stratograph": "diabetes"},
+                        "task_kind": "regression",
+                        "metric_name": "mse",
+                        "metric_direction": "min",
+                    },
+                    {
+                        "benchmark_id": "friedman1_regression",
+                        "native_ids": {"stratograph": "friedman1"},
+                        "task_kind": "regression",
+                        "metric_name": "mse",
+                        "metric_direction": "min",
+                    },
+                ],
+                "budget_policy": {
+                    "evaluation_count": 2,
+                    "epochs_per_candidate": 1,
+                    "budget_tolerance_pct": 10.0,
+                },
+                "seed_policy": {"mode": "shared", "required": True},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "regression_export_run"
+    run_evolution(config, run_dir=run_dir, config_path=config_path)
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        results = store.load_results(run_dir.name)
+        budget_meta = store.load_budget_metadata(run_dir.name)
+
+    assert len(results) == 2
+    assert {record["benchmark_name"] for record in results} == {"diabetes", "friedman1"}
+    assert {record["metric_name"] for record in results} == {"mse"}
+    assert all(record["status"] == "ok" for record in results)
+    assert all(record["metric_value"] is not None for record in results)
+    assert all(record["quality"] is not None and record["quality"] <= 0.0 for record in results)
+    assert budget_meta["runtime_backend"] == "numpy-fallback"
+
+    manifest_path, results_path = export_symbiosis_contract(run_dir, pack_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    exported_results = json.loads(results_path.read_text(encoding="utf-8"))
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert manifest["pack_name"] == "regression_export_pack"
+    assert all(item["task_kind"] == "regression" for item in manifest["benchmarks"])
+    assert all(item["status"] == "ok" for item in exported_results)
+    assert all(item["metric_name"] == "mse" for item in exported_results)
+    assert summary["completed_benchmarks"] == 2
+    assert summary["failure_count"] == 0
+    assert summary["median_benchmark_quality"] is not None
+
+
 def test_inspect_command_handles_empty_run_dir(tmp_path) -> None:
     runner = CliRunner()
     run_dir = tmp_path / "empty_run"

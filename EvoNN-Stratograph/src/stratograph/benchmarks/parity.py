@@ -173,8 +173,9 @@ def fallback_native_id(entry: ParityBenchmark, system: str = "stratograph") -> s
         native_ids.get(system)
         or native_ids.get("prism")
         or native_ids.get("topograph")
-        or native_ids.get("evonn")
         or native_ids.get("evonn2")
+        or native_ids.get("hybrid")
+        or native_ids.get("evonn")
         or get_native_id(entry.benchmark_id)
     )
 

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from stratograph.benchmarks import get_benchmark, list_benchmarks, load_parity_pack
+from stratograph.benchmarks import get_benchmark, list_benchmarks, load_pack_specs, load_parity_pack
 from stratograph.benchmarks.spec import BenchmarkSpec
 
 
@@ -45,3 +45,30 @@ def test_local_csv_spec_loads(tmp_path) -> None:
     assert x_train.shape[1] == 2
     assert x_val.shape[1] == 2
     assert set(y_train.tolist() + y_val.tolist()) == {0, 1}
+
+
+def test_regression_catalog_specs_load() -> None:
+    diabetes = get_benchmark("diabetes")
+    friedman1 = get_benchmark("friedman1")
+
+    dx_train, dy_train, dx_val, dy_val = diabetes.load_data(seed=42)
+    fx_train, fy_train, fx_val, fy_val = friedman1.load_data(seed=42)
+
+    assert diabetes.task == "regression"
+    assert friedman1.task == "regression"
+    assert dx_train.shape[1] == 10
+    assert fx_train.shape[1] == 10
+    assert dy_train.dtype.name == "float32"
+    assert fy_train.dtype.name == "float32"
+    assert dx_val.shape[0] > 0
+    assert fx_val.shape[0] > 0
+    assert dy_val.ndim == 1
+    assert fy_val.ndim == 1
+
+
+def test_tier1_core_pack_resolves_stratograph_regression_specs(repo_root) -> None:
+    specs = load_pack_specs(repo_root.parent / "EvoNN-Compare" / "parity_packs" / "tier1_core.yaml")
+    names = [spec.name for spec in specs]
+
+    assert "diabetes" in names
+    assert "friedman1" in names

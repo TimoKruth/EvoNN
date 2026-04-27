@@ -161,6 +161,9 @@ class BenchmarkSpec(BaseModel):
         if self.dataset == "load_breast_cancer":
             data = skd.load_breast_cancer()
             return data.data, data.target
+        if self.dataset == "load_diabetes":
+            data = skd.load_diabetes()
+            return data.data, data.target
         if self.dataset == "make_moons":
             return skd.make_moons(n_samples=self.n_samples, noise=self.noise, random_state=seed)
         if self.dataset == "make_circles":
@@ -178,6 +181,14 @@ class BenchmarkSpec(BaseModel):
                 cluster_std=self.cluster_std,
                 random_state=seed,
             )
+        if self.dataset == "make_friedman1":
+            x, y = skd.make_friedman1(
+                n_samples=self.n_samples,
+                n_features=self.model_input_dim,
+                noise=self.noise,
+                random_state=seed,
+            )
+            return x, y
         raise ValueError(f"Unknown sklearn dataset: {self.dataset}")
 
     @classmethod

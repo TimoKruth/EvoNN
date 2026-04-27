@@ -78,6 +78,17 @@ if MLX_AVAILABLE:  # pragma: no branch
             return self.fc2(self.act(self.fc1(x)))
 
 
+    class RegressionHead(nn.Module):
+        def __init__(self, feature_dim: int, hidden_dim: int):
+            super().__init__()
+            self.fc1 = nn.Linear(feature_dim, hidden_dim)
+            self.act = nn.GELU()
+            self.fc2 = nn.Linear(hidden_dim, 1)
+
+        def __call__(self, x):
+            return self.fc2(self.act(self.fc1(x)))
+
+
     class LanguageModelHead(nn.Module):
         def __init__(self, feature_dim: int, vocab_size: int):
             super().__init__()
@@ -215,6 +226,21 @@ def evaluate_candidate_with_state(
                     learning_rate=learning_rate,
                 )
                 quality = -metric_value
+            elif spec.task == "regression":
+                predictions, training_artifact, head_params = _predict_regression_mlx(
+                    spec=spec,
+                    genome=genome,
+                    train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
+                    y_train=y_train,
+                    val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
+                    y_val=y_val,
+                    inherited_state=inherited_state,
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    learning_rate=learning_rate,
+                )
+                metric_value = float(np.mean((predictions - y_val.astype(np.float32)) ** 2))
+                quality = -metric_value
             else:
                 predictions, training_artifact, head_params = _predict_classification_mlx(
                     spec=spec,
@@ -244,6 +270,21 @@ def evaluate_candidate_with_state(
                     batch_size=batch_size,
                     learning_rate=learning_rate,
                 )
+                quality = -metric_value
+            elif spec.task == "regression":
+                predictions, training_artifact, head_params = _predict_regression_numpy(
+                    spec=spec,
+                    genome=genome,
+                    train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
+                    y_train=y_train,
+                    val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
+                    y_val=y_val,
+                    inherited_state=inherited_state,
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    learning_rate=learning_rate,
+                )
+                metric_value = float(np.mean((predictions - y_val.astype(np.float32)) ** 2))
                 quality = -metric_value
             else:
                 predictions, training_artifact, head_params = _predict_classification_numpy(
@@ -364,6 +405,83 @@ def _predict_classification_mlx(
             "hidden_dim": hidden_dim,
             "num_classes": len(classes),
             "classes": classes.astype(np.int64),
+            "weights": best_snapshot,
+        },
+    )
+    return predictions, artifact, _mlx_count_parameters(model.parameters())
+
+
+def _predict_regression_mlx(
+    *,
+    spec: BenchmarkSpec,
+    genome: HierarchicalGenome,
+    train_features: np.ndarray,
+    y_train: np.ndarray,
+    val_features: np.ndarray,
+    y_val: np.ndarray,
+    inherited_state: TrainingArtifact | None,
+    epochs: int,
+    batch_size: int,
+    learning_rate: float,
+) -> tuple[np.ndarray, TrainingArtifact | None, int]:
+    if len(y_train) == 0:
+        return np.zeros(len(y_val), dtype=np.float32), None, 0
+    if np.std(y_train.astype(np.float32)) < 1e-8:
+        fill = float(np.mean(y_train, dtype=np.float32))
+        return np.full(len(y_val), fill_value=fill, dtype=np.float32), None, 0
+
+    fit_x, holdout_x, fit_y, holdout_y = train_test_split(
+        train_features,
+        y_train.astype(np.float32),
+        test_size=0.2 if len(y_train) >= 40 else 0.25,
+        random_state=42,
+    )
+    scaler = StandardScaler(with_mean=True, with_std=True)
+    fit_x_s = scaler.fit_transform(fit_x).astype(np.float32)
+    holdout_x_s = scaler.transform(holdout_x).astype(np.float32)
+    val_x_s = scaler.transform(val_features).astype(np.float32)
+    fit_y_s, target_mean, target_scale = _standardize_targets(fit_y)
+    holdout_y_s = ((holdout_y.astype(np.float32) - target_mean) / target_scale).reshape(-1, 1)
+
+    hidden_dim = _regressor_hidden_dim(spec, genome, fit_x_s.shape[1])
+    model = RegressionHead(int(fit_x_s.shape[1]), hidden_dim)
+    if _regression_artifact_matches(inherited_state, int(fit_x_s.shape[1]), hidden_dim):
+        load_weight_snapshot(model, inherited_state.payload.get("weights", {}))
+
+    optimizer = optim.AdamW(learning_rate=max(0.0025, learning_rate * 6.0), weight_decay=1e-4)
+    loss_and_grad = nn.value_and_grad(
+        model,
+        lambda m, x, y: mx.mean(mx.square(m(x) - y)),
+    )
+
+    best_snapshot = extract_weights(model)
+    best_loss = float("inf")
+    train_steps = max(10, epochs * (12 if spec.source == "image" else 10))
+
+    for epoch_index in range(train_steps):
+        for batch_x, batch_y in _iter_batches(fit_x_s, fit_y_s, batch_size=max(16, batch_size), seed=epoch_index):
+            _, grads = loss_and_grad(model, mx.array(batch_x), mx.array(batch_y))
+            optimizer.update(model, grads)
+            mx.eval(model.parameters(), optimizer.state)
+        holdout_pred = model(mx.array(holdout_x_s))
+        mx.eval(holdout_pred)
+        holdout_loss = float(np.mean((np.asarray(holdout_pred) - holdout_y_s) ** 2))
+        if holdout_loss <= best_loss:
+            best_loss = holdout_loss
+            best_snapshot = extract_weights(model)
+
+    load_weight_snapshot(model, best_snapshot)
+    val_pred = model(mx.array(val_x_s))
+    mx.eval(val_pred)
+    predictions = (np.asarray(val_pred).reshape(-1) * target_scale + target_mean).astype(np.float32)
+    artifact = TrainingArtifact(
+        task="regression",
+        model_name="neural_regressor",
+        payload={
+            "feature_dim": int(fit_x_s.shape[1]),
+            "hidden_dim": hidden_dim,
+            "target_mean": float(target_mean),
+            "target_scale": float(target_scale),
             "weights": best_snapshot,
         },
     )
@@ -531,6 +649,84 @@ def _predict_classification_numpy(
     return predictions, artifact, head_params
 
 
+def _predict_regression_numpy(
+    *,
+    spec: BenchmarkSpec,
+    genome: HierarchicalGenome,
+    train_features: np.ndarray,
+    y_train: np.ndarray,
+    val_features: np.ndarray,
+    y_val: np.ndarray,
+    inherited_state: TrainingArtifact | None,
+    epochs: int,
+    batch_size: int,
+    learning_rate: float,
+) -> tuple[np.ndarray, TrainingArtifact | None, int]:
+    if len(y_train) == 0:
+        return np.zeros(len(y_val), dtype=np.float32), None, 0
+    if np.std(y_train.astype(np.float32)) < 1e-8:
+        fill = float(np.mean(y_train, dtype=np.float32))
+        return np.full(len(y_val), fill_value=fill, dtype=np.float32), None, 0
+
+    fit_x, holdout_x, fit_y, holdout_y = train_test_split(
+        train_features,
+        y_train.astype(np.float32),
+        test_size=0.2 if len(y_train) >= 40 else 0.25,
+        random_state=42,
+    )
+    scaler = StandardScaler(with_mean=True, with_std=True)
+    fit_x_s = scaler.fit_transform(fit_x).astype(np.float32)
+    holdout_x_s = scaler.transform(holdout_x).astype(np.float32)
+    val_x_s = scaler.transform(val_features).astype(np.float32)
+    fit_y_s, target_mean, target_scale = _standardize_targets(fit_y)
+    holdout_y_s = ((holdout_y.astype(np.float32) - target_mean) / target_scale).reshape(-1, 1)
+
+    hidden_dim = _regressor_hidden_dim(spec, genome, fit_x_s.shape[1])
+    params = _init_regressor_params_numpy(
+        feature_dim=int(fit_x_s.shape[1]),
+        hidden_dim=hidden_dim,
+        inherited_state=inherited_state,
+    )
+    best_params = _copy_params_numpy(params)
+    best_loss = float("inf")
+    train_steps = max(10, epochs * (12 if spec.source == "image" else 10))
+    step_lr = max(0.0025, learning_rate * 6.0)
+
+    for epoch_index in range(train_steps):
+        for batch_x, batch_y in _iter_batches(fit_x_s, fit_y_s, batch_size=max(16, batch_size), seed=epoch_index):
+            grads = _regressor_grads_numpy(batch_x, batch_y, params, weight_decay=1e-4)
+            _apply_grads_numpy(params, grads, step_lr)
+        holdout_pred = _regressor_predict_numpy(holdout_x_s, params).reshape(-1, 1)
+        holdout_loss = float(np.mean((holdout_pred - holdout_y_s) ** 2))
+        if holdout_loss <= best_loss:
+            best_loss = holdout_loss
+            best_params = _copy_params_numpy(params)
+
+    predictions = (_regressor_predict_numpy(val_x_s, best_params) * target_scale + target_mean).astype(np.float32)
+    artifact = TrainingArtifact(
+        task="regression",
+        model_name="neural_regressor",
+        payload={
+            "feature_dim": int(fit_x_s.shape[1]),
+            "hidden_dim": hidden_dim,
+            "target_mean": float(target_mean),
+            "target_scale": float(target_scale),
+            "weights": {
+                "fc1.weight": best_params["w1"].T,
+                "fc1.bias": best_params["b1"],
+                "fc2.weight": best_params["w2"].T,
+                "fc2.bias": best_params["b2"],
+            },
+            "w1": best_params["w1"].astype(np.float32),
+            "b1": best_params["b1"].astype(np.float32),
+            "w2": best_params["w2"].astype(np.float32),
+            "b2": best_params["b2"].astype(np.float32),
+        },
+    )
+    head_params = int(best_params["w1"].size + best_params["b1"].size + best_params["w2"].size + best_params["b2"].size)
+    return predictions, artifact, head_params
+
+
 def _evaluate_language_modeling_numpy(
     compiled,
     genome: HierarchicalGenome,
@@ -670,10 +866,51 @@ def _init_lm_params_numpy(
     }
 
 
+def _init_regressor_params_numpy(
+    *,
+    feature_dim: int,
+    hidden_dim: int,
+    inherited_state: TrainingArtifact | None,
+) -> dict[str, np.ndarray]:
+    if (
+        inherited_state is not None
+        and inherited_state.model_name == "neural_regressor"
+        and int(inherited_state.payload.get("feature_dim", -1)) == feature_dim
+        and int(inherited_state.payload.get("hidden_dim", -1)) == hidden_dim
+    ):
+        if "w1" in inherited_state.payload:
+            return {
+                "w1": np.asarray(inherited_state.payload["w1"], dtype=np.float32).copy(),
+                "b1": np.asarray(inherited_state.payload["b1"], dtype=np.float32).copy(),
+                "w2": np.asarray(inherited_state.payload["w2"], dtype=np.float32).copy(),
+                "b2": np.asarray(inherited_state.payload["b2"], dtype=np.float32).copy(),
+            }
+        weights = inherited_state.payload.get("weights", {})
+        if weights:
+            return {
+                "w1": np.asarray(weights["fc1.weight"], dtype=np.float32).T.copy(),
+                "b1": np.asarray(weights["fc1.bias"], dtype=np.float32).copy(),
+                "w2": np.asarray(weights["fc2.weight"], dtype=np.float32).T.copy(),
+                "b2": np.asarray(weights["fc2.bias"], dtype=np.float32).copy(),
+            }
+    rng = np.random.default_rng(211 + feature_dim + hidden_dim)
+    return {
+        "w1": (rng.normal(scale=1.0 / max(1, feature_dim) ** 0.5, size=(feature_dim, hidden_dim))).astype(np.float32),
+        "b1": np.zeros(hidden_dim, dtype=np.float32),
+        "w2": (rng.normal(scale=1.0 / max(1, hidden_dim) ** 0.5, size=(hidden_dim, 1))).astype(np.float32),
+        "b2": np.zeros(1, dtype=np.float32),
+    }
+
+
 def _classifier_predict_numpy(x: np.ndarray, params: dict[str, np.ndarray], classes: np.ndarray) -> np.ndarray:
     hidden = _gelu_numpy(x @ params["w1"] + params["b1"])
     logits = hidden @ params["w2"] + params["b2"]
     return classes[np.argmax(logits, axis=1)]
+
+
+def _regressor_predict_numpy(x: np.ndarray, params: dict[str, np.ndarray]) -> np.ndarray:
+    hidden = _gelu_numpy(x @ params["w1"] + params["b1"])
+    return (hidden @ params["w2"] + params["b2"]).reshape(-1)
 
 
 def _classifier_grads_numpy(
@@ -693,6 +930,25 @@ def _classifier_grads_numpy(
     grads_w2 = hidden.T @ probs + weight_decay * params["w2"]
     grads_b2 = probs.sum(axis=0)
     hidden_grad = (probs @ params["w2"].T) * _gelu_grad_numpy(hidden_pre)
+    grads_w1 = x.T @ hidden_grad + weight_decay * params["w1"]
+    grads_b1 = hidden_grad.sum(axis=0)
+    return {"w1": grads_w1, "b1": grads_b1, "w2": grads_w2, "b2": grads_b2}
+
+
+def _regressor_grads_numpy(
+    x: np.ndarray,
+    y: np.ndarray,
+    params: dict[str, np.ndarray],
+    *,
+    weight_decay: float,
+) -> dict[str, np.ndarray]:
+    hidden_pre = x @ params["w1"] + params["b1"]
+    hidden = _gelu_numpy(hidden_pre)
+    predictions = hidden @ params["w2"] + params["b2"]
+    prediction_grad = (2.0 / max(1, len(y))) * (predictions - y.reshape(-1, 1))
+    grads_w2 = hidden.T @ prediction_grad + weight_decay * params["w2"]
+    grads_b2 = prediction_grad.sum(axis=0)
+    hidden_grad = (prediction_grad @ params["w2"].T) * _gelu_grad_numpy(hidden_pre)
     grads_w1 = x.T @ hidden_grad + weight_decay * params["w1"]
     grads_b1 = hidden_grad.sum(axis=0)
     return {"w1": grads_w1, "b1": grads_b1, "w2": grads_w2, "b2": grads_b2}
@@ -767,6 +1023,19 @@ def _classification_artifact_matches(
     )
 
 
+def _regression_artifact_matches(
+    artifact: TrainingArtifact | None,
+    feature_dim: int,
+    hidden_dim: int,
+) -> bool:
+    return bool(
+        artifact is not None
+        and artifact.model_name == "neural_regressor"
+        and int(artifact.payload.get("feature_dim", -1)) == feature_dim
+        and int(artifact.payload.get("hidden_dim", -1)) == hidden_dim
+    )
+
+
 def _lm_artifact_matches(
     artifact: TrainingArtifact | None,
     feature_dim: int,
@@ -786,6 +1055,12 @@ def _classifier_hidden_dim(spec: BenchmarkSpec, genome: HierarchicalGenome, feat
     return max(16, min(128, base + depth_bonus, max(num_classes * 8, min(feature_dim, 128))))
 
 
+def _regressor_hidden_dim(spec: BenchmarkSpec, genome: HierarchicalGenome, feature_dim: int) -> int:
+    base = 32 if spec.source != "image" else 48
+    depth_bonus = int((genome.macro_depth - 1) * 8 + genome.reuse_ratio * 16)
+    return max(16, min(128, base + depth_bonus, max(24, min(feature_dim, 128))))
+
+
 def _iter_batches(
     x: np.ndarray,
     y: np.ndarray,
@@ -798,6 +1073,16 @@ def _iter_batches(
     for start in range(0, len(order), batch_size):
         index = order[start : start + batch_size]
         yield x[index], y[index]
+
+
+def _standardize_targets(y: np.ndarray) -> tuple[np.ndarray, float, float]:
+    y = y.astype(np.float32)
+    mean = float(np.mean(y))
+    scale = float(np.std(y))
+    if scale < 1e-6:
+        scale = 1.0
+    standardized = ((y - mean) / scale).astype(np.float32).reshape(-1, 1)
+    return standardized, mean, scale
 
 
 def _cap_data(
