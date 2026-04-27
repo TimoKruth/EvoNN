@@ -24,6 +24,10 @@ def _normalized_cli_output(text: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
+def _invoke_help(*args: str):
+    return runner.invoke(app, [*args, "--help"], color=False)
+
+
 def test_root_help() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
@@ -33,13 +37,13 @@ def test_root_help() -> None:
 
 
 def test_validate_help() -> None:
-    result = runner.invoke(app, ["validate", "--help"])
+    result = _invoke_help("validate")
     assert result.exit_code == 0
     assert "--pack" in _normalized_cli_output(result.stdout)
 
 
 def test_campaign_help() -> None:
-    result = runner.invoke(app, ["campaign", "--help"])
+    result = _invoke_help("campaign")
     assert result.exit_code == 0
     text = _normalized_cli_output(result.stdout)
     assert "--workspace" in text
@@ -50,7 +54,7 @@ def test_campaign_help() -> None:
 
 
 def test_fair_matrix_help() -> None:
-    result = runner.invoke(app, ["fair-matrix", "--help"])
+    result = _invoke_help("fair-matrix")
     assert result.exit_code == 0
     text = _normalized_cli_output(result.stdout)
     assert "--primordia-root" in text
@@ -63,7 +67,7 @@ def test_fair_matrix_help() -> None:
 
 
 def test_trend_report_help() -> None:
-    result = runner.invoke(app, ["trend-report", "--help"])
+    result = _invoke_help("trend-report")
     assert result.exit_code == 0
     text = _normalized_cli_output(result.stdout)
     assert "--system" in text
@@ -72,7 +76,7 @@ def test_trend_report_help() -> None:
 
 
 def test_dashboard_help() -> None:
-    result = runner.invoke(app, ["dashboard", "--help"])
+    result = _invoke_help("dashboard")
     assert result.exit_code == 0
     text = _normalized_cli_output(result.stdout)
     assert "--output" in text
@@ -81,7 +85,7 @@ def test_dashboard_help() -> None:
 
 
 def test_workspace_report_help() -> None:
-    result = runner.invoke(app, ["workspace-report", "--help"])
+    result = _invoke_help("workspace-report")
     assert result.exit_code == 0
     text = _normalized_cli_output(result.stdout)
     assert "Fair-matrix workspace root" in text
@@ -90,7 +94,7 @@ def test_workspace_report_help() -> None:
 
 
 def test_hybrid_help() -> None:
-    result = runner.invoke(app, ["hybrid", "run", "--help"])
+    result = _invoke_help("hybrid", "run")
     assert result.exit_code == 0
     assert "--population" in _normalized_cli_output(result.stdout)
 
