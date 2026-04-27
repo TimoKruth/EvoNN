@@ -30,14 +30,33 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Seed: `{run['seed']}`",
         f"- Benchmarks: `{len(results)}`",
         f"- Contender evals: `{budget_meta.get('evaluation_count', len(contenders))}`",
+        f"- Optional contenders skipped: `{budget_meta.get('optional_missing_count', 0)}`",
         f"- Successful benchmarks: `{ok}`",
         f"- Failed benchmarks: `{failed}`",
         "",
-        "## Best Per Benchmark",
-        "",
-        "| Benchmark | Contender | Metric | Value | Status |",
-        "|---|---|---|---:|---|",
     ]
+    optional_missing = budget_meta.get("optional_missing_by_group") or {}
+    if optional_missing:
+        lines.extend(
+            [
+                "## Optional Contenders Skipped",
+                "",
+                "| Group | Contenders |",
+                "|---|---|",
+            ]
+        )
+        for group, names in sorted(optional_missing.items()):
+            lines.append(f"| {group} | {', '.join(sorted(names))} |")
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Best Per Benchmark",
+            "",
+            "| Benchmark | Contender | Metric | Value | Status |",
+            "|---|---|---|---:|---|",
+        ]
+    )
     for record in results:
         value = record["metric_value"]
         display = "---" if value is None else f"{value:.6f}"

@@ -69,6 +69,7 @@ def run_contenders(
     evaluation_count = 0
     executed_evaluation_count = 0
     cache_hits = 0
+    optional_missing_by_group: dict[str, list[str]] = {}
     group_counts = {"tabular": 0, "synthetic": 0, "image": 0, "language_modeling": 0}
     _emit_progress(
         f"start run_id={run_id} benchmarks={len(config.benchmark_pool.benchmarks)} "
@@ -79,7 +80,12 @@ def run_contenders(
     for benchmark_index, benchmark_name in enumerate(config.benchmark_pool.benchmarks, start=1):
         spec = get_benchmark(benchmark_name)
         group = benchmark_group(spec)
-        trials = _resolve_trials(config, benchmark_name=benchmark_name, group=group)
+        trials = _resolve_trials(
+            config,
+            benchmark_name=benchmark_name,
+            group=group,
+            optional_missing_by_group=optional_missing_by_group,
+        )
         group_counts[group] += 1
         evaluation_count += len(trials)
         _emit_progress(
@@ -157,6 +163,8 @@ def run_contenders(
             "evaluation_count": evaluation_count,
             "executed_evaluation_count": executed_evaluation_count,
             "cache_hits": cache_hits,
+            "optional_missing_by_group": optional_missing_by_group,
+            "optional_missing_count": sum(len(names) for names in optional_missing_by_group.values()),
             "created_at": created_at,
             "benchmark_count": len(config.benchmark_pool.benchmarks),
             "tabular_benchmark_count": group_counts["tabular"],
@@ -218,6 +226,7 @@ def materialize_baseline_run(
     )
 
     evaluation_count = 0
+    optional_missing_by_group: dict[str, list[str]] = {}
     group_counts = {"tabular": 0, "synthetic": 0, "image": 0, "language_modeling": 0}
     _emit_progress(
         f"materialize run_id={run_id} benchmarks={len(config.benchmark_pool.benchmarks)} baseline={baseline_id}"
@@ -227,7 +236,12 @@ def materialize_baseline_run(
         spec = get_benchmark(benchmark_name)
         group = benchmark_group(spec)
         group_counts[group] += 1
-        trials = _resolve_trials(config, benchmark_name=benchmark_name, group=group)
+        trials = _resolve_trials(
+            config,
+            benchmark_name=benchmark_name,
+            group=group,
+            optional_missing_by_group=optional_missing_by_group,
+        )
         evaluation_count += len(trials)
 
         cached_records = baseline_store.load_contenders_for_benchmark(baseline_id, benchmark_name)
@@ -249,6 +263,8 @@ def materialize_baseline_run(
             "evaluation_count": evaluation_count,
             "executed_evaluation_count": 0,
             "cache_hits": len(config.benchmark_pool.benchmarks),
+            "optional_missing_by_group": optional_missing_by_group,
+            "optional_missing_count": sum(len(names) for names in optional_missing_by_group.values()),
             "created_at": created_at,
             "benchmark_count": len(config.benchmark_pool.benchmarks),
             "tabular_benchmark_count": group_counts["tabular"],
@@ -367,12 +383,23 @@ def _update_baseline_budget_metadata(
     )
 
 
-def _resolve_trials(config: RunConfig, *, benchmark_name: str, group: str) -> list[ContenderTrial]:
+def _resolve_trials(
+    config: RunConfig,
+    *,
+    benchmark_name: str,
+    group: str,
+    optional_missing_by_group: dict[str, list[str]] | None = None,
+) -> list[ContenderTrial]:
     contender_names = contender_names_for_config(config, group)
     if config.selection.max_contenders_per_benchmark is not None:
         contender_names = contender_names[: config.selection.max_contenders_per_benchmark]
     contenders = resolve_contenders(group, contender_names)
-    contenders = _filter_unavailable_optional_contenders(contenders, config=config)
+    contenders, missing_optional = _filter_unavailable_optional_contenders(contenders, config=config)
+    if optional_missing_by_group is not None and missing_optional:
+        known = optional_missing_by_group.setdefault(group, [])
+        for name in missing_optional:
+            if name not in known:
+                known.append(name)
     if not contenders:
         raise ValueError(
             f"no runnable contenders configured for group '{group}' "
@@ -399,8 +426,11 @@ def _resolve_trials(config: RunConfig, *, benchmark_name: str, group: str) -> li
     return trials
 
 
-def _filter_unavailable_optional_contenders(contenders: list[object], *, config: RunConfig) -> list[object]:
+def _filter_unavailable_optional_contenders(
+    contenders: list[object], *, config: RunConfig
+) -> tuple[list[object], list[str]]:
     available: list[object] = []
+    missing_optional: list[str] = []
     for contender in contenders:
         dependency = getattr(contender, "optional_dependency", None)
         if dependency is None or importlib.util.find_spec(dependency) is not None:
@@ -409,12 +439,14 @@ def _filter_unavailable_optional_contenders(contenders: list[object], *, config:
 
         if dependency == "torch":
             if getattr(config.torch, "allow_optional_missing", True):
+                missing_optional.append(getattr(contender, "name", dependency))
                 continue
         elif getattr(config.boosted_trees, "allow_optional_missing", True):
+            missing_optional.append(getattr(contender, "name", dependency))
             continue
 
         available.append(contender)
-    return available
+    return available, missing_optional
 
 
 def _budget_matched_slots(config: RunConfig, *, benchmark_name: str) -> int:

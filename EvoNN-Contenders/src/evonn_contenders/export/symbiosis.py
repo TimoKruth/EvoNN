@@ -157,7 +157,10 @@ def export_symbiosis_contract(
     results_path = output_dir / "results.json"
     manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     write_json(results_path, [record.model_dump(mode="json") for record in result_records])
-    write_json(output_dir / "summary.json", _build_contract_summary(run=run, manifest=manifest, results=result_records))
+    write_json(
+        output_dir / "summary.json",
+        _build_contract_summary(run=run, manifest=manifest, results=result_records, budget_meta=budget_meta),
+    )
     return manifest_path, results_path
 
 
@@ -184,7 +187,9 @@ def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]])
     return candidates[0]
 
 
-def _build_contract_summary(*, run: dict[str, Any], manifest: RunManifest, results: list[ResultRecord]) -> dict[str, Any]:
+def _build_contract_summary(
+    *, run: dict[str, Any], manifest: RunManifest, results: list[ResultRecord], budget_meta: dict[str, Any]
+) -> dict[str, Any]:
     successful = [record for record in results if record.status == "ok"]
     metric_values = [float(record.metric_value) for record in successful if record.metric_value is not None]
     parameter_counts = [int(record.parameter_count) for record in successful if record.parameter_count is not None]
@@ -217,6 +222,8 @@ def _build_contract_summary(*, run: dict[str, Any], manifest: RunManifest, resul
         "failure_count": len(failed),
         "failure_patterns": failure_patterns,
         "benchmarks_evaluated": len(results),
+        "optional_missing_by_group": budget_meta.get("optional_missing_by_group") or {},
+        "optional_missing_count": int(budget_meta.get("optional_missing_count", 0)),
     }
 
 

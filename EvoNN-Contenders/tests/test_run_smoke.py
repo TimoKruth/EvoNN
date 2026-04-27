@@ -397,14 +397,21 @@ selection:
     store = RunStore(run_dir / "metrics.duckdb")
     contenders = store.load_contenders("run")
     results = store.load_results("run")
+    meta = store.load_budget_metadata("run")
     store.close()
 
     contender_names = {record["contender_name"] for record in contenders}
     assert "xgb_small" not in contender_names
     assert "lgbm_small" not in contender_names
     assert "catboost_small" not in contender_names
+    assert meta["optional_missing_count"] == 3
+    assert meta["optional_missing_by_group"] == {"tabular": ["xgb_small", "lgbm_small", "catboost_small"]}
     assert all(record["status"] == "ok" for record in contenders)
     assert results[0]["status"] == "ok"
+
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Optional contenders skipped" in report
+    assert "catboost_small, lgbm_small, xgb_small" in report
 
 
 def test_run_contenders_emits_progress_lines(tmp_path: Path, capsys) -> None:
