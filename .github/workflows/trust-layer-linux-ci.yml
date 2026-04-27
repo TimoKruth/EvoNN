@@ -68,8 +68,8 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
 
-      - name: Install ${{ matrix.label }} dev dependencies
-        run: uv sync --package ${{ matrix.package }} --extra dev
+      - name: Install workspace dev dependencies
+        run: uv sync --all-packages --extra dev
 
       - name: Validate ${{ matrix.label }}
         run: bash ${{ matrix.script }} all
