@@ -439,6 +439,88 @@ primitive_pool:
     assert "## Benchmark Slot Plan" in report
 
 
+def test_offspring_mutation_reuses_parent_genome_payload(tmp_path: Path, monkeypatch) -> None:
+    class InheritanceRuntime(FakeRuntimeBindings):
+        def mutate_genome(self, genome, slot_index: int, allowed_families: list[str], config):
+            del slot_index, allowed_families, config
+            width = genome.hidden_layers[0] + 1
+            return FakeGenome(
+                family=genome.family,
+                hidden_layers=[width] * len(genome.hidden_layers),
+                learning_rate=getattr(genome, "learning_rate", 1e-3),
+                weight_decay=getattr(genome, "weight_decay", 0.0),
+                norm_type=getattr(genome, "norm_type", "none"),
+            ), "width+1"
+
+        def train_and_evaluate(
+            self,
+            model: object,
+            x_train,
+            y_train,
+            x_val,
+            y_val,
+            *,
+            task: str,
+            epochs: int,
+            lr: float,
+            batch_size: int,
+            parameter_count: int,
+        ) -> FakeEvalResult:
+            del x_train, y_train, x_val, y_val, task, epochs, lr, batch_size
+            width = int(model["genome"].split("-")[1].split("x")[0])
+            metric_value = width / 100.0
+            return FakeEvalResult(
+                metric_name="accuracy",
+                metric_value=metric_value,
+                quality=metric_value,
+                parameter_count=parameter_count,
+                train_seconds=0.01,
+            )
+
+    runtime = InheritanceRuntime(runtime_backend="numpy-fallback", runtime_version="phase3-inheritance")
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
+    config_path = tmp_path / "inheritance.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: phase3_inheritance
+runtime:
+  backend: numpy-fallback
+benchmark_pool:
+  name: phase3_inheritance
+  benchmarks: [iris]
+search:
+  mode: budget_matched
+  target_evaluation_count: 3
+  population_size: 1
+  mutation_rounds_per_parent: 1
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "inheritance_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+    trials = json.loads((run_dir / "trial_records.json").read_text(encoding="utf-8"))
+
+    widths = [row["genome_payload"]["hidden_layers"][0] for row in trials]
+    generations = [row["generation"] for row in trials]
+
+    assert generations == [0, 1, 2]
+    assert widths == [64, 65, 66]
+    assert trials[1]["parent_genome_id"] == trials[0]["genome_id"]
+    assert trials[2]["parent_genome_id"] == trials[1]["genome_id"]
+    assert trials[1]["mutation_operator"] == "width+1"
+    assert trials[2]["mutation_operator"] == "width+1"
+
+
 def test_export_uses_recorded_runtime_metadata(tmp_path: Path, fake_runtime) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(

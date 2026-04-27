@@ -14,6 +14,7 @@ import numpy as np
 from evonn_primordia.config import RunConfig
 from evonn_primordia.export.report import build_primitive_bank_summary, write_report
 from evonn_primordia.export.seeding import build_seed_candidates
+from evonn_primordia.genome import ModelGenome
 from evonn_primordia.objectives import candidate_signature, search_score
 from evonn_primordia.runtime.backends import RuntimeBindings, resolve_runtime_bindings
 from evonn_primordia.search_state import CandidateSeed, EliteArchive
@@ -404,10 +405,10 @@ def _spawn_offspring(
     offspring: list[CandidateSeed] = []
     for index in range(count):
         parent = parents[index % len(parents)]
-        genome = runtime.create_seed_genome(
-            str(parent.get("primitive_family") or allowed_families[index % len(allowed_families)]),
-            config.search.seed_hidden_width,
-            config.search.seed_hidden_layers,
+        genome = _rebuild_parent_genome(
+            parent,
+            fallback_family=allowed_families[index % len(allowed_families)],
+            config=config,
         )
         parent_id = str(parent.get("genome_id")) if parent.get("genome_id") is not None else None
         mutation_label = None
@@ -515,6 +516,7 @@ def _evaluate_candidate(
             "train_seconds": result.train_seconds,
             "architecture_summary": _architecture_summary(genome),
             "genome_id": getattr(genome, "genome_id", primitive_label),
+            "genome_payload": _serialize_genome_payload(genome),
             "status": "ok" if result.failure_reason is None else "failed",
             "failure_reason": result.failure_reason,
             "seed": seed_value,
@@ -540,6 +542,7 @@ def _evaluate_candidate(
             "train_seconds": 0.0,
             "architecture_summary": _architecture_summary(genome),
             "genome_id": getattr(genome, "genome_id", primitive_label),
+            "genome_payload": _serialize_genome_payload(genome),
             "status": "failed",
             "failure_reason": str(exc),
             "seed": seed_value,
@@ -566,6 +569,40 @@ def _evaluate_candidate(
 
 def _load_runtime_bindings(config: RunConfig) -> RuntimeBindings:
     return resolve_runtime_bindings(config)
+
+
+def _serialize_genome_payload(genome: Any) -> dict[str, Any]:
+    if hasattr(genome, "model_dump"):
+        return dict(genome.model_dump())
+    payload = {
+        "family": getattr(genome, "family", "mlp"),
+        "hidden_layers": list(getattr(genome, "hidden_layers", [64])),
+        "activation": getattr(genome, "activation", "relu"),
+        "dropout": getattr(genome, "dropout", 0.0),
+        "residual": getattr(genome, "residual", False),
+        "activation_sparsity": getattr(genome, "activation_sparsity", 0.0),
+        "learning_rate": getattr(genome, "learning_rate", 1e-3),
+        "kernel_size": getattr(genome, "kernel_size", 3),
+        "embedding_dim": getattr(genome, "embedding_dim", 64),
+        "num_heads": getattr(genome, "num_heads", 4),
+        "norm_type": getattr(genome, "norm_type", "none"),
+        "weight_decay": getattr(genome, "weight_decay", 0.0),
+        "num_experts": getattr(genome, "num_experts", 0),
+        "moe_top_k": getattr(genome, "moe_top_k", 2),
+    }
+    return payload
+
+
+def _rebuild_parent_genome(parent: dict[str, Any], *, fallback_family: str, config: RunConfig) -> ModelGenome:
+    payload = dict(parent.get("genome_payload") or {})
+    if not payload:
+        payload = {
+            "family": str(parent.get("primitive_family") or fallback_family),
+            "hidden_layers": [config.search.seed_hidden_width] * config.search.seed_hidden_layers,
+        }
+    payload.setdefault("family", str(parent.get("primitive_family") or fallback_family))
+    payload.setdefault("hidden_layers", [config.search.seed_hidden_width] * config.search.seed_hidden_layers)
+    return ModelGenome.model_validate(payload)
 
 
 def _allowed_families(runtime: RuntimeBindings, config: RunConfig, group: str, modality: str) -> list[str]:
