@@ -44,6 +44,9 @@ def export_symbiosis_contract(
     _write_summary_json(output_dir / "contender_summary.json", contenders)
     _write_summary_json(output_dir / "model_summary.json", results)
     exported_budget_policy_name = _export_budget_policy_name(budget_meta.get("budget_policy_name"))
+    evaluation_count = int(budget_meta.get("evaluation_count", len(contenders)))
+    executed_evaluation_count = int(budget_meta.get("executed_evaluation_count", evaluation_count))
+    cached_evaluation_count = max(evaluation_count - executed_evaluation_count, 0)
     exported_epochs_per_candidate = _export_epochs_per_candidate(
         pack_epochs_per_candidate=pack.budget_policy.epochs_per_candidate,
         budget_policy_name=exported_budget_policy_name,
@@ -107,20 +110,20 @@ def export_symbiosis_contract(
         seed=config.seed,
         benchmarks=manifest_benchmarks,
         budget=BudgetEnvelope(
-            evaluation_count=budget_meta.get("evaluation_count", len(contenders)),
+            evaluation_count=evaluation_count,
             epochs_per_candidate=exported_epochs_per_candidate,
             effective_training_epochs=1,
             generations=1,
-            population_size=budget_meta.get("evaluation_count", len(contenders)),
+            population_size=evaluation_count,
             budget_policy_name=exported_budget_policy_name,
-            actual_evaluations=budget_meta.get("evaluation_count", len(contenders)),
-            cached_evaluations=0,
+            actual_evaluations=executed_evaluation_count,
+            cached_evaluations=cached_evaluation_count,
             failed_evaluations=sum(1 for record in result_records if record.status == "failed"),
             invalid_evaluations=0,
             partial_run=any(record.status != "ok" for record in result_records),
             evaluation_semantics=(
                 "one contender fit/eval pass counted per contender in the configured pool; "
-                "failed fits still count, cache hits do not apply"
+                "failed fits still count; cache/materialized results are reported via cached_evaluations"
             ),
         ),
         device=DeviceInfo(
@@ -140,7 +143,7 @@ def export_symbiosis_contract(
         fairness=fairness_manifest(
             pack_name=pack.name,
             seed=config.seed,
-            evaluation_count=budget_meta.get("evaluation_count", len(contenders)),
+            evaluation_count=evaluation_count,
             budget_policy_name=exported_budget_policy_name,
             benchmark_entries=[entry.model_dump(mode="json") for entry in manifest_benchmarks],
             data_signature=benchmark_signature(

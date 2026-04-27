@@ -299,9 +299,71 @@ seed_policy:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     assert manifest["budget"]["evaluation_count"] == 6
+    assert manifest["budget"]["actual_evaluations"] == 6
+    assert manifest["budget"]["cached_evaluations"] == 0
     assert manifest["budget"]["epochs_per_candidate"] == 20
     assert manifest["budget"]["effective_training_epochs"] == 1
     assert manifest["budget"]["budget_policy_name"] == "prototype_equal_budget"
+
+
+def test_export_reports_cached_evaluations_for_materialized_run(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: cached_contenders
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+baseline:
+  baseline_id: smoke_fixed
+  cache_dir: baseline-cache
+contender_pool:
+  tabular: [logistic, hist_gb]
+  synthetic: [hist_gb]
+  image: [mlp]
+  language_modeling: [bigram_lm]
+selection:
+  max_contenders_per_benchmark: 2
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    pack_path = tmp_path / "compare_pack.yaml"
+    pack_path.write_text(
+        """
+name: smoke_pack
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      contenders: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+budget_policy:
+  evaluation_count: 2
+  epochs_per_candidate: 1
+seed_policy:
+  mode: shared
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+    seed_run = tmp_path / "run_seed"
+    run_contenders(config, run_dir=seed_run, config_path=config_path)
+    materialized = tmp_path / "run_materialized"
+    materialize_baseline_run(config, run_dir=materialized, config_path=config_path)
+
+    manifest_path, _ = export_symbiosis_contract(materialized, pack_path, materialized)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["budget"]["evaluation_count"] == 2
+    assert manifest["budget"]["actual_evaluations"] == 0
+    assert manifest["budget"]["cached_evaluations"] == 2
 
 
 def test_optional_missing_contenders_are_skipped_by_default(tmp_path: Path, monkeypatch) -> None:
