@@ -439,6 +439,53 @@ primitive_pool:
     assert "## Benchmark Slot Plan" in report
 
 
+def test_search_leader_surfaces_capture_benchmark_and_family_bests(tmp_path: Path, fake_runtime) -> None:
+    config_path = tmp_path / "leaders.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: phase3_leaders
+benchmark_pool:
+  name: phase3_leaders
+  benchmarks: [iris, tiny_lm_synthetic]
+search:
+  mode: budget_matched
+  target_evaluation_count: 4
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp, sparse_mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding, attention]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "leaders_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    leaders = json.loads((run_dir / "search_leaders.json").read_text(encoding="utf-8"))
+    primitive_bank = json.loads((run_dir / "primitive_bank_summary.json").read_text(encoding="utf-8"))
+
+    assert {row["benchmark_name"] for row in summary["benchmark_leaders"]} == {"iris", "tiny_lm_synthetic"}
+    assert any(row["leader_family"] == "sparse_mlp" and row["benchmark_name"] == "iris" for row in summary["benchmark_leaders"])
+    assert any(row["family"] == "attention" and row["benchmark_wins"] == 1 for row in summary["family_leaders"])
+    assert leaders == {
+        "benchmark_leaders": summary["benchmark_leaders"],
+        "family_leaders": summary["family_leaders"],
+    }
+    sparse_family = next(row for row in primitive_bank["primitive_families"] if row["family"] == "sparse_mlp")
+    assert sparse_family["best_generation"] == 0
+    assert sparse_family["best_search_score"] is not None
+    assert sparse_family["supporting_benchmarks"] == ["iris"]
+    assert "## Benchmark Leaders" in report
+    assert "## Family Leaders" in report
+
+
 def test_offspring_mutation_reuses_parent_genome_payload(tmp_path: Path, monkeypatch) -> None:
     class InheritanceRuntime(FakeRuntimeBindings):
         def mutate_genome(self, genome, slot_index: int, allowed_families: list[str], config):
@@ -1321,8 +1368,12 @@ primitive_pool:
             "evaluation_count": 1,
             "benchmark_wins": 1,
             "benchmarks_won": ["iris"],
+            "supporting_benchmarks": ["iris"],
+            "benchmark_groups": ["tabular"],
             "best_metric_name": "accuracy",
             "best_metric_value": 0.78,
+            "best_search_score": primitive_bank_summary["primitive_families"][0]["best_search_score"],
+            "best_generation": 0,
             "representative_genome_id": "mlp-64x64",
             "representative_architecture_summary": "mlp[64x64]",
         }
@@ -1335,6 +1386,8 @@ primitive_pool:
     assert "## Primitive Bank Summary" in regenerated
     assert "| Family | Evaluations | Benchmark Wins | Won Benchmarks | Best Metric | Best Value | Representative Genome | Representative Architecture |" in regenerated
     assert "| mlp | 1 | 1 | iris | accuracy | 0.780000 | mlp-64x64 | mlp[64x64] |" in regenerated
+    assert "## Benchmark Leaders" in regenerated
+    assert "## Family Leaders" in regenerated
     assert "## Benchmark Group Coverage" in regenerated
     assert "| tabular | 1 |" in regenerated
     assert "## Failure Summary" in regenerated

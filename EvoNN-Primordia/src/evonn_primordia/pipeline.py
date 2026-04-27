@@ -198,6 +198,7 @@ def run_search(
     wall_clock_seconds = perf_counter() - started_clock
     failure_count = sum(1 for record in executed_records if record.get("status") != "ok")
     success_count = sum(1 for record in executed_records if record.get("status") == "ok")
+    benchmark_leaders, family_leaders = _build_search_leader_surfaces(best_results, executed_records)
     summary = {
         "system": "primordia",
         "runtime": runtime_backend,
@@ -231,6 +232,8 @@ def run_search(
             "max_candidates_per_benchmark": config.search.max_candidates_per_benchmark,
         },
         "benchmark_slot_plan": benchmark_slot_plan,
+        "benchmark_leaders": benchmark_leaders,
+        "family_leaders": family_leaders,
         "primitive_usage": dict(sorted(primitive_usage.items(), key=lambda item: (-item[1], item[0]))),
         "group_counts": group_counts,
         "failure_count": failure_count,
@@ -251,6 +254,10 @@ def run_search(
     (run_dir / "trial_records.json").write_text(json.dumps(executed_records, indent=2), encoding="utf-8")
     (run_dir / "best_results.json").write_text(json.dumps(best_results, indent=2), encoding="utf-8")
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (run_dir / "search_leaders.json").write_text(
+        json.dumps({"benchmark_leaders": benchmark_leaders, "family_leaders": family_leaders}, indent=2),
+        encoding="utf-8",
+    )
     (run_dir / "primitive_bank_summary.json").write_text(json.dumps(primitive_bank_summary, indent=2), encoding="utf-8")
     (run_dir / "seed_candidates.json").write_text(json.dumps(seed_candidates, indent=2), encoding="utf-8")
     write_status(
@@ -603,6 +610,79 @@ def _rebuild_parent_genome(parent: dict[str, Any], *, fallback_family: str, conf
     payload.setdefault("family", str(parent.get("primitive_family") or fallback_family))
     payload.setdefault("hidden_layers", [config.search.seed_hidden_width] * config.search.seed_hidden_layers)
     return ModelGenome.model_validate(payload)
+
+
+def _build_search_leader_surfaces(
+    best_results: list[dict[str, Any]], trial_records: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    benchmark_leaders: list[dict[str, Any]] = []
+    for record in best_results:
+        benchmark_leaders.append(
+            {
+                "benchmark_name": record.get("benchmark_name"),
+                "benchmark_group": record.get("benchmark_group"),
+                "leader_family": record.get("primitive_family"),
+                "leader_genome_id": record.get("genome_id"),
+                "leader_generation": record.get("generation"),
+                "leader_search_score": record.get("search_score"),
+                "metric_name": record.get("metric_name"),
+                "metric_value": record.get("metric_value"),
+                "status": record.get("status"),
+                "parent_genome_id": record.get("parent_genome_id"),
+            }
+        )
+
+    wins_by_family: dict[str, set[str]] = {}
+    for record in best_results:
+        if record.get("status") != "ok":
+            continue
+        family = str(record.get("primitive_family") or "unknown")
+        benchmark_name = str(record.get("benchmark_name") or "")
+        if benchmark_name:
+            wins_by_family.setdefault(family, set()).add(benchmark_name)
+
+    family_records: dict[str, list[dict[str, Any]]] = {}
+    for record in trial_records:
+        family = str(record.get("primitive_family") or "unknown")
+        family_records.setdefault(family, []).append(record)
+
+    family_leaders: list[dict[str, Any]] = []
+    for family, records in family_records.items():
+        representative = max(
+            records,
+            key=lambda row: (
+                float(row.get("search_score")) if row.get("search_score") is not None else float("-inf"),
+                float(row.get("quality")) if row.get("quality") is not None else float("-inf"),
+                int(row.get("generation") or 0),
+            ),
+        )
+        wins = sorted(wins_by_family.get(family, set()))
+        family_leaders.append(
+            {
+                "family": family,
+                "evaluation_count": len(records),
+                "benchmark_wins": len(wins),
+                "supporting_benchmarks": wins,
+                "benchmark_groups": sorted({str(row.get("benchmark_group") or "unknown") for row in records if row.get("benchmark_group")}),
+                "best_generation": representative.get("generation"),
+                "best_search_score": representative.get("search_score"),
+                "best_metric_name": representative.get("metric_name"),
+                "best_metric_value": representative.get("metric_value"),
+                "representative_genome_id": representative.get("genome_id"),
+                "representative_architecture_summary": representative.get("architecture_summary"),
+            }
+        )
+
+    family_leaders.sort(
+        key=lambda row: (
+            int(row.get("benchmark_wins") or 0),
+            float(row.get("best_search_score")) if row.get("best_search_score") is not None else float("-inf"),
+            -int(row.get("evaluation_count") or 0),
+            str(row.get("family") or "unknown"),
+        ),
+        reverse=True,
+    )
+    return benchmark_leaders, family_leaders
 
 
 def _allowed_families(runtime: RuntimeBindings, config: RunConfig, group: str, modality: str) -> list[str]:

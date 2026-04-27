@@ -138,7 +138,7 @@ def build_primitive_bank_summary(
         source = ok_records or records
         best_by_family[family] = max(
             source,
-            key=lambda record: float(record.get("quality")) if record.get("quality") is not None else float("-inf"),
+            key=lambda record: float(record.get("search_score")) if record.get("search_score") is not None else float(record.get("quality")) if record.get("quality") is not None else float("-inf"),
         )
 
     wins: dict[str, list[str]] = {}
@@ -156,14 +156,19 @@ def build_primitive_bank_summary(
     for family in families:
         representative = best_by_family.get(family, {})
         won = sorted(wins.get(family, []))
+        benchmark_groups = sorted({str(record.get("benchmark_group") or "unknown") for record in by_family.get(family, []) if record.get("benchmark_group")})
         primitive_families.append(
             {
                 "family": family,
                 "evaluation_count": int(usage.get(family, 0)),
                 "benchmark_wins": len(won),
                 "benchmarks_won": won,
+                "supporting_benchmarks": won,
+                "benchmark_groups": benchmark_groups,
                 "best_metric_name": representative.get("metric_name"),
                 "best_metric_value": representative.get("metric_value"),
+                "best_search_score": representative.get("search_score"),
+                "best_generation": representative.get("generation"),
                 "representative_genome_id": representative.get("genome_id"),
                 "representative_architecture_summary": representative.get("architecture_summary"),
             }
@@ -311,6 +316,68 @@ def write_report(run_dir: str | Path) -> Path:
                 )
         else:
             lines.append("| none | 0 | 0 | — | — | --- | — | — |")
+        lines.extend([
+            "",
+            "## Benchmark Leaders",
+            "",
+            "| Benchmark | Group | Leader Family | Leader Genome | Generation | Search Score | Metric | Value | Status |",
+            "|---|---|---|---|---:|---:|---|---:|---|",
+        ])
+        benchmark_leaders = summary.get("benchmark_leaders") or []
+        if benchmark_leaders:
+            for row in benchmark_leaders:
+                metric_value = row.get("metric_value")
+                rendered_value = "---" if metric_value is None else f"{float(metric_value):.6f}"
+                search_score = row.get("leader_search_score")
+                rendered_score = "---" if search_score is None else f"{float(search_score):.6f}"
+                generation = row.get("leader_generation")
+                rendered_generation = 0 if generation is None else int(generation)
+                lines.append(
+                    "| {benchmark} | {group} | {family} | {genome} | {generation} | {score} | {metric} | {value} | {status} |".format(
+                        benchmark=_render_markdown_cell(row.get("benchmark_name"), missing="unknown"),
+                        group=_render_markdown_cell(row.get("benchmark_group"), missing="unknown"),
+                        family=_render_markdown_cell(row.get("leader_family"), missing="unknown"),
+                        genome=_render_markdown_cell(row.get("leader_genome_id")),
+                        generation=rendered_generation,
+                        score=rendered_score,
+                        metric=_render_markdown_cell(row.get("metric_name")),
+                        value=rendered_value,
+                        status=_render_markdown_cell(row.get("status"), missing="unknown"),
+                    )
+                )
+        else:
+            lines.append("| none | none | none | — | 0 | --- | — | --- | none |")
+        lines.extend([
+            "",
+            "## Family Leaders",
+            "",
+            "| Family | Evaluations | Benchmark Wins | Best Gen | Best Search Score | Groups | Supporting Benchmarks | Representative Genome | Representative Architecture |",
+            "|---|---:|---:|---:|---:|---|---|---|---|",
+        ])
+        family_leaders = summary.get("family_leaders") or []
+        if family_leaders:
+            for row in family_leaders:
+                groups = ", ".join(row.get("benchmark_groups") or []) or "—"
+                benchmarks = ", ".join(row.get("supporting_benchmarks") or []) or "—"
+                best_search_score = row.get("best_search_score")
+                rendered_score = "---" if best_search_score is None else f"{float(best_search_score):.6f}"
+                best_generation = row.get("best_generation")
+                rendered_generation = 0 if best_generation is None else int(best_generation)
+                lines.append(
+                    "| {family} | {evaluation_count} | {benchmark_wins} | {best_generation} | {best_search_score} | {groups} | {benchmarks} | {genome} | {architecture} |".format(
+                        family=_render_markdown_cell(row.get("family"), missing="unknown"),
+                        evaluation_count=int(row.get("evaluation_count", 0)),
+                        benchmark_wins=int(row.get("benchmark_wins", 0)),
+                        best_generation=rendered_generation,
+                        best_search_score=rendered_score,
+                        groups=_render_markdown_cell(groups),
+                        benchmarks=_render_markdown_cell(benchmarks),
+                        genome=_render_markdown_cell(row.get("representative_genome_id")),
+                        architecture=_render_markdown_cell(row.get("representative_architecture_summary")),
+                    )
+                )
+        else:
+            lines.append("| none | 0 | 0 | 0 | --- | — | — | — | — |")
         lines.extend([
             "",
             "## Transfer Seed Candidates",

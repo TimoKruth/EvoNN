@@ -141,6 +141,52 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
             )
         console.print(bank_table)
 
+    benchmark_leaders = summary.get("benchmark_leaders") or []
+    if benchmark_leaders:
+        benchmark_table = Table(title="Benchmark Leaders")
+        benchmark_table.add_column("Benchmark", style="cyan")
+        benchmark_table.add_column("Group", style="white")
+        benchmark_table.add_column("Family", style="green")
+        benchmark_table.add_column("Generation", style="green")
+        benchmark_table.add_column("Search Score", style="green")
+        benchmark_table.add_column("Metric", style="white")
+        benchmark_table.add_column("Value", style="green")
+        for row in benchmark_leaders[:8]:
+            metric_value = row.get("metric_value")
+            search_score = row.get("leader_search_score")
+            benchmark_table.add_row(
+                str(row.get("benchmark_name", "unknown")),
+                str(row.get("benchmark_group", "unknown")),
+                str(row.get("leader_family", "unknown")),
+                str(row.get("leader_generation", 0) or 0),
+                "---" if search_score is None else f"{float(search_score):.6f}",
+                str(row.get("metric_name", "metric")),
+                "---" if metric_value is None else f"{float(metric_value):.6f}",
+            )
+        console.print(benchmark_table)
+
+    family_leaders = summary.get("family_leaders") or []
+    if family_leaders:
+        family_table = Table(title="Family Leaders")
+        family_table.add_column("Family", style="cyan")
+        family_table.add_column("Evaluations", style="green")
+        family_table.add_column("Wins", style="green")
+        family_table.add_column("Best Gen", style="green")
+        family_table.add_column("Best Search Score", style="green")
+        family_table.add_column("Groups", style="white")
+        family_table.add_column("Supporting Benchmarks", style="white")
+        for row in family_leaders[:8]:
+            family_table.add_row(
+                str(row.get("family", "unknown")),
+                str(row.get("evaluation_count", 0)),
+                str(row.get("benchmark_wins", 0)),
+                str(row.get("best_generation", 0) or 0),
+                "---" if row.get("best_search_score") is None else f"{float(row.get('best_search_score')):.6f}",
+                ", ".join(map(str, row.get("benchmark_groups") or [])) or "—",
+                ", ".join(map(str, row.get("supporting_benchmarks") or [])) or "—",
+            )
+        console.print(family_table)
+
     if summary.get("failure_count", 0) and trial_records_path.exists():
         failures = [record for record in trial_records if record.get("status") != "ok"]
         failure_patterns = summarize_failure_patterns(failures)
