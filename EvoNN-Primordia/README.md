@@ -49,9 +49,11 @@ Current deliverables:
 - primitive usage, benchmark-group coverage, and failure telemetry carried through reports/exports
 - primitive bank summary artifact emitted alongside run artifacts and compare exports for later seeding-style analysis
 - benchmark-conditioned seed candidate artifact emitted for downstream family/topology/hierarchy seeding experiments
-- richer markdown reports that include primitive-bank winners and representative genomes
-- richer CLI inspection that summarizes runtime, usage, wins, and best benchmark outcomes from run artifacts
+- richer markdown reports that include primitive-bank winners, benchmark leaders, family leaders, and representative genomes
+- richer CLI inspection that summarizes runtime, usage, wins, benchmark leaders, family leaders, and best benchmark outcomes from run artifacts
 - budget-matched per-benchmark evaluation scheduling
+- bounded elite/archive search with lineage-aware offspring mutation from archived parents
+- per-benchmark and family-level leader tracking emitted as `search_leaders.json`
 - per-benchmark best primitive selection
 - compare-ready manifest/results export
 - markdown + JSON run artifacts

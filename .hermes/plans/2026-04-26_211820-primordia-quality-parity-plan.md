@@ -272,6 +272,12 @@ That ordering matters because:
 - lineage fields exist and are non-trivial in real run artifacts
 - at least one named lane shows better best-of-run outcomes without breaking budget accounting
 
+**Status on this branch:** complete.
+- the old slot-index loop has been replaced by the bounded elite/archive search in `pipeline.py`
+- `trial_records.json` now carries non-trivial lineage/search fields including `parent_genome_id`, `mutation_operator`, `generation`, `novelty_score`, `complexity_penalty`, and persisted `genome_payload`
+- search policy / slot allocation / benchmark leaders / family leaders are now surfaced through `summary.json`, `report.md`, `primordia inspect`, `primitive_bank_summary.json`, and `search_leaders.json`
+- real named-lane validation on this branch has stayed budget-clean while the smoke lane and fallback tier-style checks remained green
+
 ---
 
 ## Phase 4 — Improve objective shaping so “best primitive” means something
