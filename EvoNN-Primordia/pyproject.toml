@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Primitive-first evolutionary search for EvoNN"
 requires-python = ">=3.13"
 dependencies = [
+    "evonn-compare",
+    "evonn-shared",
     "mlx>=0.31.0; sys_platform == 'darwin'",
     "numpy>=2.2.0",
     "openml>=0.14.2",
