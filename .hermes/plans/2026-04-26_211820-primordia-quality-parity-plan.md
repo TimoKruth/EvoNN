@@ -10,6 +10,8 @@
 
 **Scope note:** This plan is intentionally a **full-engine advancement plan** for a dedicated Primordia branch. It is not limited by the current quarter-critical scope in `EVONN_90_DAY_PLAN.md`. That repo-level plan may prioritize the shared daily lane first; this plan assumes we are deliberately investing in Primordia itself as a serious engine. Merge-back should therefore happen in slices, but the branch goal is unapologetically engine advancement rather than minimum-quarter compliance.
 
+**Post-main-merge branch discipline:** After merging `main`, keep this branch focused on Primordia advancement work. Accept upstream Compare/Shared/CI changes when they arrive from `main`, but do not start new branch-local Compare/Shared feature work here unless it is strictly required to keep Primordia exports, validation, or fair-matrix participation compatible.
+
 ---
 
 ## Current Context

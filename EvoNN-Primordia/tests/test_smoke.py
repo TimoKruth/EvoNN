@@ -6,12 +6,15 @@ import json
 
 import pytest
 
+from evonn_compare.contracts.validation import validate_contract
 from evonn_primordia.benchmarks import get_benchmark
+from evonn_primordia.benchmarks.parity import load_parity_pack
 from evonn_primordia.config import load_config
 from evonn_primordia.export.report import enrich_best_results, write_report
 from evonn_primordia.export.seeding import write_seed_candidates
 from evonn_primordia.export.symbiosis import export_symbiosis_contract
 from evonn_primordia.pipeline import run_search
+from evonn_shared.contracts import ResultRecord, RunManifest
 
 
 @dataclass(frozen=True)
@@ -244,6 +247,13 @@ seed_policy:
     assert manifest["device"]["framework_version"] == summary["runtime_version"]
     assert manifest["device"]["precision_mode"] == summary["precision_mode"]
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
+    assert manifest["budget"]["evaluation_count"] == summary["target_evaluation_count"]
+    assert manifest["budget"]["actual_evaluations"] == summary["evaluation_count"]
+    assert manifest["budget"]["failed_evaluations"] == summary["failed_evaluations"]
+    assert manifest["budget"]["cached_evaluations"] == 0
+    assert manifest["budget"]["invalid_evaluations"] == summary["skipped_evaluations"]
+    assert manifest["budget"]["partial_run"] is False
+    assert manifest["budget"]["evaluation_semantics"]
     assert manifest["budget"]["wall_clock_seconds"] == summary["wall_clock_seconds"]
     assert manifest["artifacts"]["model_summary_json"] == "compare_summary.json"
     assert manifest["artifacts"]["primitive_bank_summary_json"] == "primitive_bank_summary.json"
@@ -280,6 +290,17 @@ seed_policy:
     assert sparse["best_metric_name"] == "accuracy"
     assert sparse["best_metric_value"] == 0.81
     assert {record["benchmark_id"] for record in results} == {"iris_classification", "tiny_lm_synthetic"}
+
+    validation_report = validate_contract(
+        RunManifest.model_validate(manifest),
+        [ResultRecord.model_validate(row) for row in results],
+        load_parity_pack(pack_path),
+        run_dir,
+    )
+    validation_codes = {issue.code for issue in validation_report.issues}
+    assert "budget_actual_evaluations_missing" not in validation_codes
+    assert "budget_semantics_missing" not in validation_codes
+    assert validation_report.ok
 
 
 def test_named_lane_config_can_complete_regression_and_classification_surface(tmp_path: Path, monkeypatch) -> None:
