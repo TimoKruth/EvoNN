@@ -81,6 +81,10 @@ Canonical named configs now live under `EvoNN-Primordia/configs/`:
 - `tier1_core_eval256.yaml`
 - `tier1_core_eval1000.yaml`
 
+Phase-2 baseline results now live in `BASELINE_MATRIX.md`, which records the
+current smoke / tier1 lane runs, benchmark-completeness status, artifact paths,
+and the remaining language-modeling caveat for later comparison.
+
 The `tier1_core` configs include both the classification/synthetic/image tasks and
 the current regression pair (`diabetes`, `friedman1`) so Primordia's named tier-1
 lane stays closer to the compare/parity-pack coverage instead of silently dropping
@@ -114,4 +118,5 @@ Contenders baseline.
 - `VISION.md`
 - `IMPLEMENTATION_PLAN.md`
 - `ARCHITECTURE_RULES.md`
+- `BASELINE_MATRIX.md`
 - `CHANGELOG.md`

@@ -282,6 +282,95 @@ seed_policy:
     assert {record["benchmark_id"] for record in results} == {"iris_classification", "tiny_lm_synthetic"}
 
 
+def test_named_lane_config_can_complete_regression_and_classification_surface(tmp_path: Path, monkeypatch) -> None:
+    class Phase2Runtime(FakeRuntimeBindings):
+        def __init__(self) -> None:
+            super().__init__(runtime_backend="numpy-fallback", runtime_version="phase2-fake")
+            self.benchmarks.update(
+                {
+                    "diabetes": FakeBenchmarkSpec("diabetes", "regression", "mse", "min", 10, 1),
+                    "friedman1": FakeBenchmarkSpec("friedman1", "regression", "mse", "min", 10, 1),
+                }
+            )
+            self.family_scores.update({"mlp": 0.91, "sparse_mlp": 0.89, "moe_mlp": 0.87})
+            self.regression_scores = {"mlp": 12.0, "sparse_mlp": 10.5, "moe_mlp": 9.25}
+
+        def train_and_evaluate(
+            self,
+            model: object,
+            x_train,
+            y_train,
+            x_val,
+            y_val,
+            *,
+            task: str,
+            epochs: int,
+            lr: float,
+            batch_size: int,
+            parameter_count: int,
+        ) -> FakeEvalResult:
+            if task == "regression":
+                del x_train, y_train, x_val, y_val, epochs, lr, batch_size
+                family = model["genome"].split("-")[0]
+                metric_value = self.regression_scores[family]
+                return FakeEvalResult(
+                    metric_name="mse",
+                    metric_value=metric_value,
+                    quality=-metric_value,
+                    parameter_count=parameter_count,
+                    train_seconds=0.01,
+                )
+            return super().train_and_evaluate(
+                model,
+                x_train,
+                y_train,
+                x_val,
+                y_val,
+                task=task,
+                epochs=epochs,
+                lr=lr,
+                batch_size=batch_size,
+                parameter_count=parameter_count,
+            )
+
+    runtime = Phase2Runtime()
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
+    config_path = tmp_path / "phase2.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: phase2_lane
+runtime:
+  backend: numpy-fallback
+benchmark_pool:
+  name: phase2_lane
+  benchmarks: [iris, diabetes, friedman1]
+search:
+  mode: budget_matched
+  target_evaluation_count: 6
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp, sparse_mlp, moe_mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "phase2_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert summary["failure_count"] == 0
+    assert summary["completed_benchmarks"] == ["iris", "diabetes", "friedman1"]
+    assert {row["benchmark_name"] for row in summary["best_results"]} == {"iris", "diabetes", "friedman1"}
+    assert {row["metric_name"] for row in summary["best_results"]} == {"accuracy", "mse"}
+
+
 
 def test_export_uses_recorded_runtime_metadata(tmp_path: Path, fake_runtime) -> None:
     config_path = tmp_path / "config.yaml"
