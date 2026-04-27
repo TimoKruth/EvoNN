@@ -308,6 +308,33 @@ def test_trend_report_accepts_structured_fair_matrix_trends_jsonl(tmp_path: Path
     assert "| prism | iris_classification | 1 | 0.810000 | 0.810000 | 0.000000 | ok | 16 | 42 | fair | fair | unknown |" in result.stdout
 
 
+def test_compare_output_surfaces_report_paths(tmp_path: Path) -> None:
+    prism_dir = tmp_path / "prism"
+    topograph_dir = tmp_path / "topograph"
+    _write_run(prism_dir, system="prism", score_shift=0.02)
+    _write_run(topograph_dir, system="topograph")
+    output_path = tmp_path / "compare_report.md"
+
+    result = runner.invoke(
+        app,
+        [
+            "compare",
+            str(prism_dir),
+            str(topograph_dir),
+            "--pack",
+            str(PACK_PATH),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert output_path.exists()
+    assert output_path.with_suffix(".json").exists()
+    assert f"report\t{output_path}" in result.stdout
+    assert f"report_json\t{output_path.with_suffix('.json')}" in result.stdout
+
+
 def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     trends_dir = workspace / "trends"

@@ -182,6 +182,9 @@ The command writes:
 - HTML dashboard at `--output`
 - structured dashboard payload beside it as the same path with `.json` suffix
 
+For ad hoc `compare` runs, using `--output` also prints both the markdown report
+path and the sibling JSON artifact path directly in CLI output.
+
 ## Milestone 6: Prism default operating path
 
 Prism is now the default operating path for the routine low-cost compare flow:
