@@ -198,6 +198,28 @@ def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) ->
     assert f"workspace_dashboard_data\t{tmp_path / 'fair_matrix_dashboard.json'}" in result.stdout
 
 
+def test_fair_matrix_default_smoke_persists_lane_preset(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_prepare_fair_matrix_cases(**kwargs):
+        captured.update(kwargs)
+        return type(
+            "Paths",
+            (),
+            {
+                "manifest_path": tmp_path / "matrix.yaml",
+                "trends_dir": tmp_path / "trends",
+            },
+        )(), []
+
+    monkeypatch.setattr(fair_matrix_cli, "prepare_fair_matrix_cases", fake_prepare_fair_matrix_cases)
+
+    result = runner.invoke(app, ["fair-matrix", "--workspace", str(tmp_path), "--dry-run"])
+
+    assert result.exit_code == 0
+    assert captured["lane_preset"] == "smoke"
+
+
 def test_trend_report_filters_rows_and_writes_outputs(tmp_path: Path) -> None:
     pack = load_parity_pack(PACK_PATH)
     prism_dir = tmp_path / "prism"

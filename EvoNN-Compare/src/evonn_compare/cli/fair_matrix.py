@@ -50,7 +50,7 @@ def fair_matrix(
         primordia_root=Path(primordia_root),
         contenders_root=Path(contenders_root),
         include_contenders=include_contenders,
-        lane_preset=preset,
+        lane_preset=preset_name,
     )
     if dry_run:
         typer.echo("mode\tdry-run")
