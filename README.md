@@ -49,6 +49,17 @@ uv run --package evonn-compare python -m evonn_compare fair-matrix \
 - Shared infrastructure should converge where it improves trust, parity, and
   maintenance, while search-core logic stays package-local.
 
+## Git Workflow
+
+- Do not push directly to `main`.
+- Start each change on an issue-specific branch such as
+  `agent/evo-24-short-description`.
+- If you need isolation beyond a branch, use a dedicated git worktree per issue.
+- Open a pull request and merge through review rather than publishing directly
+  from the working branch.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the expected branch and PR flow.
+
 ## Where To Read Next
 
 - [MONOREPO.md](./MONOREPO.md): workspace structure, commands, and validation matrix
