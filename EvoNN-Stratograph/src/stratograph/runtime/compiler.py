@@ -12,6 +12,15 @@ from typing import Any
 
 import numpy as np
 
+from stratograph.genome.codec import genome_digest
+from stratograph.genome.models import (
+    ActivationKind,
+    CellGene,
+    HierarchicalGenome,
+    PrimitiveKind,
+)
+from stratograph.runtime.backends import resolve_runtime_backend
+
 try:  # pragma: no cover - exercised implicitly when MLX is installed
     import mlx.core as _mlx_core
 
@@ -20,9 +29,6 @@ try:  # pragma: no cover - exercised implicitly when MLX is installed
 except ImportError:  # pragma: no cover - covered by Linux CI / non-MLX hosts
     MLX_AVAILABLE = False
     _mlx_core = None
-
-from stratograph.runtime.backends import resolve_runtime_backend
-
 
 class _NumpyBackend:
     float32 = np.float32
@@ -66,14 +72,6 @@ class _NumpyBackend:
 
 
 _NUMPY_BACKEND = _NumpyBackend()
-
-from stratograph.genome.codec import genome_digest
-from stratograph.genome.models import (
-    ActivationKind,
-    CellGene,
-    HierarchicalGenome,
-    PrimitiveKind,
-)
 
 
 @dataclass(frozen=True)

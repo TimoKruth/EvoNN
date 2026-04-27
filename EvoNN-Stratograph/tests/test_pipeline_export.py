@@ -70,6 +70,13 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert "runtime_version" in budget_meta
     assert budget_meta["precision_mode"] == "fp32"
     assert budget_meta["wall_clock_seconds"] >= 0.0
+    assert budget_meta["actual_evaluations"] == budget_meta["evaluation_count"]
+    assert budget_meta["cached_evaluations"] == 0
+    assert budget_meta["invalid_evaluations"] == 0
+    assert budget_meta["partial_run"] is False
+    assert "candidate evaluation" in budget_meta["evaluation_semantics"]
+    assert budget_meta["parent_selection_strategy"] == "quality_novelty_diverse_elites"
+    assert budget_meta["mutation_pressure"] == "hierarchy_aware_motif_cell_reuse"
 
     manifest_path, results_path = export_symbiosis_contract(
         run_dir,
@@ -91,8 +98,11 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert summary["precision_mode"] == budget_meta["precision_mode"]
     assert summary["wall_clock_seconds"] == budget_meta["wall_clock_seconds"]
     assert summary["architecture_mode"] == budget_meta["architecture_mode"]
+    assert summary["parent_selection_strategy"] == budget_meta["parent_selection_strategy"]
+    assert summary["mutation_pressure"] == budget_meta["mutation_pressure"]
     assert summary["completed_benchmarks"] == status["completed_count"]
     assert summary["remaining_benchmarks"] == status["remaining_count"]
+    assert status["active_benchmark"] is None
     assert summary["failure_count"] == sum(1 for record in exported_results if record["status"] != "ok")
     assert "failure_patterns" in summary
     assert "hierarchy_summary" in summary
@@ -100,7 +110,14 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
     assert manifest["budget"]["wall_clock_seconds"] == budget_meta["wall_clock_seconds"]
+    assert manifest["budget"]["actual_evaluations"] == budget_meta["evaluation_count"]
+    assert manifest["budget"]["cached_evaluations"] == 0
+    assert manifest["budget"]["invalid_evaluations"] == 0
+    assert manifest["budget"]["partial_run"] is False
+    assert "candidate evaluation" in manifest["budget"]["evaluation_semantics"]
     assert manifest["search_telemetry"]["architecture_mode"] == budget_meta["architecture_mode"]
+    assert manifest["search_telemetry"]["parent_selection_strategy"] == budget_meta["parent_selection_strategy"]
+    assert manifest["search_telemetry"]["mutation_pressure"] == budget_meta["mutation_pressure"]
     assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
     assert manifest["device"]["framework_version"] == (budget_meta["runtime_version"] or "unknown")
     assert manifest["device"]["precision_mode"] == budget_meta["precision_mode"]
@@ -120,6 +137,8 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert f"- Effective Training Epochs: `{budget_meta['effective_training_epochs']}`" in report
     assert f"- Wall Clock Seconds: `{budget_meta['wall_clock_seconds']:.3f}`" in report
     assert f"- Architecture Mode: `{budget_meta['architecture_mode']}`" in report
+    assert f"- Parent Selection: `{budget_meta['parent_selection_strategy']}`" in report
+    assert f"- Mutation Pressure: `{budget_meta['mutation_pressure']}`" in report
     assert "## Hierarchy Summary" in report
     assert "| Property | Value |" in report
     assert "| Representative Genome | `" in report

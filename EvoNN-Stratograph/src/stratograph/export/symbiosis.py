@@ -117,6 +117,12 @@ def export_symbiosis_contract(
             "generations": config.evolution.generations,
             "population_size": config.evolution.population_size,
             "budget_policy_name": "prototype_equal_budget",
+            "actual_evaluations": budget_meta.get("actual_evaluations"),
+            "cached_evaluations": budget_meta.get("cached_evaluations"),
+            "failed_evaluations": budget_meta.get("failed_evaluations"),
+            "invalid_evaluations": budget_meta.get("invalid_evaluations"),
+            "partial_run": bool(budget_meta.get("partial_run", False)),
+            "evaluation_semantics": budget_meta.get("evaluation_semantics"),
         },
         "device": {
             "device_name": platform.machine(),
@@ -143,6 +149,9 @@ def export_symbiosis_contract(
             "map_elites_occupied_niches": budget_meta.get("map_elites_occupied_niches"),
             "map_elites_total_niches": budget_meta.get("map_elites_total_niches"),
             "map_elites_fill_ratio": budget_meta.get("map_elites_fill_ratio"),
+            "parent_selection_strategy": budget_meta.get("parent_selection_strategy"),
+            "mutation_pressure": budget_meta.get("mutation_pressure"),
+            "hierarchy_selection_policy": budget_meta.get("hierarchy_selection_policy"),
         },
         "fairness": fairness_manifest(
             pack_name=pack.name,
@@ -241,6 +250,9 @@ def _write_contract_summary_json(
         "remaining_benchmarks": status_payload.get("remaining_count", 0),
         "novelty_mean": manifest.get("search_telemetry", {}).get("novelty_score_mean"),
         "occupied_niches": manifest.get("search_telemetry", {}).get("map_elites_occupied_niches"),
+        "parent_selection_strategy": manifest.get("search_telemetry", {}).get("parent_selection_strategy"),
+        "mutation_pressure": manifest.get("search_telemetry", {}).get("mutation_pressure"),
+        "hierarchy_selection_policy": manifest.get("search_telemetry", {}).get("hierarchy_selection_policy"),
     }
     if representative_genome is not None:
         summary["hierarchy_summary"] = {

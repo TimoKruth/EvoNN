@@ -182,6 +182,8 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Remaining Benchmarks: `{status_payload.get('remaining_count', 0)}`",
         f"- Novelty Mean: `{budget_meta.get('novelty_score_mean', 0.0):.4f}`",
         f"- Occupied Niches: `{budget_meta.get('map_elites_occupied_niches', 0)}`",
+        f"- Parent Selection: `{budget_meta.get('parent_selection_strategy', 'unknown')}`",
+        f"- Mutation Pressure: `{budget_meta.get('mutation_pressure', 'unknown')}`",
     ]
     if context["status_path"].exists():
         lines.append(f"- Status Artifact: `{context['status_path'].name}`")
