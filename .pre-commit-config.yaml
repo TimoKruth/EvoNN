@@ -50,6 +50,24 @@ repos:
         stages:
           - pre-commit
 
+      - id: primordia-ruff
+        name: Primordia Ruff
+        entry: bash scripts/ci/primordia-checks.sh ruff
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Primordia/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-commit
+
+      - id: stratograph-ruff
+        name: Stratograph Ruff
+        entry: bash scripts/ci/stratograph-checks.sh ruff
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Stratograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-commit
+
       - id: shared-pytest
         name: Shared Pytest
         entry: bash scripts/ci/shared-checks.sh pytest
@@ -92,5 +110,23 @@ repos:
         language: system
         pass_filenames: false
         files: ^(EvoNN-Topograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-push
+
+      - id: primordia-pytest
+        name: Primordia Pytest
+        entry: bash scripts/ci/primordia-checks.sh pytest
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Primordia/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        stages:
+          - pre-push
+
+      - id: stratograph-pytest
+        name: Stratograph Pytest
+        entry: bash scripts/ci/stratograph-checks.sh pytest
+        language: system
+        pass_filenames: false
+        files: ^(EvoNN-Stratograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
         stages:
           - pre-push

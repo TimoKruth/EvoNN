@@ -119,10 +119,19 @@ Every export intended for comparison should expose or derivably imply:
 - worker count
 - declared hardware class
 - declared budget caps
+- actual counted evaluations when available
+- cached evaluations when applicable
+- failed evaluations when applicable
+- invalid evaluations when applicable
+- resumed-run provenance when applicable
+- partial-run status when applicable
+- one short statement of evaluation-counting semantics
 - actual measured artifacts such as params, bytes, latency, or memory when
   supported
 - seeding regime: `none`, `direct`, or `staged`
 - seed provenance sufficient to identify the immediate upstream source artifact
+
+See also: `BUDGET_ACCOUNTING_POLICY.md` for the operational counting rules.
 
 ## Local-First Defaults
 

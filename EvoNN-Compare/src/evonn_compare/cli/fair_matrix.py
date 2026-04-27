@@ -7,7 +7,8 @@ from pathlib import Path
 
 import typer
 
-from evonn_compare.contracts.parity import resolve_pack_path
+from evonn_compare.contracts.parity import load_parity_pack, resolve_pack_path
+from evonn_compare.cli.workspace_report import refresh_workspace_reports
 from evonn_compare.orchestration.lane_presets import lane_preset_help, resolve_lane_preset
 from evonn_compare.orchestration.fair_matrix import (
     prepare_fair_matrix_cases,
@@ -37,11 +38,13 @@ def fair_matrix(
     pack_name = pack or (preset_spec.pack if preset_spec else None)
 
     pack_path = resolve_pack_path(pack_name)
+    pack_spec = load_parity_pack(pack_path)
     paths, cases = prepare_fair_matrix_cases(
         pack_name=Path(pack_path).stem,
         base_pack_path=pack_path,
         seeds=_parse_optional_csv_ints(seeds) or (list(preset_spec.seeds) if preset_spec else [42]),
-        budgets=_parse_optional_csv_ints(budgets) or (list(preset_spec.budgets) if preset_spec else [76]),
+        budgets=_parse_optional_csv_ints(budgets)
+        or (list(preset_spec.budgets) if preset_spec else [pack_spec.budget_policy.evaluation_count]),
         workspace=Path(workspace),
         prism_root=Path(prism_root),
         topograph_root=Path(topograph_root),
@@ -49,7 +52,7 @@ def fair_matrix(
         primordia_root=Path(primordia_root),
         contenders_root=Path(contenders_root),
         include_contenders=include_contenders,
-        lane_preset=preset,
+        lane_preset=preset_name,
     )
     if dry_run:
         typer.echo("mode\tdry-run")
@@ -76,13 +79,23 @@ def fair_matrix(
         for label, artifact_path in _trend_artifact_paths(summary_path).items():
             typer.echo(f"{label}\t{artifact_path}")
 
+    workspace_artifacts = refresh_workspace_reports(workspace=Path(workspace))
+    typer.echo(f"workspace_trend_report\t{workspace_artifacts['trend_report']}")
+    typer.echo(f"workspace_trend_report_data\t{workspace_artifacts['trend_report_data']}")
+    typer.echo(f"workspace_dashboard\t{workspace_artifacts['dashboard']}")
+    typer.echo(f"workspace_dashboard_data\t{workspace_artifacts['dashboard_data']}")
+
 
 def _trend_artifact_paths(summary_path: Path) -> dict[str, Path]:
     case_dir = summary_path.parent
     workspace_dir = case_dir.parent
     return {
+        "summary_json": summary_path.with_suffix(".json"),
+        "lane_acceptance": case_dir / "lane_acceptance.json",
         "trend_rows": case_dir / "trend_rows.json",
         "trend_report": case_dir / "trend_report.md",
+        "trend_records_json": case_dir / "fair_matrix_trends.json",
+        "trend_records_jsonl": case_dir / "fair_matrix_trends.jsonl",
         "workspace_trend_rows": workspace_dir / "fair_matrix_trend_rows.jsonl",
         "workspace_trend_report": workspace_dir / "fair_matrix_trends.md",
     }

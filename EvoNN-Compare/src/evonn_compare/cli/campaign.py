@@ -9,7 +9,7 @@ from pathlib import Path
 
 import typer
 
-from evonn_compare.contracts.parity import resolve_pack_path
+from evonn_compare.contracts.parity import load_parity_pack, resolve_pack_path
 from evonn_compare.orchestration.config_gen import prepare_campaign_cases
 from evonn_compare.orchestration.lane_presets import lane_preset_help, resolve_lane_preset
 from evonn_compare.orchestration.runner import CampaignRunner
@@ -33,10 +33,13 @@ def campaign(
     pack_name = pack or (preset_spec.pack if preset_spec else None)
 
     seed_values = _parse_optional_csv_ints(seeds) or (list(preset_spec.seeds) if preset_spec else [42])
-    budget_values = _parse_optional_csv_ints(budgets) or (list(preset_spec.budgets) if preset_spec else [64])
     prism_root_path = Path(prism_root).resolve()
     topograph_root_path = Path(topograph_root).resolve()
     pack_path = resolve_pack_path(pack_name)
+    pack_spec = load_parity_pack(pack_path)
+    budget_values = _parse_optional_csv_ints(budgets) or (
+        list(preset_spec.budgets) if preset_spec else [pack_spec.budget_policy.evaluation_count]
+    )
     paths, cases = prepare_campaign_cases(
         pack_name=Path(pack_path).stem,
         base_pack_path=pack_path,
@@ -44,17 +47,22 @@ def campaign(
         budgets=budget_values,
         workspace=Path(workspace),
         topograph_root=topograph_root_path,
+        lane_preset=preset_name,
     )
     runner = CampaignRunner(prism_root=prism_root_path, topograph_root=topograph_root_path)
 
     if dry_run:
         typer.echo("mode\tdry-run")
+        typer.echo(f"manifest\t{paths.manifest_path}")
         for case in cases:
+            for label, artifact_path in _campaign_artifact_paths(paths=paths, runner=runner, case=case).items():
+                typer.echo(f"{label}\t{artifact_path}")
             for spec in runner.planned_commands(case):
                 typer.echo(json.dumps({"name": spec.name, "cwd": str(spec.cwd), "argv": spec.argv}))
         return
 
     typer.echo("mode\texecute")
+    typer.echo(f"manifest\t{paths.manifest_path}")
     for case in cases:
         prism_run_dir = runner.prism_run_dir(case)
         log_dir = paths.logs_dir / f"{case.pack_name}_seed{case.seed}"
@@ -71,6 +79,20 @@ def campaign(
             output_path=case.comparison_output_path,
         )
         typer.echo(f"compared\t{case.comparison_output_path}")
+        for label, artifact_path in _campaign_artifact_paths(paths=paths, runner=runner, case=case).items():
+            typer.echo(f"{label}\t{artifact_path}")
+
+
+def _campaign_artifact_paths(*, paths, runner, case) -> dict[str, Path]:
+    return {
+        "report": case.comparison_output_path,
+        "report_json": case.comparison_output_path.with_suffix(".json"),
+        "prism_run_dir": runner.prism_run_dir(case),
+        "topograph_run_dir": case.topograph_run_dir,
+        "log_dir": paths.logs_dir / f"{case.pack_name}_seed{case.seed}",
+    }
+
+
 def _parse_csv_ints(raw: str) -> list[int]:
     values = [item.strip() for item in raw.split(",") if item.strip()]
     if not values:

@@ -29,6 +29,20 @@ LANE_PRESETS: dict[str, LanePreset] = {
         budgets=(64,),
         description="Default local-first compare lane for a fuller but still practical head-to-head.",
     ),
+    "overnight": LanePreset(
+        name="overnight",
+        pack="tier1_core",
+        seeds=(42,),
+        budgets=(256,),
+        description="Budget-richer daily lane for fairness convergence beyond the local 64-eval slice.",
+    ),
+    "weekend": LanePreset(
+        name="weekend",
+        pack="tier1_core",
+        seeds=(42,),
+        budgets=(1000,),
+        description="High-budget trusted-lane preset for repeated weekend-scale comparison studies.",
+    ),
 }
 
 

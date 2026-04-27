@@ -6,7 +6,6 @@ import random
 
 from stratograph.genome.models import (
     ActivationKind,
-    CellEdgeGene,
     CellGene,
     CellNodeGene,
     HierarchicalGenome,

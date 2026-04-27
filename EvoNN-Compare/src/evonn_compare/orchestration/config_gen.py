@@ -31,6 +31,7 @@ class CampaignPaths:
 @dataclass(frozen=True)
 class CampaignCase:
     pack_name: str
+    lane_preset: str | None
     seed: int
     budget: int
     pack_path: Path
@@ -143,6 +144,7 @@ def prepare_campaign_cases(
     budgets: list[int],
     workspace: Path,
     topograph_root: Path,
+    lane_preset: str | None = None,
 ) -> tuple[CampaignPaths, list[CampaignCase]]:
     workspace = workspace.resolve()
     paths = CampaignPaths(
@@ -195,6 +197,7 @@ def prepare_campaign_cases(
             cases.append(
                 CampaignCase(
                     pack_name=pack.name,
+                    lane_preset=lane_preset,
                     seed=seed,
                     budget=budget,
                     pack_path=pack_path,
@@ -207,6 +210,7 @@ def prepare_campaign_cases(
 
     payload = {
         "pack_name": pack_name,
+        "lane_preset": lane_preset,
         "seeds": seeds,
         "budgets": budgets,
         "cases": [

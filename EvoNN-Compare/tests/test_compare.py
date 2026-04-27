@@ -55,6 +55,8 @@ def _write_run(
             evaluation_count=evaluation_count,
             epochs_per_candidate=20,
             budget_policy_name=budget_policy_name,
+            actual_evaluations=evaluation_count,
+            evaluation_semantics="one candidate evaluation counted at the compare surface",
         ),
         device=DeviceInfo(device_name="apple_silicon", precision_mode="fp32"),
         artifacts=ArtifactPaths(
