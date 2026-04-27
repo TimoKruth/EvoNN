@@ -190,6 +190,7 @@ def test_fair_matrix_execute_surfaces_manifest_and_trend_dataset(tmp_path, monke
     assert "manifest\t" in result.stdout
     assert "trend-dataset\t" in result.stdout
     assert "summary\t" in result.stdout
+    assert "workspace_trend_report\t" in result.stdout
     assert "workspace_trend_report_data\t" in result.stdout
     assert "workspace_dashboard\t" in result.stdout
     assert "workspace_dashboard_data\t" in result.stdout
