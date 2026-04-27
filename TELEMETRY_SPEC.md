@@ -27,6 +27,10 @@ including at least:
 - benchmark tier
 - declared evaluation budget
 - actual evaluations spent
+- evaluation-counting semantics
+- cached / failed / invalid evaluation counts when applicable
+- resumed-run provenance when applicable
+- whether the exported result is partial or complete
 - declared wall-time budget
 - actual wall time
 - hardware class

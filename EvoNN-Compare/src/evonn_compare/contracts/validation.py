@@ -196,6 +196,35 @@ def validate_contract(
             )
         )
 
+    if manifest.budget.actual_evaluations is None:
+        issues.append(
+            ValidationIssue(
+                level="warning",
+                code="budget_actual_evaluations_missing",
+                message="budget actual_evaluations is missing",
+            )
+        )
+    elif not manifest.budget.partial_run and manifest.budget.actual_evaluations < manifest.budget.evaluation_count:
+        issues.append(
+            ValidationIssue(
+                level="warning",
+                code="budget_actual_lt_declared",
+                message=(
+                    "budget actual_evaluations is lower than declared evaluation_count "
+                    f"without partial_run=true: {manifest.budget.actual_evaluations} vs {manifest.budget.evaluation_count}"
+                ),
+            )
+        )
+
+    if not manifest.budget.evaluation_semantics:
+        issues.append(
+            ValidationIssue(
+                level="warning",
+                code="budget_semantics_missing",
+                message="budget evaluation_semantics is missing",
+            )
+        )
+
     expected_keys = {
         (entry.benchmark_id, entry.metric_name)
         for entry in pack.benchmarks

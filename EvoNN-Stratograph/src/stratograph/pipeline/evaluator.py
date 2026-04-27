@@ -15,6 +15,11 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
+from stratograph.benchmarks.spec import BenchmarkSpec
+from stratograph.genome import HierarchicalGenome
+from stratograph.runtime import compile_genome
+from stratograph.runtime.backends import resolve_runtime_backend
+
 try:  # pragma: no cover - exercised on MLX-capable hosts
     import mlx
     import mlx.core as mx
@@ -29,11 +34,6 @@ except ImportError:  # pragma: no cover - covered on Linux CI / non-MLX hosts
     nn = None
     optim = None
     MLX_AVAILABLE = False
-
-from stratograph.benchmarks.spec import BenchmarkSpec
-from stratograph.genome import HierarchicalGenome
-from stratograph.runtime.backends import resolve_runtime_backend
-from stratograph.runtime import compile_genome
 
 DEFAULT_RUNTIME_SELECTION = resolve_runtime_backend("auto")
 RUNTIME_BACKEND = DEFAULT_RUNTIME_SELECTION.resolved_backend

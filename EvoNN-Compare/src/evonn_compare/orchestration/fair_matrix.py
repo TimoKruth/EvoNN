@@ -41,7 +41,11 @@ from evonn_compare.reporting import (
     render_fair_matrix_markdown,
     render_fair_matrix_trend_markdown,
 )
-from evonn_compare.comparison.fair_matrix import LaneMetadata
+from evonn_compare.comparison.fair_matrix import (
+    CORE_TRUSTED_SYSTEMS,
+    EXTENDED_TRUSTED_SYSTEMS,
+    LaneMetadata,
+)
 
 
 COMPARE_ROOT = Path(__file__).resolve().parents[3]
@@ -520,9 +524,10 @@ def run_fair_matrix_case(
         pair_results=pair_results,
         systems=case.systems,
     )
+    lane = _build_lane_metadata(case=case, runs=runs, pair_results=pair_results)
     summary = build_matrix_summary(
         pack_name=case.pack_name,
-        lane=_build_lane_metadata(case=case, runs=runs, pair_results=pair_results),
+        lane=lane,
         fair_rows=[fair_row] if fair_row is not None else [],
         reference_rows=[reference_row] if reference_row is not None else [],
         parity_rows=parity_rows,
@@ -532,6 +537,7 @@ def run_fair_matrix_case(
             seed=case.seed,
             runs=runs,
             pair_results=pair_results,
+            lane=lane,
             systems=case.systems,
         ),
         systems=case.systems,
@@ -546,7 +552,7 @@ def run_fair_matrix_case(
         encoding="utf-8",
     )
     _write_trend_artifacts(case, summary.trend_rows)
-    trend_records = _build_trend_records(case=case, pack=pack, runs=runs)
+    trend_records = _build_trend_records(case=case, pack=pack, runs=runs, lane=lane)
     case.summary_output_path.with_name("fair_matrix_trends.json").write_text(
         json.dumps(trend_records, indent=2),
         encoding="utf-8",
@@ -598,10 +604,15 @@ def _build_lane_metadata(
     runs: dict[str, tuple[Any, list[Any]]],
     pair_results: dict[tuple[str, str], tuple[Any, Path]],
 ) -> LaneMetadata:
+    case_systems = tuple(getattr(case, "systems", tuple(runs.keys())))
     artifact_completeness_ok = True
     observed_task_kinds: set[str] = set()
     budget_consistency_ok = True
     seed_consistency_ok = True
+    budget_accounting_ok = True
+    system_operating_states: dict[str, str] = {}
+    system_accounting_issues: dict[str, list[str]] = {}
+    system_benchmark_complete: dict[str, bool] = {}
     for system, (manifest, _results) in runs.items():
         run_dir = _run_dir_for_system(case, system)
         required = [
@@ -613,16 +624,57 @@ def _build_lane_metadata(
         dataset_manifest = getattr(manifest.artifacts, "dataset_manifest_json", None)
         if dataset_manifest:
             required.append(run_dir / str(dataset_manifest))
-        if not all(path.exists() for path in required):
+        system_artifacts_ok = all(path.exists() for path in required)
+        if not system_artifacts_ok:
             artifact_completeness_ok = False
         if manifest.budget.evaluation_count != case.budget:
             budget_consistency_ok = False
         if manifest.seed != case.seed:
             seed_consistency_ok = False
+        accounting_issues = _budget_accounting_issues(manifest)
+        system_accounting_issues[system] = accounting_issues
+        if accounting_issues:
+            budget_accounting_ok = False
+        benchmark_complete = _system_benchmark_complete(manifest=manifest, results=_results)
+        system_benchmark_complete[system] = benchmark_complete
+        if not system_artifacts_ok:
+            system_operating_states[system] = "artifacts-missing"
+        elif manifest.budget.partial_run:
+            system_operating_states[system] = "partial-run"
+        elif accounting_issues:
+            system_operating_states[system] = "accounting-incomplete"
+        elif benchmark_complete:
+            system_operating_states[system] = "benchmark-complete"
+        else:
+            system_operating_states[system] = "benchmark-incomplete"
         observed_task_kinds.update(entry.task_kind for entry in manifest.benchmarks)
 
     fairness_ok = all(result.parity_status == "fair" for result, _report_path in pair_results.values())
     task_coverage_ok = {"classification", "regression"}.issubset(observed_task_kinds)
+    contract_fair_ok = (
+        artifact_completeness_ok
+        and fairness_ok
+        and task_coverage_ok
+        and budget_consistency_ok
+        and seed_consistency_ok
+        and budget_accounting_ok
+    )
+    core_systems_complete_ok = all(
+        system in case_systems and system_benchmark_complete.get(system, False)
+        for system in CORE_TRUSTED_SYSTEMS
+    )
+    extended_systems_complete_ok = all(
+        system in case_systems and system_benchmark_complete.get(system, False)
+        for system in EXTENDED_TRUSTED_SYSTEMS
+    )
+    if contract_fair_ok and core_systems_complete_ok and extended_systems_complete_ok:
+        operating_state = "trusted-extended"
+    elif contract_fair_ok and core_systems_complete_ok:
+        operating_state = "trusted-core"
+    elif contract_fair_ok:
+        operating_state = "contract-fair"
+    else:
+        operating_state = "reference-only"
     acceptance_notes: list[str] = []
     if not artifact_completeness_ok:
         acceptance_notes.append("missing required artifacts")
@@ -634,6 +686,27 @@ def _build_lane_metadata(
         acceptance_notes.append("manifest evaluation counts drift from requested lane budget")
     if not seed_consistency_ok:
         acceptance_notes.append("manifest seeds drift from requested lane seed")
+    if not budget_accounting_ok:
+        accounting_notes = []
+        for system in sorted(system_accounting_issues):
+            issues = system_accounting_issues[system]
+            if issues:
+                accounting_notes.append(f"{system} ({'; '.join(issues)})")
+        acceptance_notes.append("budget accounting incomplete: " + ", ".join(accounting_notes))
+    if contract_fair_ok and not core_systems_complete_ok:
+        missing_core = [
+            f"{system}={system_operating_states.get(system, 'not-participating')}"
+            for system in CORE_TRUSTED_SYSTEMS
+            if system not in case_systems or not system_benchmark_complete.get(system, False)
+        ]
+        acceptance_notes.append("trusted-core unmet: " + ", ".join(missing_core))
+    if contract_fair_ok and core_systems_complete_ok and not extended_systems_complete_ok:
+        missing_extended = [
+            f"{system}={system_operating_states.get(system, 'not-participating')}"
+            for system in EXTENDED_TRUSTED_SYSTEMS
+            if system not in case_systems or not system_benchmark_complete.get(system, False)
+        ]
+        acceptance_notes.append("trusted-extended unmet: " + ", ".join(missing_extended))
     return LaneMetadata(
         preset=case.lane_preset,
         pack_name=case.pack_name,
@@ -644,15 +717,14 @@ def _build_lane_metadata(
         task_coverage_ok=task_coverage_ok,
         budget_consistency_ok=budget_consistency_ok,
         seed_consistency_ok=seed_consistency_ok,
+        budget_accounting_ok=budget_accounting_ok,
+        core_systems_complete_ok=core_systems_complete_ok,
+        extended_systems_complete_ok=extended_systems_complete_ok,
         observed_task_kinds=tuple(sorted(observed_task_kinds)),
+        system_operating_states=dict(sorted(system_operating_states.items())),
+        operating_state=operating_state,
         acceptance_notes=tuple(acceptance_notes),
-        repeatability_ready=(
-            artifact_completeness_ok
-            and fairness_ok
-            and task_coverage_ok
-            and budget_consistency_ok
-            and seed_consistency_ok
-        ),
+        repeatability_ready=operating_state in {"trusted-core", "trusted-extended"},
     )
 
 
@@ -670,11 +742,41 @@ def _run_dir_for_system(case: MatrixCase, system: str) -> Path:
     return run_dir
 
 
+def _budget_accounting_issues(manifest: Any) -> list[str]:
+    issues: list[str] = []
+    budget = manifest.budget
+    if budget.actual_evaluations is None:
+        issues.append("missing actual_evaluations")
+    elif budget.partial_run:
+        issues.append("partial_run=true")
+    elif budget.actual_evaluations != budget.evaluation_count:
+        issues.append(
+            f"actual_evaluations {budget.actual_evaluations} != declared {budget.evaluation_count}"
+        )
+    if not budget.evaluation_semantics:
+        issues.append("missing evaluation_semantics")
+    if budget.resumed_from_run_id is not None and budget.resumed_evaluations is None:
+        issues.append("missing resumed_evaluations")
+    return issues
+
+
+def _system_benchmark_complete(*, manifest: Any, results: list[Any]) -> bool:
+    result_by_benchmark = {record.benchmark_id: record for record in results}
+    for entry in manifest.benchmarks:
+        if entry.status != "ok":
+            return False
+        record = result_by_benchmark.get(entry.benchmark_id)
+        if record is None or record.status != "ok":
+            return False
+    return True
+
+
 def _build_trend_records(
     *,
     case: MatrixCase,
     pack: Any,
     runs: dict[str, tuple[Any, list[Any]]],
+    lane: LaneMetadata,
 ) -> list[dict[str, Any]]:
     generated_at = datetime.now(timezone.utc).isoformat()
     trend_records: list[dict[str, Any]] = []
@@ -711,7 +813,17 @@ def _build_trend_records(
                         "budget_policy_name": fairness.budget_policy_name if fairness is not None else manifest.budget.budget_policy_name,
                         "data_signature": fairness.data_signature if fairness is not None else None,
                         "code_version": fairness.code_version if fairness is not None else None,
+                        "pairwise_fairness_ok": lane.fairness_ok,
+                        "lane_operating_state": lane.operating_state,
+                        "system_operating_state": lane.system_operating_states.get(system, "unknown"),
+                        "budget_accounting_ok": lane.budget_accounting_ok,
                     },
+                    "lane": {
+                        "operating_state": lane.operating_state,
+                        "repeatability_ready": lane.repeatability_ready,
+                        "budget_accounting_ok": lane.budget_accounting_ok,
+                    },
+                    "system_operating_state": lane.system_operating_states.get(system, "unknown"),
                     "artifact_paths": {
                         "manifest": str(_run_dir_for_system(case, system) / "manifest.json"),
                         "results": str(_run_dir_for_system(case, system) / "results.json"),

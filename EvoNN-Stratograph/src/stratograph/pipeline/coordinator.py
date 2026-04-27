@@ -24,7 +24,6 @@ from stratograph.genome.models import (
     PrimitiveKind,
 )
 from stratograph.pipeline.evaluator import (
-    EvaluationOutcome,
     EvaluationRecord,
     TrainingArtifact,
     evaluate_candidate_with_state,
@@ -80,7 +79,6 @@ def run_evolution(
     )
 
     benchmark_names = config.benchmark_pool.benchmarks
-    evaluations_per_benchmark = config.evolution.population_size * config.evolution.generations
     novelty_scores: list[float] = []
     occupied_niches: set[tuple[int, int, int, int]] = set()
     _write_status(

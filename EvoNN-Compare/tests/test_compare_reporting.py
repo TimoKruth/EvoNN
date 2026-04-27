@@ -92,7 +92,12 @@ def test_render_fair_matrix_trend_markdown_summarizes_longitudinal_rows(tmp_path
     assert "## Trend Dataset Summary" in markdown
     assert "- Systems: `prism, topograph`" in markdown
     assert "- Fairness Scope: `fair`" in markdown
+    assert "- Budget Accounting: `incomplete`" in markdown
+    assert "- Repeatability: `not-ready`" in markdown
+    assert "- Unique Lane Runs: `1`" in markdown
+    assert "## Lane Health By Budget" in markdown
+    assert "| 64 | 2 | reference-only | incomplete | not-ready |" in markdown
     assert "## Outcome Status by System" in markdown
     assert "| prism | 8 | 0 | 0 | 0 | 0 |" in markdown
     assert "## Benchmark Trend View" in markdown
-    assert "| prism | iris_classification | 1 | 0.820000 | 0.820000 | 0.000000 | ok | 64 | 42 | fair |" in markdown
+    assert "| prism | iris_classification | 1 | 0.820000 | 0.820000 | 0.000000 | ok | 64 | 42 | fair | reference-only | incomplete | not-ready | unknown |" in markdown

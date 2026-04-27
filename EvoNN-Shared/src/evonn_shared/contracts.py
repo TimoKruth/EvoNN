@@ -47,6 +47,32 @@ class BudgetEnvelope(BaseModel):
     generations: int | None = None
     population_size: int | None = None
     budget_policy_name: str | None = None
+    actual_evaluations: int | None = None
+    cached_evaluations: int | None = None
+    failed_evaluations: int | None = None
+    invalid_evaluations: int | None = None
+    resumed_from_run_id: str | None = None
+    resumed_evaluations: int | None = None
+    partial_run: bool = False
+    evaluation_semantics: str | None = None
+
+    @model_validator(mode="after")
+    def validate_accounting_fields(self) -> "BudgetEnvelope":
+        for field_name in (
+            "evaluation_count",
+            "epochs_per_candidate",
+            "actual_evaluations",
+            "cached_evaluations",
+            "failed_evaluations",
+            "invalid_evaluations",
+            "resumed_evaluations",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and value < 0:
+                raise ValueError(f"{field_name} must be >= 0")
+        if self.resumed_evaluations is not None and self.resumed_from_run_id is None:
+            raise ValueError("resumed_from_run_id is required when resumed_evaluations is set")
+        return self
 
 
 class DeviceInfo(BaseModel):

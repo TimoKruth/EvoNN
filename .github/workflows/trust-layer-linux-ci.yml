@@ -1,0 +1,75 @@
+name: Trust Layer Linux CI
+
+on:
+  push:
+    paths:
+      - ".github/workflows/trust-layer-linux-ci.yml"
+      - ".pre-commit-config.yaml"
+      - "scripts/ci/**"
+      - "EvoNN-Shared/**"
+      - "EvoNN-Compare/**"
+      - "EvoNN-Contenders/**"
+      - "EvoNN-Primordia/**"
+      - "EvoNN-Stratograph/**"
+      - "shared-benchmarks/**"
+      - "MONOREPO.md"
+      - "pyproject.toml"
+      - "uv.lock"
+  pull_request:
+    paths:
+      - ".github/workflows/trust-layer-linux-ci.yml"
+      - ".pre-commit-config.yaml"
+      - "scripts/ci/**"
+      - "EvoNN-Shared/**"
+      - "EvoNN-Compare/**"
+      - "EvoNN-Contenders/**"
+      - "EvoNN-Primordia/**"
+      - "EvoNN-Stratograph/**"
+      - "shared-benchmarks/**"
+      - "MONOREPO.md"
+      - "pyproject.toml"
+      - "uv.lock"
+
+jobs:
+  trust-layer-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Shared
+            package: evonn-shared
+            script: scripts/ci/shared-checks.sh
+            scope: core trust layer
+          - label: Compare
+            package: evonn-compare
+            script: scripts/ci/compare-checks.sh
+            scope: core trust layer
+          - label: Contenders
+            package: evonn-contenders
+            script: scripts/ci/contenders-checks.sh
+            scope: core trust lane challenger floor
+          - label: Primordia
+            package: evonn-primordia
+            script: scripts/ci/primordia-checks.sh
+            scope: secondary challenger
+          - label: Stratograph
+            package: stratograph
+            script: scripts/ci/stratograph-checks.sh
+            scope: secondary challenger
+    name: ${{ matrix.label }} (${{ matrix.scope }})
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install workspace dev dependencies
+        run: uv sync --all-packages --extra dev
+
+      - name: Validate ${{ matrix.label }}
+        run: bash ${{ matrix.script }} all
