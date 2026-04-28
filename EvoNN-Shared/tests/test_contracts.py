@@ -4,6 +4,7 @@ import pytest
 
 from evonn_shared.contracts import (
     ArtifactPaths,
+    BaselineCoverageEnvelope,
     BenchmarkEntry,
     BudgetEnvelope,
     DeviceInfo,
@@ -64,3 +65,35 @@ def test_budget_envelope_requires_resume_source_for_resumed_evaluations() -> Non
             epochs_per_candidate=20,
             resumed_evaluations=5,
         )
+
+
+def test_run_manifest_accepts_baseline_coverage_policy() -> None:
+    manifest = RunManifest(
+        schema_version="1.0",
+        system="contenders",
+        run_id="run-1",
+        run_name="run-1",
+        created_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        pack_name="tier1_core",
+        seed=42,
+        benchmarks=[
+            BenchmarkEntry(
+                benchmark_id="iris",
+                task_kind="classification",
+                metric_name="accuracy",
+                metric_direction="max",
+                status="ok",
+            )
+        ],
+        budget=BudgetEnvelope(evaluation_count=64, epochs_per_candidate=20),
+        device=DeviceInfo(device_name="linux_x86_64", precision_mode="fp32"),
+        artifacts=ArtifactPaths(config_snapshot="config.json", report_markdown="report.md"),
+        baseline_coverage=BaselineCoverageEnvelope(
+            benchmark_complete_policy="required_only_optional_skips_allowed",
+            optional_dependency_skips={"tabular": ("xgb_small", "lgbm_small")},
+            notes=("optional dependency backends skipped by policy",),
+        ),
+    )
+
+    assert manifest.baseline_coverage is not None
+    assert manifest.baseline_coverage.benchmark_complete_policy == "required_only_optional_skips_allowed"

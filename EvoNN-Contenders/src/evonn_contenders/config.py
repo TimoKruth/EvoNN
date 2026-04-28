@@ -10,6 +10,9 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from evonn_contenders.benchmarks import get_benchmark
+from evonn_contenders.benchmarks.parity import get_native_id, load_parity_pack
+
 
 class BenchmarkPoolConfig(BaseModel):
     """Benchmark selection for one run."""
@@ -147,9 +150,39 @@ def load_config(path: str | Path) -> RunConfig:
     config_path = Path(path)
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if "benchmark_pool" not in payload and "benchmark_pack" in payload:
-        pack = payload["benchmark_pack"] or {}
+        pack_ref = payload["benchmark_pack"] or {}
+        benchmark_ids = list(pack_ref.get("benchmark_ids") or [])
+        if not benchmark_ids and pack_ref.get("pack_name"):
+            parity_pack = load_parity_pack(pack_ref["pack_name"])
+            benchmark_ids = [_resolve_native_benchmark_id(entry) for entry in parity_pack.benchmarks]
         payload["benchmark_pool"] = {
-            "name": pack.get("pack_name", "benchmark_pack"),
-            "benchmarks": pack.get("benchmark_ids", []),
+            "name": pack_ref.get("pack_name", "benchmark_pack"),
+            "benchmarks": benchmark_ids,
         }
     return RunConfig.model_validate(payload)
+
+
+def _resolve_native_benchmark_id(entry: object) -> str:
+    native_ids = getattr(entry, "native_ids", {}) or {}
+    candidates = [
+        native_ids.get("contenders"),
+        get_native_id(getattr(entry, "benchmark_id")),
+        native_ids.get("evonn2"),
+        native_ids.get("hybrid"),
+        native_ids.get("stratograph"),
+        native_ids.get("prism"),
+        native_ids.get("topograph"),
+        native_ids.get("evonn"),
+        getattr(entry, "benchmark_id"),
+    ]
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            get_benchmark(candidate)
+            return candidate
+        except Exception:
+            continue
+    return str(getattr(entry, "benchmark_id"))

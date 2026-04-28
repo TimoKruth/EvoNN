@@ -5,15 +5,25 @@ from __future__ import annotations
 import platform
 import subprocess
 from datetime import datetime, timezone
+import importlib.util
 from pathlib import Path
 from typing import Any
 
 from evonn_contenders.benchmarks import get_benchmark
 from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_pack
 from evonn_contenders.config import load_config
+from evonn_contenders.contenders.registry import benchmark_group, contender_names_for_config, resolve_contenders
 from evonn_contenders.export.report import write_report
 from evonn_contenders.storage import RunStore
-from evonn_shared.contracts import ArtifactPaths, BenchmarkEntry, BudgetEnvelope, DeviceInfo, ResultRecord, RunManifest
+from evonn_shared.contracts import (
+    ArtifactPaths,
+    BaselineCoverageEnvelope,
+    BenchmarkEntry,
+    BudgetEnvelope,
+    DeviceInfo,
+    ResultRecord,
+    RunManifest,
+)
 from evonn_shared.manifests import benchmark_signature, fairness_manifest, write_json
 
 
@@ -152,12 +162,16 @@ def export_symbiosis_contract(
             ),
             code_version=_code_version(),
         ),
+        baseline_coverage=_build_baseline_coverage(config=config, pack=pack),
     )
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
     manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     write_json(results_path, [record.model_dump(mode="json") for record in result_records])
-    write_json(output_dir / "summary.json", _build_contract_summary(run=run, manifest=manifest, results=result_records))
+    write_json(
+        output_dir / "summary.json",
+        _build_contract_summary(run=run, manifest=manifest, results=result_records, budget_meta=budget_meta),
+    )
     return manifest_path, results_path
 
 
@@ -184,7 +198,9 @@ def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]])
     return candidates[0]
 
 
-def _build_contract_summary(*, run: dict[str, Any], manifest: RunManifest, results: list[ResultRecord]) -> dict[str, Any]:
+def _build_contract_summary(
+    *, run: dict[str, Any], manifest: RunManifest, results: list[ResultRecord], budget_meta: dict[str, Any]
+) -> dict[str, Any]:
     successful = [record for record in results if record.status == "ok"]
     metric_values = [float(record.metric_value) for record in successful if record.metric_value is not None]
     parameter_counts = [int(record.parameter_count) for record in successful if record.parameter_count is not None]
@@ -217,6 +233,13 @@ def _build_contract_summary(*, run: dict[str, Any], manifest: RunManifest, resul
         "failure_count": len(failed),
         "failure_patterns": failure_patterns,
         "benchmarks_evaluated": len(results),
+        "optional_missing_by_group": budget_meta.get("optional_missing_by_group") or {},
+        "optional_missing_count": int(budget_meta.get("optional_missing_count", 0)),
+        "baseline_coverage": (
+            manifest.baseline_coverage.model_dump(mode="json")
+            if manifest.baseline_coverage is not None
+            else None
+        ),
     }
 
 
@@ -252,6 +275,42 @@ def _export_epochs_per_candidate(*, pack_epochs_per_candidate: int, budget_polic
     if budget_policy_name == "prototype_equal_budget":
         return int(pack_epochs_per_candidate)
     return 1
+
+
+def _build_baseline_coverage(*, config: Any, pack: Any) -> BaselineCoverageEnvelope:
+    active_groups = sorted(
+        {
+            benchmark_group(get_benchmark(fallback_native_id(entry)))
+            for entry in pack.benchmarks
+        }
+    )
+    optional_dependency_skips: dict[str, tuple[str, ...]] = {}
+    notes: list[str] = []
+    for group in active_groups:
+        skipped = [
+            contender.name
+            for contender in resolve_contenders(group, contender_names_for_config(config, group))
+            if _is_optional_skip(contender=contender, config=config)
+        ]
+        if skipped:
+            optional_dependency_skips[group] = tuple(sorted(skipped))
+            notes.append(f"{group}: {', '.join(sorted(skipped))}")
+    if notes:
+        notes.insert(0, "optional dependency backends skipped under required-only completeness policy")
+    return BaselineCoverageEnvelope(
+        benchmark_complete_policy="required_only_optional_skips_allowed",
+        optional_dependency_skips=optional_dependency_skips,
+        notes=tuple(notes),
+    )
+
+
+def _is_optional_skip(*, contender: Any, config: Any) -> bool:
+    dependency = getattr(contender, "optional_dependency", None)
+    if dependency is None or importlib.util.find_spec(dependency) is not None:
+        return False
+    if dependency == "torch":
+        return bool(getattr(config.torch, "allow_optional_missing", True))
+    return bool(getattr(config.boosted_trees, "allow_optional_missing", True))
 
 
 
