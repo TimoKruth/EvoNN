@@ -182,13 +182,7 @@ class BenchmarkSpec(BaseModel):
                 random_state=seed,
             )
         if self.dataset == "make_friedman1":
-            x, y = skd.make_friedman1(
-                n_samples=self.n_samples,
-                n_features=self.model_input_dim,
-                noise=self.noise,
-                random_state=seed,
-            )
-            return x, y
+            return skd.make_friedman1(n_samples=self.n_samples, noise=self.noise, random_state=seed)
         raise ValueError(f"Unknown sklearn dataset: {self.dataset}")
 
     @classmethod

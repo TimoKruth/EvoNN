@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
-import math
 from pathlib import Path
 import random
 import shutil
@@ -26,10 +25,11 @@ from stratograph.genome.models import (
 )
 from stratograph.pipeline.evaluator import (
     EvaluationRecord,
+    RUNTIME_BACKEND,
+    RUNTIME_VERSION,
     TrainingArtifact,
     evaluate_candidate_with_state,
 )
-from stratograph.runtime.backends import resolve_runtime_backend_with_policy
 from stratograph.search import crossover_genomes, descriptor, mutate_genome, niche_key, novelty_score
 from stratograph.search.operators import MOTIF_LIBRARY
 from stratograph.storage import RunStore
@@ -61,10 +61,6 @@ def run_evolution(
     run_id = run_dir.name
     created_at = datetime.now(timezone.utc).isoformat()
     architecture_mode = variant or config.evolution.architecture_mode
-    runtime_selection = resolve_runtime_backend_with_policy(
-        config.runtime.backend,
-        allow_fallback=config.runtime.allow_fallback,
-    )
     variant_policy = _variant_policy(architecture_mode)
     completed_benchmarks: set[str] = set()
     if resume and checkpoint_path.exists():
@@ -82,6 +78,9 @@ def run_evolution(
     benchmark_names = config.benchmark_pool.benchmarks
     novelty_scores: list[float] = []
     occupied_niches: set[tuple[int, int, int, int]] = set()
+    prior_budget_meta = store.load_budget_metadata(run_id) if resume else {}
+    scheduled_evaluation_slots = int(prior_budget_meta.get("evaluation_count", 0) or 0)
+    benchmark_load_failures = int(prior_budget_meta.get("benchmark_load_failures", 0) or 0)
     _write_status(
         status_path,
         run_id=run_id,
@@ -89,26 +88,17 @@ def run_evolution(
         total_benchmarks=len(benchmark_names),
         completed_benchmarks=sorted(completed_benchmarks),
         state="running",
-        active_benchmark=None,
     )
     for benchmark_name in benchmark_names:
         if benchmark_name in completed_benchmarks:
             continue
-        _write_status(
-            status_path,
-            run_id=run_id,
-            architecture_mode=architecture_mode,
-            total_benchmarks=len(benchmark_names),
-            completed_benchmarks=sorted(completed_benchmarks),
-            state="running",
-            active_benchmark=benchmark_name,
-        )
         spec = get_benchmark(benchmark_name)
         best_genome: HierarchicalGenome | None = None
         best_result: EvaluationRecord | None = None
         try:
             data = spec.load_data(seed=config.seed)
         except Exception as exc:
+            benchmark_load_failures += 1
             failed_genome = _make_candidate(
                 benchmark_name=benchmark_name,
                 task=spec.task,
@@ -166,6 +156,7 @@ def run_evolution(
             evaluated: list[tuple[HierarchicalGenome, EvaluationRecord, float]] = []
             trained_states: dict[str, TrainingArtifact | None] = {}
             for genome in population:
+                scheduled_evaluation_slots += 1
                 try:
                     outcome = evaluate_candidate_with_state(
                         genome,
@@ -175,7 +166,6 @@ def run_evolution(
                         epochs=config.training.epochs,
                         batch_size=config.training.batch_size,
                         learning_rate=config.training.learning_rate,
-                        runtime_backend=runtime_selection.resolved_backend,
                     )
                     result = outcome.record
                     trained_states[genome.genome_id] = outcome.training_artifact
@@ -262,34 +252,25 @@ def run_evolution(
             total_benchmarks=len(benchmark_names),
             completed_benchmarks=sorted(completed_benchmarks),
             state="running",
-            active_benchmark=benchmark_name,
         )
 
-    evaluation_count = config.evolution.population_size * config.evolution.generations * len(benchmark_names)
-    failed_result_count = sum(1 for benchmark_name in benchmark_names if benchmark_name not in completed_benchmarks)
     wall_clock_seconds = time.perf_counter() - started
     store.save_budget_metadata(
         run_id=run_id,
         payload={
-            "evaluation_count": evaluation_count,
-            "actual_evaluations": evaluation_count,
-            "cached_evaluations": 0,
-            "failed_evaluations": failed_result_count,
-            "invalid_evaluations": 0,
-            "partial_run": False,
-            "evaluation_semantics": (
-                "one candidate evaluation counted for each genome evaluated on each benchmark; "
-                "evaluation_count = population_size * generations * benchmark_count"
+            "evaluation_count": scheduled_evaluation_slots,
+            "configured_evaluation_slots": (
+                config.evolution.population_size * config.evolution.generations * len(benchmark_names)
             ),
             "effective_training_epochs": config.training.epochs,
             "wall_clock_seconds": wall_clock_seconds,
             "created_at": created_at,
-            "runtime_backend_requested": runtime_selection.requested_backend,
-            "runtime_backend": runtime_selection.resolved_backend,
-            "runtime_version": runtime_selection.runtime_version,
-            "runtime_backend_limitations": runtime_selection.backend_limitations,
+            "runtime_backend": RUNTIME_BACKEND,
+            "runtime_version": RUNTIME_VERSION,
             "precision_mode": PRECISION_MODE,
             "architecture_mode": architecture_mode,
+            "benchmark_load_failures": benchmark_load_failures,
+            "completed_benchmark_count": len(completed_benchmarks),
             "allow_clone_mutation": variant_policy["allow_clone_mutation"],
             "motif_bias": variant_policy["motif_bias"],
             "novelty_archive_final_size": len(novelty_scores),
@@ -299,9 +280,6 @@ def run_evolution(
             "map_elites_total_niches": max(1, len(occupied_niches)),
             "map_elites_fill_ratio": 1.0 if occupied_niches else 0.0,
             "qd_enabled": True,
-            "parent_selection_strategy": "quality_novelty_diverse_elites",
-            "mutation_pressure": "hierarchy_aware_motif_cell_reuse",
-            "hierarchy_selection_policy": "ranked quality+novelty parent sampling with descriptor-diverse elites",
         },
     )
     store.close()
@@ -313,7 +291,6 @@ def run_evolution(
         total_benchmarks=len(benchmark_names),
         completed_benchmarks=sorted(completed_benchmarks),
         state="completed",
-        active_benchmark=None,
     )
     return run_dir
 
@@ -447,15 +424,15 @@ def _next_population(
         key=lambda item: _selection_key(item[1], item[2]),
         reverse=True,
     )
-    elite_count = max(2, min(len(scored), population_size // 2 or 1))
-    elites = _select_diverse_elites(scored, elite_count=elite_count)
+    elites = [item[0] for item in scored[: max(2, min(len(scored), population_size // 2 or 1))]]
     rng = random.Random(seed * 100_000 + generation * 97 + len(benchmark_name))
     next_population: list[HierarchicalGenome] = []
     next_states: dict[str, TrainingArtifact | None] = {}
     for index in range(population_size):
         candidate_id = f"{benchmark_name}_seed_{seed}_gen_{generation+1}_cand_{index}"
         if len(elites) >= 2 and index % 3 == 0:
-            left, right = _select_crossover_parents(scored, elites=elites, rng=rng)
+            left = elites[index % len(elites)]
+            right = elites[(index + 1) % len(elites)]
             child = crossover_genomes(
                 left,
                 right,
@@ -466,18 +443,14 @@ def _next_population(
             )
             inherited_state = trained_states.get(left.genome_id) or trained_states.get(right.genome_id)
         else:
-            parent = (
-                _select_mutation_parent(scored, elites=elites, rng=rng)
-                if elites
-                else _make_candidate(
-                    benchmark_name=benchmark_name,
-                    task=task,
-                    input_dim=input_dim,
-                    output_dim=output_dim,
-                    seed=seed,
-                    candidate_index=index,
-                    architecture_mode=architecture_mode,
-                )
+            parent = elites[index % len(elites)] if elites else _make_candidate(
+                benchmark_name=benchmark_name,
+                task=task,
+                input_dim=input_dim,
+                output_dim=output_dim,
+                seed=seed,
+                candidate_index=index,
+                architecture_mode=architecture_mode,
             )
             child = mutate_genome(
                 parent,
@@ -499,110 +472,6 @@ def _selection_key(result: EvaluationRecord, novelty: float) -> float:
     return result.quality + novelty * 0.05
 
 
-def _select_diverse_elites(
-    scored: list[tuple[HierarchicalGenome, EvaluationRecord, float]],
-    *,
-    elite_count: int,
-) -> list[HierarchicalGenome]:
-    """Select strong elites while preserving descriptor spread."""
-    ok_scored = [item for item in scored if item[1].status == "ok"]
-    pool = ok_scored or scored
-    if elite_count <= 0 or not pool:
-        return []
-
-    selected: list[tuple[HierarchicalGenome, EvaluationRecord, float]] = [pool[0]]
-    for item in pool[1:]:
-        if len(selected) >= elite_count:
-            break
-        candidate_desc = descriptor(item[0])
-        existing_descs = [descriptor(genome) for genome, _, _ in selected]
-        min_distance = min(_descriptor_distance(candidate_desc, existing) for existing in existing_descs)
-        if min_distance >= 1.0 or len(selected) < 2:
-            selected.append(item)
-
-    for item in pool:
-        if len(selected) >= elite_count:
-            break
-        if item not in selected:
-            selected.append(item)
-    return [genome for genome, _, _ in selected]
-
-
-def _select_mutation_parent(
-    scored: list[tuple[HierarchicalGenome, EvaluationRecord, float]],
-    *,
-    elites: list[HierarchicalGenome],
-    rng: random.Random,
-) -> HierarchicalGenome:
-    eligible = [item for item in scored if item[0] in elites]
-    if not eligible:
-        return rng.choice(elites)
-    return _weighted_parent_choice(eligible, rng=rng)
-
-
-def _select_crossover_parents(
-    scored: list[tuple[HierarchicalGenome, EvaluationRecord, float]],
-    *,
-    elites: list[HierarchicalGenome],
-    rng: random.Random,
-) -> tuple[HierarchicalGenome, HierarchicalGenome]:
-    left = _select_mutation_parent(scored, elites=elites, rng=rng)
-    alternatives = [elite for elite in elites if elite.genome_id != left.genome_id]
-    if not alternatives:
-        return left, left
-    right_pool = [item for item in scored if item[0] in alternatives]
-    if not right_pool:
-        return left, rng.choice(alternatives)
-    left_desc = descriptor(left)
-    weighted: list[tuple[HierarchicalGenome, float]] = []
-    for genome, result, novelty in right_pool:
-        distance = _descriptor_distance(left_desc, descriptor(genome))
-        weighted.append((genome, max(0.01, _selection_weight(result, novelty)) * (1.0 + distance * 0.15)))
-    return left, _weighted_choice(weighted, rng=rng)
-
-
-def _weighted_parent_choice(
-    candidates: list[tuple[HierarchicalGenome, EvaluationRecord, float]],
-    *,
-    rng: random.Random,
-) -> HierarchicalGenome:
-    weighted = [
-        (genome, _selection_weight(result, novelty))
-        for genome, result, novelty in candidates
-    ]
-    return _weighted_choice(weighted, rng=rng)
-
-
-def _selection_weight(result: EvaluationRecord, novelty: float) -> float:
-    if result.status != "ok":
-        return 0.01
-    quality = float(result.quality)
-    if not math.isfinite(quality):
-        return 0.01
-    return max(0.01, 1.0 + quality + novelty * 0.05)
-
-
-def _weighted_choice(
-    weighted: list[tuple[HierarchicalGenome, float]],
-    *,
-    rng: random.Random,
-) -> HierarchicalGenome:
-    total = sum(max(0.0, weight) for _, weight in weighted)
-    if total <= 0:
-        return rng.choice([genome for genome, _ in weighted])
-    threshold = rng.random() * total
-    cumulative = 0.0
-    for genome, weight in weighted:
-        cumulative += max(0.0, weight)
-        if cumulative >= threshold:
-            return genome
-    return weighted[-1][0]
-
-
-def _descriptor_distance(left: tuple[float, float, float, float], right: tuple[float, float, float, float]) -> float:
-    return sum(abs(l_value - r_value) for l_value, r_value in zip(left, right, strict=True))
-
-
 def _artifact_compatible(genome: HierarchicalGenome, artifact: TrainingArtifact | None) -> bool:
     if artifact is None:
         return False
@@ -617,22 +486,16 @@ def _artifact_compatible(genome: HierarchicalGenome, artifact: TrainingArtifact 
 
 def _normalize_config(config: RunConfig) -> RunConfig:
     benchmark_pool = config.benchmark_pool
-    runtime = config.runtime
     evolution = config.evolution
     training = config.training
     if not isinstance(benchmark_pool, BenchmarkPoolConfig):
         benchmark_pool = BenchmarkPoolConfig.model_validate(benchmark_pool)
-    if not hasattr(runtime, "backend"):
-        from stratograph.config import RuntimeConfig
-
-        runtime = RuntimeConfig.model_validate(runtime)
     if not isinstance(evolution, EvolutionConfig):
         evolution = EvolutionConfig.model_validate(evolution)
     if not isinstance(training, TrainingConfig):
         training = TrainingConfig.model_validate(training)
     if (
         benchmark_pool is config.benchmark_pool
-        and runtime is config.runtime
         and evolution is config.evolution
         and training is config.training
     ):
@@ -641,7 +504,6 @@ def _normalize_config(config: RunConfig) -> RunConfig:
         seed=config.seed,
         run_name=config.run_name,
         benchmark_pool=benchmark_pool,
-        runtime=runtime,
         training=training,
         evolution=evolution,
     )
@@ -766,7 +628,6 @@ def _write_status(
     total_benchmarks: int,
     completed_benchmarks: list[str],
     state: str,
-    active_benchmark: str | None = None,
 ) -> None:
     path.write_text(
         json.dumps(
@@ -778,7 +639,6 @@ def _write_status(
                 "completed_benchmarks": completed_benchmarks,
                 "completed_count": len(completed_benchmarks),
                 "remaining_count": max(0, total_benchmarks - len(completed_benchmarks)),
-                "active_benchmark": active_benchmark,
             },
             indent=2,
         ),

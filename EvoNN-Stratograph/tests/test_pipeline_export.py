@@ -66,17 +66,9 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert len(results) == 2
     assert {record["status"] for record in results} <= {"ok", "failed"}
     assert budget_meta["runtime_backend"] in {"mlx", "numpy-fallback"}
-    assert budget_meta["runtime_backend_requested"] in {"auto", "mlx", "numpy-fallback"}
     assert "runtime_version" in budget_meta
     assert budget_meta["precision_mode"] == "fp32"
     assert budget_meta["wall_clock_seconds"] >= 0.0
-    assert budget_meta["actual_evaluations"] == budget_meta["evaluation_count"]
-    assert budget_meta["cached_evaluations"] == 0
-    assert budget_meta["invalid_evaluations"] == 0
-    assert budget_meta["partial_run"] is False
-    assert "candidate evaluation" in budget_meta["evaluation_semantics"]
-    assert budget_meta["parent_selection_strategy"] == "quality_novelty_diverse_elites"
-    assert budget_meta["mutation_pressure"] == "hierarchy_aware_motif_cell_reuse"
 
     manifest_path, results_path = export_symbiosis_contract(
         run_dir,
@@ -93,16 +85,12 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert len(exported_results) == 2
     assert summary["system"] == "stratograph"
     assert summary["runtime_backend"] == budget_meta["runtime_backend"]
-    assert summary["requested_runtime_backend"] == budget_meta["runtime_backend_requested"]
     assert summary["runtime_version"] == (budget_meta["runtime_version"] or "unknown")
     assert summary["precision_mode"] == budget_meta["precision_mode"]
     assert summary["wall_clock_seconds"] == budget_meta["wall_clock_seconds"]
     assert summary["architecture_mode"] == budget_meta["architecture_mode"]
-    assert summary["parent_selection_strategy"] == budget_meta["parent_selection_strategy"]
-    assert summary["mutation_pressure"] == budget_meta["mutation_pressure"]
     assert summary["completed_benchmarks"] == status["completed_count"]
     assert summary["remaining_benchmarks"] == status["remaining_count"]
-    assert status["active_benchmark"] is None
     assert summary["failure_count"] == sum(1 for record in exported_results if record["status"] != "ok")
     assert "failure_patterns" in summary
     assert "hierarchy_summary" in summary
@@ -110,21 +98,13 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
     assert manifest["budget"]["wall_clock_seconds"] == budget_meta["wall_clock_seconds"]
-    assert manifest["budget"]["actual_evaluations"] == budget_meta["evaluation_count"]
-    assert manifest["budget"]["cached_evaluations"] == 0
-    assert manifest["budget"]["invalid_evaluations"] == 0
-    assert manifest["budget"]["partial_run"] is False
-    assert "candidate evaluation" in manifest["budget"]["evaluation_semantics"]
     assert manifest["search_telemetry"]["architecture_mode"] == budget_meta["architecture_mode"]
-    assert manifest["search_telemetry"]["parent_selection_strategy"] == budget_meta["parent_selection_strategy"]
-    assert manifest["search_telemetry"]["mutation_pressure"] == budget_meta["mutation_pressure"]
     assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
     assert manifest["device"]["framework_version"] == (budget_meta["runtime_version"] or "unknown")
     assert manifest["device"]["precision_mode"] == budget_meta["precision_mode"]
 
     report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert f"- Runtime: `{budget_meta['runtime_backend']}`" in report
-    assert f"- Requested Runtime: `{budget_meta['runtime_backend_requested']}`" in report
     expected_version = budget_meta["runtime_version"] or "unknown"
     assert f"- Runtime Version: `{expected_version}`" in report
     assert f"- Precision Mode: `{budget_meta['precision_mode']}`" in report
@@ -137,8 +117,6 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert f"- Effective Training Epochs: `{budget_meta['effective_training_epochs']}`" in report
     assert f"- Wall Clock Seconds: `{budget_meta['wall_clock_seconds']:.3f}`" in report
     assert f"- Architecture Mode: `{budget_meta['architecture_mode']}`" in report
-    assert f"- Parent Selection: `{budget_meta['parent_selection_strategy']}`" in report
-    assert f"- Mutation Pressure: `{budget_meta['mutation_pressure']}`" in report
     assert "## Hierarchy Summary" in report
     assert "| Property | Value |" in report
     assert "| Representative Genome | `" in report
@@ -189,79 +167,6 @@ def test_inspect_command_surfaces_rich_run_summary(repo_root, tmp_path) -> None:
     assert "Cell Library Size" in result.stdout
     assert "Macro Depth" in result.stdout
     assert "Reuse Ratio" in result.stdout
-
-
-def test_regression_lane_run_and_export(repo_root, tmp_path) -> None:
-    base_config = load_config(repo_root / "configs" / "working_33_plus_5_lm_smoke.yaml")
-    config = base_config.model_copy(
-        update={
-            "run_name": "regression_export_pack",
-            "benchmark_pool": BenchmarkPoolConfig(name="regression_export_pack", benchmarks=["diabetes", "friedman1"]),
-            "evolution": base_config.evolution.model_copy(update={"population_size": 2, "generations": 1}),
-            "runtime": base_config.runtime.model_copy(update={"backend": "numpy-fallback"}),
-        }
-    )
-    config_path = tmp_path / "regression_export_config.yaml"
-    config_path.write_text(yaml.safe_dump(config.model_dump(mode="python"), sort_keys=False), encoding="utf-8")
-    pack_path = tmp_path / "regression_export_pack.yaml"
-    pack_path.write_text(
-        yaml.safe_dump(
-            {
-                "name": "regression_export_pack",
-                "benchmarks": [
-                    {
-                        "benchmark_id": "diabetes_regression",
-                        "native_ids": {"stratograph": "diabetes"},
-                        "task_kind": "regression",
-                        "metric_name": "mse",
-                        "metric_direction": "min",
-                    },
-                    {
-                        "benchmark_id": "friedman1_regression",
-                        "native_ids": {"stratograph": "friedman1"},
-                        "task_kind": "regression",
-                        "metric_name": "mse",
-                        "metric_direction": "min",
-                    },
-                ],
-                "budget_policy": {
-                    "evaluation_count": 2,
-                    "epochs_per_candidate": 1,
-                    "budget_tolerance_pct": 10.0,
-                },
-                "seed_policy": {"mode": "shared", "required": True},
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
-    )
-    run_dir = tmp_path / "regression_export_run"
-    run_evolution(config, run_dir=run_dir, config_path=config_path)
-
-    with RunStore(run_dir / "metrics.duckdb") as store:
-        results = store.load_results(run_dir.name)
-        budget_meta = store.load_budget_metadata(run_dir.name)
-
-    assert len(results) == 2
-    assert {record["benchmark_name"] for record in results} == {"diabetes", "friedman1"}
-    assert {record["metric_name"] for record in results} == {"mse"}
-    assert all(record["status"] == "ok" for record in results)
-    assert all(record["metric_value"] is not None for record in results)
-    assert all(record["quality"] is not None and record["quality"] <= 0.0 for record in results)
-    assert budget_meta["runtime_backend"] == "numpy-fallback"
-
-    manifest_path, results_path = export_symbiosis_contract(run_dir, pack_path)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    exported_results = json.loads(results_path.read_text(encoding="utf-8"))
-    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
-
-    assert manifest["pack_name"] == "regression_export_pack"
-    assert all(item["task_kind"] == "regression" for item in manifest["benchmarks"])
-    assert all(item["status"] == "ok" for item in exported_results)
-    assert all(item["metric_name"] == "mse" for item in exported_results)
-    assert summary["completed_benchmarks"] == 2
-    assert summary["failure_count"] == 0
-    assert summary["median_benchmark_quality"] is not None
 
 
 def test_inspect_command_handles_empty_run_dir(tmp_path) -> None:
@@ -480,3 +385,70 @@ def test_build_execution_ladder(tmp_path) -> None:
     assert len(cases) == 9
     assert cases[0].name == "single_moons_classification"
     assert cases[-1].name.endswith("eval608")
+
+
+def test_budget_metadata_counts_actual_scheduled_slots_on_partial_resume(repo_root, tmp_path) -> None:
+    config = load_config(repo_root / "configs" / "tier1_core_eval64.yaml")
+    partial_config = config.model_copy(
+        update={"benchmark_pool": BenchmarkPoolConfig(name="partial", benchmarks=["iris_classification"])}
+    )
+    config_path = tmp_path / "partial.yaml"
+    config_path.write_text(
+        yaml.safe_dump(partial_config.model_dump(mode="python"), sort_keys=False),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "partial_run"
+
+    run_evolution(partial_config, run_dir=run_dir, config_path=config_path)
+    run_evolution(partial_config, run_dir=run_dir, config_path=config_path, resume=True)
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        budget_meta = store.load_budget_metadata(run_dir.name)
+
+    assert budget_meta["evaluation_count"] == 8
+    assert budget_meta["configured_evaluation_slots"] == 8
+    assert budget_meta["completed_benchmark_count"] == 1
+    assert budget_meta["benchmark_load_failures"] == 0
+
+
+def test_official_lane_configs_encode_exact_budget_targets(repo_root) -> None:
+    expected_counts = {
+        "smoke.yaml": 16,
+        "tier1_core_eval64.yaml": 64,
+        "tier1_core_eval256.yaml": 256,
+        "tier1_core_eval1000.yaml": 1000,
+    }
+
+    for filename, expected in expected_counts.items():
+        config = load_config(repo_root / "configs" / filename)
+        benchmark_count = len(config.benchmark_pool.benchmarks)
+        actual = config.evolution.population_size * config.evolution.generations * benchmark_count
+        assert actual == expected, filename
+
+
+def test_regression_benchmarks_complete_successfully_in_runtime(repo_root, tmp_path) -> None:
+    base_config = load_config(repo_root / "configs" / "tier1_core_eval64.yaml")
+    config = base_config.model_copy(
+        update={
+            "run_name": "regression_pair",
+            "benchmark_pool": BenchmarkPoolConfig(name="regression_pair", benchmarks=["diabetes", "friedman1"]),
+            "evolution": base_config.evolution.model_copy(update={"population_size": 1, "generations": 1}),
+        }
+    )
+    config_path = tmp_path / "regression_pair.yaml"
+    config_path.write_text(
+        yaml.safe_dump(config.model_dump(mode="python"), sort_keys=False),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "regression_pair"
+
+    run_evolution(config, run_dir=run_dir, config_path=config_path)
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        results = store.load_results(run_dir.name)
+        budget_meta = store.load_budget_metadata(run_dir.name)
+
+    assert len(results) == 2
+    assert {row["status"] for row in results} == {"ok"}
+    assert budget_meta["evaluation_count"] == 2
+    assert budget_meta["benchmark_load_failures"] == 0
