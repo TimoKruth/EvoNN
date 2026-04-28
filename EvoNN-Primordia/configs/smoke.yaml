@@ -1,0 +1,24 @@
+seed: 42
+run_name: primordia_smoke
+runtime:
+  backend: auto
+benchmark_pool:
+  name: smoke
+  benchmarks:
+    - iris
+    - wine
+    - breast_cancer
+    - moons
+    - digits
+    - diabetes
+    - friedman1
+search:
+  mode: budget_matched
+  target_evaluation_count: 21
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp, sparse_mlp, moe_mlp]
+  synthetic: [mlp, sparse_mlp]
+  image: [mlp, conv2d, lite_conv2d]
+  language_modeling: [embedding, attention, sparse_attention]

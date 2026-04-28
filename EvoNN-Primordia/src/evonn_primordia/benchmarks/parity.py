@@ -16,8 +16,11 @@ CANONICAL_BENCHMARK_IDS: dict[str, str] = {
     "breast_cancer": "breast_cancer",
     "circles": "circles_classification",
     "credit_g": "credit_g_classification",
+    "diabetes": "diabetes_regression",
     "digits": "digits_image",
     "fashion_mnist": "fashionmnist_image",
+    "friedman1": "friedman1_regression",
+    "friedman_regression": "friedman1_regression",
     "iris": "iris_classification",
     "mnist": "mnist_image",
     "moons": "moons_classification",
@@ -125,7 +128,11 @@ def get_canonical_id(native_name: str) -> str:
 
 
 def get_native_id(canonical_id: str) -> str:
-    return _REVERSE_IDS.get(canonical_id, canonical_id)
+    preferred = {
+        "diabetes_regression": "diabetes",
+        "friedman1_regression": "friedman1",
+    }
+    return preferred.get(canonical_id, _REVERSE_IDS.get(canonical_id, canonical_id))
 
 
 def resolve_pack_path(pack_ref: str | Path) -> Path:
@@ -150,15 +157,14 @@ def resolve_pack_path(pack_ref: str | Path) -> Path:
 
 def fallback_native_id(entry: ParityBenchmark, system: str = "primordia") -> str:
     native_ids = entry.native_ids or {}
-    return (
-        native_ids.get(system)
-        or native_ids.get("stratograph")
-        or native_ids.get("prism")
-        or native_ids.get("topograph")
-        or native_ids.get("evonn")
-        or native_ids.get("evonn2")
-        or get_native_id(entry.benchmark_id)
-    )
+    direct = native_ids.get(system)
+    if direct:
+        return direct
+    for other_system in ("stratograph", "prism", "topograph", "evonn2", "evonn"):
+        candidate = native_ids.get(other_system)
+        if candidate:
+            return get_native_id(get_canonical_id(candidate))
+    return get_native_id(entry.benchmark_id)
 
 
 def load_parity_pack(pack_path: str | Path) -> ParityPack:

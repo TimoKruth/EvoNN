@@ -10,4 +10,5 @@ members = [
 ]
 
 [tool.uv.sources]
+evonn-compare = { workspace = true }
 evonn-shared = { workspace = true }

@@ -42,15 +42,18 @@ comparison against the rest of the umbrella.
 
 Current deliverables:
 - self-contained Primordia-local runtime boundary with MLX as the reference backend
+- Linux-capable `numpy-fallback` runtime for smoke / compare-grade validation on non-MLX hosts
 - Primordia-local benchmark and parity loaders
 - MLX-backed primitive candidate search
 - runtime metadata carried through run/export artifacts
 - primitive usage, benchmark-group coverage, and failure telemetry carried through reports/exports
 - primitive bank summary artifact emitted alongside run artifacts and compare exports for later seeding-style analysis
 - benchmark-conditioned seed candidate artifact emitted for downstream family/topology/hierarchy seeding experiments
-- richer markdown reports that include primitive-bank winners and representative genomes
-- richer CLI inspection that summarizes runtime, usage, wins, and best benchmark outcomes from run artifacts
+- richer markdown reports that include primitive-bank winners, benchmark leaders, family leaders, and representative genomes
+- richer CLI inspection that summarizes runtime, usage, wins, benchmark leaders, family leaders, and best benchmark outcomes from run artifacts
 - budget-matched per-benchmark evaluation scheduling
+- bounded elite/archive search with lineage-aware offspring mutation from archived parents
+- per-benchmark and family-level leader tracking emitted as `search_leaders.json`
 - per-benchmark best primitive selection
 - compare-ready manifest/results export
 - markdown + JSON run artifacts
@@ -66,12 +69,28 @@ From monorepo root:
 
 ```bash
 uv run --package evonn-primordia primordia --help
-uv run --package evonn-primordia primordia run --config path/to/config.yaml
+uv run --package evonn-primordia primordia run --config EvoNN-Primordia/configs/smoke.yaml
+uv run --package evonn-primordia primordia run --config EvoNN-Primordia/configs/tier1_core_eval64.yaml
 uv run --package evonn-primordia primordia inspect --run-dir path/to/run
 uv run --package evonn-primordia primordia report --run-dir path/to/run
 uv run --package evonn-primordia primordia seed export --run-dir path/to/run
 uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/run --pack-path path/to/pack.yaml
 ```
+
+Canonical named configs now live under `EvoNN-Primordia/configs/`:
+- `smoke.yaml`
+- `tier1_core_eval64.yaml`
+- `tier1_core_eval256.yaml`
+- `tier1_core_eval1000.yaml`
+
+Phase-2 baseline results now live in `BASELINE_MATRIX.md`, which records the
+current smoke / tier1 lane runs, benchmark-completeness status, artifact paths,
+and the remaining language-modeling caveat for later comparison.
+
+The `tier1_core` configs include both the classification/synthetic/image tasks and
+the current regression pair (`diabetes`, `friedman1`) so Primordia's named tier-1
+lane stays closer to the compare/parity-pack coverage instead of silently dropping
+regression from the official branch baseline.
 
 `primordia report` now refreshes `report.md` from the current run artifacts when
 `summary.json` is present, so stale markdown snapshots can be rebuilt after
@@ -90,8 +109,10 @@ Primordia currently acts as a primitive-first search system with MLX as its
 reference execution runtime and an explicitly budget-matched evaluation count.
 The package now also installs cleanly on non-Darwin hosts by treating MLX as a
 platform-specific dependency, while run/export artifacts still record the actual
-runtime backend used. That makes it possible to include Primordia in fair
-EvoNN-Compare matrix runs alongside Prism, Topograph, Stratograph, and the
+runtime backend used. A Linux-capable `numpy-fallback` backend is available for
+smoke, regression, and compare-grade validation so portability is operational
+rather than merely rhetorical. That makes it possible to include Primordia in
+fair EvoNN-Compare matrix runs alongside Prism, Topograph, Stratograph, and the
 Contenders baseline.
 
 ## Core Docs
@@ -99,4 +120,6 @@ Contenders baseline.
 - `VISION.md`
 - `IMPLEMENTATION_PLAN.md`
 - `ARCHITECTURE_RULES.md`
+- `BASELINE_MATRIX.md`
 - `CHANGELOG.md`
+- `docs/QUALITY_SCORECARD.md`

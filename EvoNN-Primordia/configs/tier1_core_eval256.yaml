@@ -1,0 +1,25 @@
+seed: 42
+run_name: primordia_tier1_core_eval256
+runtime:
+  backend: auto
+benchmark_pack:
+  pack_name: tier1_core
+  benchmark_ids:
+    - iris
+    - wine
+    - breast_cancer
+    - digits
+    - moons
+    - circles
+    - diabetes
+    - friedman1
+search:
+  mode: budget_matched
+  target_evaluation_count: 256
+training:
+  epochs_per_candidate: 2
+primitive_pool:
+  tabular: [mlp, sparse_mlp, moe_mlp]
+  synthetic: [mlp, sparse_mlp]
+  image: [mlp, conv2d, lite_conv2d]
+  language_modeling: [embedding, attention, sparse_attention]

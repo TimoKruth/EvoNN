@@ -562,6 +562,8 @@ name = "evonn-primordia"
 version = "0.1.0"
 source = { editable = "EvoNN-Primordia" }
 dependencies = [
+    { name = "evonn-compare" },
+    { name = "evonn-shared" },
     { name = "mlx", marker = "sys_platform == 'darwin'" },
     { name = "numpy" },
     { name = "openml" },
@@ -582,6 +584,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "evonn-compare", editable = "EvoNN-Compare" },
+    { name = "evonn-shared", editable = "EvoNN-Shared" },
     { name = "mlx", marker = "sys_platform == 'darwin'", specifier = ">=0.31.0" },
     { name = "numpy", specifier = ">=2.2.0" },
     { name = "openml", specifier = ">=0.14.2" },

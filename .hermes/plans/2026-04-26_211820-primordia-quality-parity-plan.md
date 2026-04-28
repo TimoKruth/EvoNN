@@ -10,6 +10,8 @@
 
 **Scope note:** This plan is intentionally a **full-engine advancement plan** for a dedicated Primordia branch. It is not limited by the current quarter-critical scope in `EVONN_90_DAY_PLAN.md`. That repo-level plan may prioritize the shared daily lane first; this plan assumes we are deliberately investing in Primordia itself as a serious engine. Merge-back should therefore happen in slices, but the branch goal is unapologetically engine advancement rather than minimum-quarter compliance.
 
+**Post-main-merge branch discipline:** After merging `main`, keep this branch focused on Primordia advancement work. Accept upstream Compare/Shared/CI changes when they arrive from `main`, but do not start new branch-local Compare/Shared feature work here unless it is strictly required to keep Primordia exports, validation, or fair-matrix participation compatible.
+
 ---
 
 ## Current Context
@@ -25,10 +27,10 @@ Based on the current repo state:
 The current core limitations appear to be:
 
 1. `EvoNN-Primordia/src/evonn_primordia/pipeline.py`
-   - benchmark-by-benchmark round-robin evaluation
-   - no persistent population/archive state
-   - no parent selection, no cross-benchmark memory, no novelty/elite retention
-   - mutated seeds are tied to slot index, not learned search pressure
+   - the old slot-based round-robin loop has now been replaced with a bounded elite/archive loop, but the search policy is still intentionally shallow
+   - search state is benchmark-local rather than a richer cross-run or cross-benchmark memory system
+   - selection pressure exists now, but archive policy, diversity retention, and policy tuning are still closer to a first serious baseline than a mature engine
+   - lineage and resume artifacts exist, but they are not yet the same depth as stronger long-horizon engines
 
 2. `EvoNN-Primordia/src/evonn_primordia/runtime/training.py`
    - simple trainer with short local loops
@@ -269,6 +271,12 @@ That ordering matters because:
 - slot-index-driven search is gone from the core loop
 - lineage fields exist and are non-trivial in real run artifacts
 - at least one named lane shows better best-of-run outcomes without breaking budget accounting
+
+**Status on this branch:** complete.
+- the old slot-index loop has been replaced by the bounded elite/archive search in `pipeline.py`
+- `trial_records.json` now carries non-trivial lineage/search fields including `parent_genome_id`, `mutation_operator`, `generation`, `novelty_score`, `complexity_penalty`, and persisted `genome_payload`
+- search policy / slot allocation / benchmark leaders / family leaders are now surfaced through `summary.json`, `report.md`, `primordia inspect`, `primitive_bank_summary.json`, and `search_leaders.json`
+- real named-lane validation on this branch has stayed budget-clean while the smoke lane and fallback tier-style checks remained green
 
 ---
 
