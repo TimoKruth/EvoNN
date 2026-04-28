@@ -64,6 +64,8 @@ TASK_MOTIFS: dict[str, tuple[tuple[tuple[PrimitiveKind, ActivationKind], ...], .
         ),
     ),
 }
+MAX_MACRO_NODES = 12
+EDGE_SAMPLE_ATTEMPTS = 64
 
 
 def mutate_genome(
@@ -132,7 +134,7 @@ def mutate_genome(
             for node in macro_nodes
         ]
 
-    elif mode == "add_macro":
+    elif mode == "add_macro" and len(macro_nodes) < MAX_MACRO_NODES:
         anchor = rng.choice(macro_nodes)
         new_cell_id = rng.choice(list(cell_library))
         new_node = MacroNodeGene(
@@ -205,6 +207,7 @@ def mutate_genome(
             macro_edges.append(MacroEdgeGene(source=branch.node_id, target="output"))
         macro_edges = _normalize_macro_edges(macro_nodes, macro_edges)
 
+    macro_nodes, macro_edges, cell_library = _cap_hierarchy(macro_nodes, macro_edges, cell_library)
     return HierarchicalGenome(
         genome_id=candidate_id,
         task=genome.task,
@@ -226,8 +229,11 @@ def crossover_genomes(
     motif_bias: bool = True,
 ) -> HierarchicalGenome:
     """Combine two parent genomes into one child."""
-    take_left_prefix = max(1, min(len(left.macro_nodes), rng.randint(1, len(left.macro_nodes))))
-    take_right_suffix = max(1, min(len(right.macro_nodes), rng.randint(1, len(right.macro_nodes))))
+    max_left = max(1, min(len(left.macro_nodes), MAX_MACRO_NODES - 1))
+    take_left_prefix = max(1, min(max_left, rng.randint(1, len(left.macro_nodes))))
+    remaining_slots = max(1, MAX_MACRO_NODES - take_left_prefix)
+    max_right = max(1, min(len(right.macro_nodes), remaining_slots))
+    take_right_suffix = max(1, min(max_right, rng.randint(1, len(right.macro_nodes))))
     left_part = left.macro_nodes[:take_left_prefix]
     right_part = right.macro_nodes[-take_right_suffix:]
 
@@ -313,17 +319,38 @@ def _sample_valid_macro_edge(
     if len(macro_nodes) < 2:
         return None
     id_order = {node.node_id: index for index, node in enumerate(macro_nodes)}
-    candidates: list[MacroEdgeGene] = []
+    existing = {(edge.source, edge.target) for edge in macro_edges if edge.enabled}
+    for _ in range(EDGE_SAMPLE_ATTEMPTS):
+        source_index = rng.randrange(0, len(macro_nodes) - 1)
+        target_index = rng.randrange(source_index + 1, len(macro_nodes))
+        source = macro_nodes[source_index].node_id
+        target = macro_nodes[target_index].node_id
+        if (source, target) not in existing:
+            return MacroEdgeGene(source=source, target=target)
+
+    # Deterministic fallback for nearly saturated small graphs.
     for source in macro_nodes:
-        for target in macro_nodes:
-            if id_order[source.node_id] >= id_order[target.node_id]:
-                continue
-            if _edge_exists(macro_edges, source.node_id, target.node_id):
-                continue
-            candidates.append(MacroEdgeGene(source=source.node_id, target=target.node_id))
-    if not candidates:
-        return None
-    return rng.choice(candidates)
+        for target in macro_nodes[id_order[source.node_id] + 1 :]:
+            if (source.node_id, target.node_id) not in existing:
+                return MacroEdgeGene(source=source.node_id, target=target.node_id)
+    return None
+
+
+def _cap_hierarchy(
+    macro_nodes: list[MacroNodeGene],
+    macro_edges: list[MacroEdgeGene],
+    cell_library: dict[str, CellGene],
+) -> tuple[list[MacroNodeGene], list[MacroEdgeGene], dict[str, CellGene]]:
+    if len(macro_nodes) > MAX_MACRO_NODES:
+        macro_nodes = macro_nodes[:MAX_MACRO_NODES]
+    macro_edges = _normalize_macro_edges(macro_nodes, macro_edges)
+    used_cell_ids = {node.cell_id for node in macro_nodes}
+    cell_library = {
+        cell_id: cell.model_copy(update={"shared": sum(node.cell_id == cell_id for node in macro_nodes) > 1}, deep=True)
+        for cell_id, cell in cell_library.items()
+        if cell_id in used_cell_ids
+    }
+    return macro_nodes, macro_edges, cell_library
 
 
 def _inherit_macro_edges(

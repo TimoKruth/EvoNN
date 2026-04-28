@@ -69,6 +69,12 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert "runtime_version" in budget_meta
     assert budget_meta["precision_mode"] == "fp32"
     assert budget_meta["wall_clock_seconds"] >= 0.0
+    assert budget_meta["actual_evaluations"] == budget_meta["evaluation_count"]
+    assert budget_meta["cached_evaluations"] == 0
+    assert budget_meta["failed_evaluations"] == 0
+    assert budget_meta["invalid_evaluations"] == 0
+    assert budget_meta["partial_run"] is False
+    assert "candidate evaluation" in budget_meta["evaluation_semantics"]
 
     manifest_path, results_path = export_symbiosis_contract(
         run_dir,
@@ -98,6 +104,12 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
     assert manifest["budget"]["wall_clock_seconds"] == budget_meta["wall_clock_seconds"]
+    assert manifest["budget"]["actual_evaluations"] == budget_meta["evaluation_count"]
+    assert manifest["budget"]["cached_evaluations"] == 0
+    assert manifest["budget"]["failed_evaluations"] == 0
+    assert manifest["budget"]["invalid_evaluations"] == 0
+    assert manifest["budget"]["partial_run"] is False
+    assert "candidate evaluation" in manifest["budget"]["evaluation_semantics"]
     assert manifest["search_telemetry"]["architecture_mode"] == budget_meta["architecture_mode"]
     assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
     assert manifest["device"]["framework_version"] == (budget_meta["runtime_version"] or "unknown")
