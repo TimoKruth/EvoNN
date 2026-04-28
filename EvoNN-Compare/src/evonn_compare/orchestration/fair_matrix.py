@@ -612,6 +612,7 @@ def _build_lane_metadata(
     budget_accounting_ok = True
     system_operating_states: dict[str, str] = {}
     system_accounting_issues: dict[str, list[str]] = {}
+    system_coverage_notes: dict[str, str] = {}
     system_benchmark_complete: dict[str, bool] = {}
     for system, (manifest, _results) in runs.items():
         run_dir = _run_dir_for_system(case, system)
@@ -635,18 +636,18 @@ def _build_lane_metadata(
         system_accounting_issues[system] = accounting_issues
         if accounting_issues:
             budget_accounting_ok = False
-        benchmark_complete = _system_benchmark_complete(manifest=manifest, results=_results)
-        system_benchmark_complete[system] = benchmark_complete
+        coverage = _system_coverage_assessment(manifest=manifest, results=_results)
+        system_benchmark_complete[system] = coverage["benchmark_complete"]
+        if coverage["note"] is not None:
+            system_coverage_notes[system] = coverage["note"]
         if not system_artifacts_ok:
             system_operating_states[system] = "artifacts-missing"
         elif manifest.budget.partial_run:
             system_operating_states[system] = "partial-run"
         elif accounting_issues:
             system_operating_states[system] = "accounting-incomplete"
-        elif benchmark_complete:
-            system_operating_states[system] = "benchmark-complete"
         else:
-            system_operating_states[system] = "benchmark-incomplete"
+            system_operating_states[system] = coverage["operating_state"]
         observed_task_kinds.update(entry.task_kind for entry in manifest.benchmarks)
 
     fairness_ok = all(result.parity_status == "fair" for result, _report_path in pair_results.values())
@@ -693,6 +694,8 @@ def _build_lane_metadata(
             if issues:
                 accounting_notes.append(f"{system} ({'; '.join(issues)})")
         acceptance_notes.append("budget accounting incomplete: " + ", ".join(accounting_notes))
+    for system in sorted(system_coverage_notes):
+        acceptance_notes.append(f"{system} coverage policy: {system_coverage_notes[system]}")
     if contract_fair_ok and not core_systems_complete_ok:
         missing_core = [
             f"{system}={system_operating_states.get(system, 'not-participating')}"
@@ -761,14 +764,49 @@ def _budget_accounting_issues(manifest: Any) -> list[str]:
 
 
 def _system_benchmark_complete(*, manifest: Any, results: list[Any]) -> bool:
+    return bool(_system_coverage_assessment(manifest=manifest, results=results)["benchmark_complete"])
+
+
+def _system_coverage_assessment(*, manifest: Any, results: list[Any]) -> dict[str, Any]:
     result_by_benchmark = {record.benchmark_id: record for record in results}
     for entry in manifest.benchmarks:
         if entry.status != "ok":
-            return False
+            return {
+                "benchmark_complete": False,
+                "operating_state": "benchmark-incomplete",
+                "note": None,
+            }
         record = result_by_benchmark.get(entry.benchmark_id)
         if record is None or record.status != "ok":
-            return False
-    return True
+            return {
+                "benchmark_complete": False,
+                "operating_state": "benchmark-incomplete",
+                "note": None,
+            }
+    coverage = getattr(manifest, "baseline_coverage", None)
+    optional_skips = getattr(coverage, "optional_dependency_skips", {}) if coverage is not None else {}
+    if not optional_skips:
+        return {
+            "benchmark_complete": True,
+            "operating_state": "benchmark-complete",
+            "note": None,
+        }
+    rendered_skips = ", ".join(
+        f"{group}=[{', '.join(names)}]"
+        for group, names in sorted(optional_skips.items())
+    )
+    policy = getattr(coverage, "benchmark_complete_policy", None)
+    if policy == "all_configured_contenders_required":
+        return {
+            "benchmark_complete": False,
+            "operating_state": "benchmark-incomplete-optional-skips",
+            "note": f"configured optional baselines were skipped: {rendered_skips}",
+        }
+    return {
+        "benchmark_complete": True,
+        "operating_state": "benchmark-complete-optional-skips",
+        "note": f"optional baselines skipped but tolerated by policy: {rendered_skips}",
+    }
 
 
 def _build_trend_records(

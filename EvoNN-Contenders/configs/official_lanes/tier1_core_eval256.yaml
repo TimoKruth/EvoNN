@@ -1,0 +1,8 @@
+seed: 42
+run_name: official_tier1_core_eval256_seed42
+benchmark_pack:
+  pack_name: tier1_core
+baseline:
+  mode: budget_matched
+  target_evaluation_count: 256
+  cache_dir: .baseline-cache

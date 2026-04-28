@@ -5,11 +5,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 BenchmarkStatus = Literal["ok", "failed", "skipped", "unsupported", "missing"]
 MetricDirection = Literal["max", "min"]
+BaselineCoveragePolicy = Literal[
+    "required_only_optional_skips_allowed",
+    "all_configured_contenders_required",
+]
 SystemName = Literal[
     "evonn",
     "evonn2",
@@ -139,6 +143,16 @@ class FairnessEnvelope(BaseModel):
     code_version: str | None = None
 
 
+class BaselineCoverageEnvelope(BaseModel):
+    """Optional baseline-completeness policy metadata for fixed-baseline systems."""
+
+    model_config = ConfigDict(frozen=True)
+
+    benchmark_complete_policy: BaselineCoveragePolicy
+    optional_dependency_skips: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    notes: tuple[str, ...] = ()
+
+
 class RunManifest(BaseModel):
     """Top-level run export metadata."""
 
@@ -157,6 +171,7 @@ class RunManifest(BaseModel):
     artifacts: ArtifactPaths
     search_telemetry: SearchTelemetry | None = None
     fairness: FairnessEnvelope | None = None
+    baseline_coverage: BaselineCoverageEnvelope | None = None
 
     @model_validator(mode="after")
     def validate_unique_benchmarks(self) -> "RunManifest":

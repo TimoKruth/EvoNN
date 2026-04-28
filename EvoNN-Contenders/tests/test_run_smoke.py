@@ -414,6 +414,82 @@ selection:
     assert "catboost_small, lgbm_small, xgb_small" in report
 
 
+def test_export_records_optional_skip_policy_metadata(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: optional_skip_export
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+selection:
+  max_contenders_per_benchmark: null
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    pack_path = tmp_path / "pack.yaml"
+    pack_path.write_text(
+        """
+name: smoke_pack
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      contenders: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+budget_policy:
+  evaluation_count: 8
+  epochs_per_candidate: 1
+seed_policy:
+  mode: shared
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    real_find_spec = __import__("importlib.util").util.find_spec
+
+    def fake_find_spec(name: str, *args, **kwargs):
+        if name in {"xgboost", "lightgbm", "catboost"}:
+            return None
+        return real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr("evonn_contenders.pipeline.importlib.util.find_spec", fake_find_spec)
+    monkeypatch.setattr("evonn_contenders.export.symbiosis.importlib.util.find_spec", fake_find_spec)
+
+    config = load_config(config_path)
+    run_dir = tmp_path / "run"
+    run_contenders(config, run_dir=run_dir, config_path=config_path)
+    manifest_path, _ = export_symbiosis_contract(run_dir, pack_path, run_dir)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["baseline_coverage"]["benchmark_complete_policy"] == "required_only_optional_skips_allowed"
+    assert manifest["baseline_coverage"]["optional_dependency_skips"]["tabular"] == [
+        "catboost_small",
+        "lgbm_small",
+        "xgb_small",
+    ]
+
+
+def test_official_lane_config_resolves_benchmark_pack_names() -> None:
+    config_path = (
+        Path(__file__).resolve().parents[1]
+        / "configs"
+        / "official_lanes"
+        / "tier1_core_eval64.yaml"
+    )
+    config = load_config(config_path)
+
+    assert config.benchmark_pool.name == "tier1_core"
+    assert "iris" in config.benchmark_pool.benchmarks
+    assert "diabetes" in config.benchmark_pool.benchmarks
+    assert config.baseline.target_evaluation_count == 64
+
+
 def test_run_contenders_emits_progress_lines(tmp_path: Path, capsys) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(

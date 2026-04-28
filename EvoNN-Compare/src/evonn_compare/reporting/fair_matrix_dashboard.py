@@ -105,6 +105,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
         "<section class='panel'>",
         "<h2>How To Read This</h2>",
         "<p><strong>Operating State</strong> is the lane-level trust label. <strong>reference-only</strong> means fairness or accounting caveats remain. <strong>contract-fair</strong> means the lane is structurally fair but not yet benchmark-complete for the core systems. <strong>trusted-core</strong> and <strong>trusted-extended</strong> add benchmark-complete coverage for the quarter-critical core and then the secondary challengers.</p>",
+        "<p><strong>System States</strong> adds per-system detail inside a lane. Contenders may report <strong>benchmark-complete-optional-skips</strong> when the required floor ran cleanly but optional boosted or torch baselines were intentionally skipped because those extras were unavailable.</p>",
         "<p><strong>Solo Wins</strong> means a system was uniquely best on a benchmark in the chosen scope. "
         "<strong>Shared Wins</strong> means a tie for best. <strong>Benchmark Failures</strong> and "
         "<strong>Missing Results</strong> are per-system outcome counts, not lane-level fairness failures.</p>",
@@ -309,11 +310,15 @@ def _recent_runs_table(runs: list[dict[str, Any]]) -> str:
     lines = [
         "<table>",
         "<thead><tr><th>Pack</th><th>Budget</th><th>Seed</th><th>State</th><th>Fair</th><th>Repeatable</th>"
-        "<th>Accounting</th><th>Core Complete</th><th>Extended Complete</th><th>Artifact Complete</th><th>Budget OK</th><th>Seed OK</th><th>Report Dir</th></tr></thead>",
+        "<th>Accounting</th><th>Core Complete</th><th>Extended Complete</th><th>System States</th><th>Artifact Complete</th><th>Budget OK</th><th>Seed OK</th><th>Report Dir</th></tr></thead>",
         "<tbody>",
     ]
     for run in runs:
         lane = run["lane"]
+        system_states = "; ".join(
+            f"{system}={state}"
+            for system, state in sorted((lane.get("system_operating_states") or {}).items())
+        ) or "---"
         lines.append(
             "<tr>"
             f"<td><code>{html.escape(run['pack_name'])}</code></td>"
@@ -325,6 +330,7 @@ def _recent_runs_table(runs: list[dict[str, Any]]) -> str:
             f"<td>{'yes' if lane['budget_accounting_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['core_systems_complete_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['extended_systems_complete_ok'] else 'no'}</td>"
+            f"<td>{html.escape(system_states)}</td>"
             f"<td>{'yes' if lane['artifact_completeness_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['budget_consistency_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['seed_consistency_ok'] else 'no'}</td>"
