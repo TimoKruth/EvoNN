@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -40,6 +41,15 @@ class EvolutionConfig(BaseModel):
     architecture_mode: str = "two_level_shared"
 
 
+class RuntimeConfig(BaseModel):
+    """Runtime backend selection."""
+
+    model_config = ConfigDict(frozen=True)
+
+    backend: Literal["auto", "mlx", "numpy-fallback"] = "auto"
+    allow_fallback: bool = True
+
+
 class RunConfig(BaseModel):
     """Top-level run config."""
 
@@ -48,6 +58,7 @@ class RunConfig(BaseModel):
     seed: int = 42
     run_name: str | None = None
     benchmark_pool: BenchmarkPoolConfig
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     evolution: EvolutionConfig = Field(default_factory=EvolutionConfig)
 

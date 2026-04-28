@@ -13,9 +13,11 @@ from stratograph.storage import RunStore
 def load_runtime_metadata(budget_meta: dict[str, Any]) -> dict[str, str]:
     """Normalize persisted runtime metadata for CLI/report/export surfaces."""
     return {
+        "requested_runtime_backend": str(budget_meta.get("runtime_backend_requested") or "auto"),
         "runtime_backend": str(budget_meta.get("runtime_backend") or "unknown"),
         "runtime_version": str(budget_meta.get("runtime_version") or "unknown"),
         "precision_mode": str(budget_meta.get("precision_mode") or "fp32"),
+        "runtime_backend_limitations": str(budget_meta.get("runtime_backend_limitations") or ""),
     }
 
 
@@ -167,6 +169,7 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Created At: `{budget_meta.get('created_at') or run.get('created_at') or 'unknown'}`",
         f"- Run State: `{status_payload.get('state', 'unknown')}`",
         f"- Runtime: `{runtime_meta['runtime_backend']}`",
+        f"- Requested Runtime: `{runtime_meta['requested_runtime_backend']}`",
         f"- Runtime Version: `{runtime_meta['runtime_version']}`",
         f"- Precision Mode: `{runtime_meta['precision_mode']}`",
         f"- Architecture Mode: `{budget_meta.get('architecture_mode', 'unknown')}`",
@@ -179,11 +182,15 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Remaining Benchmarks: `{status_payload.get('remaining_count', 0)}`",
         f"- Novelty Mean: `{budget_meta.get('novelty_score_mean', 0.0):.4f}`",
         f"- Occupied Niches: `{budget_meta.get('map_elites_occupied_niches', 0)}`",
+        f"- Parent Selection: `{budget_meta.get('parent_selection_strategy', 'unknown')}`",
+        f"- Mutation Pressure: `{budget_meta.get('mutation_pressure', 'unknown')}`",
     ]
     if context["status_path"].exists():
         lines.append(f"- Status Artifact: `{context['status_path'].name}`")
     if context["checkpoint_path"].exists():
         lines.append(f"- Checkpoint Artifact: `{context['checkpoint_path'].name}`")
+    if runtime_meta["runtime_backend_limitations"]:
+        lines.append(f"- Runtime Limitations: `{runtime_meta['runtime_backend_limitations']}`")
     if representative_genome is not None:
         lines.extend([
             "",

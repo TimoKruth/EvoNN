@@ -22,6 +22,18 @@ def test_synthetic_lm_loads() -> None:
     assert y_val.shape == x_val.shape
 
 
+def test_tier1_regression_benchmarks_load() -> None:
+    for name in ("diabetes", "friedman1"):
+        spec = get_benchmark(name)
+        x_train, y_train, x_val, y_val = spec.load_data(seed=7)
+        assert x_train.ndim == 2
+        assert x_val.ndim == 2
+        assert y_train.ndim == 1
+        assert y_val.ndim == 1
+        assert x_train.shape[0] > 0
+        assert x_val.shape[0] > 0
+
+
 def test_simple_pack_parses(repo_root) -> None:
     pack = load_parity_pack(repo_root / "configs" / "working_33_plus_5_lm_smoke.yaml")
     assert pack.name == "working_33_plus_5_lm_smoke"

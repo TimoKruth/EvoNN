@@ -3,6 +3,7 @@ import random
 from stratograph.benchmarks import get_benchmark
 from stratograph.genome import HierarchicalGenome
 from stratograph.search import crossover_genomes, descriptor, mutate_genome, novelty_score
+from stratograph.search.operators import MAX_MACRO_NODES
 
 
 def _seed(name: str = "moons") -> HierarchicalGenome:
@@ -51,3 +52,21 @@ def test_novelty_descriptor_and_score() -> None:
     assert len(desc) == 4
     score = novelty_score(desc, [desc, (desc[0] + 1.0, desc[1], desc[2], desc[3])])
     assert score >= 0.0
+
+
+def test_repeated_mutation_and_crossover_keep_hierarchy_bounded() -> None:
+    rng = random.Random(123)
+    current = _seed("digits")
+    peer = _seed("moons")
+
+    for index in range(80):
+        if index % 3 == 0:
+            current = crossover_genomes(current, peer, rng=rng, candidate_id=f"child_{index}")
+        else:
+            current = mutate_genome(current, rng=rng, candidate_id=f"mutant_{index}")
+        peer = mutate_genome(peer, rng=rng, candidate_id=f"peer_{index}")
+
+        assert len(current.macro_nodes) <= MAX_MACRO_NODES
+        assert len(peer.macro_nodes) <= MAX_MACRO_NODES
+        assert any(edge.source == "input" for edge in current.macro_edges)
+        assert any(edge.target == "output" for edge in current.macro_edges)
