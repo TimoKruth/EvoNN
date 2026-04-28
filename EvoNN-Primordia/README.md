@@ -122,3 +122,4 @@ Contenders baseline.
 - `ARCHITECTURE_RULES.md`
 - `BASELINE_MATRIX.md`
 - `CHANGELOG.md`
+- `docs/QUALITY_SCORECARD.md`
