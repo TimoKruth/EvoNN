@@ -7,6 +7,7 @@ from typing import Literal
 
 try:  # pragma: no cover - depends on host runtime
     import mlx
+    import mlx.core
 
     MLX_AVAILABLE = True
     MLX_VERSION = getattr(mlx, "__version__", None)

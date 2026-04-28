@@ -97,7 +97,7 @@ def _probe_benchmark_in_project_env(system: str, candidate: str) -> bool:
 
 def _candidate_ids(benchmark: ParityBenchmark, system: str) -> list[str]:
     native_ids = benchmark.native_ids or {}
-    ordered = [native_ids.get(system)]
+    ordered = [native_ids.get(system), fallback_native_id(benchmark, system)]
     ordered.extend(native_ids.values())
     ordered.extend([
         native_ids.get("prism"),
@@ -108,7 +108,6 @@ def _candidate_ids(benchmark: ParityBenchmark, system: str) -> list[str]:
         native_ids.get("evonn"),
         native_ids.get("evonn2"),
         benchmark.benchmark_id,
-        fallback_native_id(benchmark, system),
     ])
     deduped: list[str] = []
     seen: set[str] = set()

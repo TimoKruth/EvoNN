@@ -303,6 +303,7 @@ def test_generate_smoke_configs_resolve_supported_benchmark_ids_across_systems(t
     assert "diabetes" in stratograph_payload["benchmark_pool"]["benchmarks"]
     assert "friedman1" in stratograph_payload["benchmark_pool"]["benchmarks"]
     assert "diabetes" in primordia_payload["benchmark_pool"]["benchmarks"]
+    assert "friedman1" in primordia_payload["benchmark_pool"]["benchmarks"]
     assert "credit_g" in contender_payload["benchmark_pool"]["benchmarks"]
 
 
