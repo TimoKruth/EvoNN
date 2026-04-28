@@ -16,8 +16,10 @@ CANONICAL_BENCHMARK_IDS: dict[str, str] = {
     "breast_cancer": "breast_cancer",
     "circles": "circles_classification",
     "credit_g": "credit_g_classification",
+    "diabetes": "diabetes_regression",
     "digits": "digits_image",
     "fashion_mnist": "fashionmnist_image",
+    "friedman1": "friedman1_regression",
     "iris": "iris_classification",
     "mnist": "mnist_image",
     "moons": "moons_classification",
@@ -133,12 +135,12 @@ def fallback_native_id(entry: ParityBenchmark, system: str = "contenders") -> st
     native_ids = entry.native_ids or {}
     return (
         native_ids.get(system)
+        or get_native_id(entry.benchmark_id)
         or native_ids.get("stratograph")
         or native_ids.get("prism")
         or native_ids.get("topograph")
         or native_ids.get("evonn")
         or native_ids.get("evonn2")
-        or get_native_id(entry.benchmark_id)
     )
 
 

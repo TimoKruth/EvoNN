@@ -74,6 +74,11 @@ def export_symbiosis_contract(
     best_per_benchmark = store.load_best_per_benchmark(run_id)
     latest_gen = store.latest_generation(run_id)
     lineage_records = store.load_lineage(run_id)
+    evaluations_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for row in evaluations:
+        benchmark_id = row.get("benchmark_id")
+        if benchmark_id:
+            evaluations_by_benchmark.setdefault(str(benchmark_id), []).append(row)
 
     # 4. Load parity pack benchmarks
     pack_specs = load_parity_pack(pack_path)
@@ -99,6 +104,14 @@ def export_symbiosis_contract(
             genome_id = best.get("genome_id")
             status = "ok"
             failure_reason = None
+        elif failed := next((row for row in evaluations_by_benchmark.get(native_name, []) if _failure_label(row)), None):
+            metric_value = failed.get("metric_value")
+            quality = failed.get("quality")
+            parameter_count = failed.get("parameter_count")
+            train_seconds = failed.get("train_seconds")
+            genome_id = failed.get("genome_id")
+            status = "failed"
+            failure_reason = _failure_label(failed)
         elif representative:
             metric_value = None
             quality = None
@@ -157,6 +170,10 @@ def export_symbiosis_contract(
         benchmark_count=len(pack_specs),
         fallback=len(evaluations),
     )
+    failed_evaluations = sum(1 for row in evaluations if _failure_label(row) is not None)
+    invalid_evaluations = 0
+    cached_evaluations = 0
+    actual_evaluations = len(evaluations)
     config_snapshot_name = "config.yaml" if (output_dir / "config.yaml").exists() else "config.json"
     report_name = "report.md"
 
@@ -176,6 +193,15 @@ def export_symbiosis_contract(
             population_size=config.evolution.population_size,
             wall_clock_seconds=_load_wall_clock_seconds(output_dir),
             budget_policy_name="prototype_equal_budget",
+            actual_evaluations=actual_evaluations,
+            cached_evaluations=cached_evaluations,
+            failed_evaluations=failed_evaluations,
+            invalid_evaluations=invalid_evaluations,
+            partial_run=actual_evaluations < total_evaluations,
+            evaluation_semantics=(
+                "one genome evaluation counted for each model candidate evaluated on each benchmark; "
+                "evaluation_count = population_size * generations * benchmark_count"
+            ),
         ),
         device=DeviceInfo(
             device_name=_detect_device(),

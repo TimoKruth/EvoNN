@@ -291,6 +291,18 @@ def _budget_manifest(
             budget_meta.get("population_size", config.evolution.population_size)
         ),
         "budget_policy_name": "prototype_equal_budget",
+        "actual_evaluations": int(budget_meta.get("cache_trained_count", evaluation_count))
+        + int(budget_meta.get("cache_reused_count", 0)),
+        "cached_evaluations": int(budget_meta.get("cache_reused_count", 0)),
+        "failed_evaluations": int(budget_meta.get("cache_failed_count", 0)),
+        "invalid_evaluations": 0,
+        "partial_run": int(budget_meta.get("cache_trained_count", evaluation_count))
+        + int(budget_meta.get("cache_reused_count", 0))
+        < int(evaluation_count),
+        "evaluation_semantics": (
+            "one topology evaluation counted for each genome evaluated on each benchmark; "
+            "evaluation_count = population_size * generations * benchmark_count"
+        ),
     }
 
 

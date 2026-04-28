@@ -3,6 +3,7 @@ import importlib.util
 import pytest
 
 from evonn_contenders.benchmarks import get_benchmark
+from evonn_contenders.benchmarks.parity import ParityBenchmark, fallback_native_id
 from evonn_contenders.config import RunConfig
 from evonn_contenders.contender_pool import evaluate_contender, resolve_contenders
 from evonn_contenders.contenders.torch_models import build_cnn
@@ -68,6 +69,21 @@ def test_friedman1_benchmark_loads_regression_data() -> None:
     assert x_train.shape[1] == 10
     assert y_train.dtype.kind == "f"
     assert y_val.dtype.kind == "f"
+
+
+def test_contenders_fallback_prefers_canonical_regression_native_id() -> None:
+    entry = ParityBenchmark(
+        benchmark_id="diabetes_regression",
+        native_ids={"evonn": "diabetes_regression", "evonn2": "diabetes"},
+        task_kind="regression",
+        metric_name="mse",
+        metric_direction="min",
+    )
+
+    native_id = fallback_native_id(entry)
+
+    assert native_id == "diabetes"
+    assert get_benchmark(native_id).name == "diabetes"
 
 
 def test_hist_gb_trains_on_diabetes_regression() -> None:

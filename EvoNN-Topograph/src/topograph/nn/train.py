@@ -248,7 +248,7 @@ def train_and_evaluate(
             mx.eval(model.parameters(), optimizer.state)
             epoch_losses.append(last_loss)
 
-            if last_loss > divergence_threshold:
+            if not math.isfinite(last_loss) or (task != "regression" and last_loss > divergence_threshold):
                 return EvaluationResult(
                     metric_name=_metric_name_for_task(task),
                     metric_direction=_metric_direction_for_task(task),
