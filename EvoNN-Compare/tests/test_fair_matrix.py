@@ -17,6 +17,7 @@ from evonn_compare.orchestration.fair_matrix import (
     _build_trend_records,
     _native_runtime_available,
     _write_trend_artifacts,
+    reset_fair_matrix_workspace,
     run_fair_matrix_case,
 )
 from evonn_compare.reporting.fair_matrix_md import render_fair_matrix_markdown
@@ -248,6 +249,7 @@ def test_build_matrix_trend_rows_capture_minimum_longitudinal_dimensions(tmp_pat
     assert first.fairness_metadata["benchmark_pack_id"] == pack.name
     assert first.fairness_metadata["seed"] == 42
     assert first.fairness_metadata["evaluation_count"] == 64
+    assert first.fairness_metadata["seeding_bucket"] == "transfer-opaque"
 
 
 def test_write_trend_artifacts_persists_case_and_workspace_reports(tmp_path: Path) -> None:
@@ -457,6 +459,42 @@ def test_build_lane_metadata_requires_summary_artifact_for_repeatability(tmp_pat
     assert "missing required artifacts" in lane.acceptance_notes
 
 
+def test_reset_fair_matrix_workspace_removes_managed_artifacts_only(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    keep_path = workspace / "notes.txt"
+    keep_path.parent.mkdir(parents=True, exist_ok=True)
+    keep_path.write_text("keep\n", encoding="utf-8")
+
+    for relative_dir in ("packs", "runs", "configs", "reports", "trends", "logs"):
+        managed_dir = workspace / relative_dir
+        managed_dir.mkdir(parents=True, exist_ok=True)
+        (managed_dir / "stale.txt").write_text("stale\n", encoding="utf-8")
+    for relative_file in (
+        "matrix.yaml",
+        "fair_matrix_dashboard.html",
+        "fair_matrix_dashboard.json",
+        "fair_matrix_trend_rows.jsonl",
+        "fair_matrix_trends.md",
+    ):
+        managed_file = workspace / relative_file
+        managed_file.parent.mkdir(parents=True, exist_ok=True)
+        managed_file.write_text("stale\n", encoding="utf-8")
+
+    reset_fair_matrix_workspace(workspace)
+
+    assert keep_path.exists()
+    for relative_dir in ("packs", "runs", "configs", "reports", "trends", "logs"):
+        assert not (workspace / relative_dir).exists()
+    for relative_file in (
+        "matrix.yaml",
+        "fair_matrix_dashboard.html",
+        "fair_matrix_dashboard.json",
+        "fair_matrix_trend_rows.jsonl",
+        "fair_matrix_trends.md",
+    ):
+        assert not (workspace / relative_file).exists()
+
+
 def test_run_fair_matrix_case_emits_trend_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     case = MatrixCase(
         pack_name="tier1_core",
@@ -488,6 +526,12 @@ def test_run_fair_matrix_case_emits_trend_artifacts(tmp_path: Path, monkeypatch:
     ]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("seed: 42\n", encoding="utf-8")
+    stale_run_marker = case.prism_run_dir / "stale.txt"
+    stale_report_marker = case.report_dir / "stale.txt"
+    stale_log_marker = case.log_dir / "stale.txt"
+    for marker in (stale_run_marker, stale_report_marker, stale_log_marker):
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("stale\n", encoding="utf-8")
 
     monkeypatch.setattr("evonn_compare.orchestration.fair_matrix._native_runtime_available", lambda *_args, **_kwargs: False)
 
@@ -520,6 +564,9 @@ def test_run_fair_matrix_case_emits_trend_artifacts(tmp_path: Path, monkeypatch:
     assert trend_jsonl.exists()
     assert lane_acceptance.exists()
     assert case.trend_dataset_path.exists()
+    assert not stale_run_marker.exists()
+    assert not stale_report_marker.exists()
+    assert not stale_log_marker.exists()
 
     trend_records = json.loads(trend_json.read_text(encoding="utf-8"))
     assert len(trend_records) == len(load_parity_pack(PACK_PATH).benchmarks) * 4
@@ -595,6 +642,16 @@ def test_build_lane_metadata_distinguishes_contract_fair_from_trusted_core(tmp_p
     _write_run(run_dirs["prism"], system="prism", score_shift=0.02, budget_policy_name="evolutionary_search")
     _write_run(run_dirs["topograph"], system="topograph", budget_policy_name="evolutionary_search")
     _write_run(run_dirs["contenders"], system="contenders", budget_policy_name="evolutionary_search")
+    contenders_manifest_path = run_dirs["contenders"] / "manifest.json"
+    contenders_manifest = json.loads(contenders_manifest_path.read_text(encoding="utf-8"))
+    contenders_manifest["baseline_coverage"] = {
+        "benchmark_complete_policy": "required_only_optional_skips_allowed",
+        "policy_stage": "steady_state",
+        "policy_reason": "trusted recurring lanes ratify the sklearn-backed contender pool as the required floor",
+        "optional_dependency_skips": {"tabular": ["xgb_small", "lgbm_small"]},
+        "notes": ["optional dependency backends skipped under required-only completeness policy"],
+    }
+    contenders_manifest_path.write_text(json.dumps(contenders_manifest, indent=2), encoding="utf-8")
 
     ingestors = {system: SystemIngestor(path) for system, path in run_dirs.items() if path.exists()}
     runs = {
@@ -635,5 +692,133 @@ def test_build_lane_metadata_distinguishes_contract_fair_from_trusted_core(tmp_p
     assert lane.core_systems_complete_ok is True
     assert lane.extended_systems_complete_ok is False
     assert lane.repeatability_ready is True
-    assert lane.system_operating_states["contenders"] == "benchmark-complete"
+    assert lane.system_operating_states["contenders"] == "benchmark-complete-optional-skips"
+    assert any("contenders coverage: optional baselines skipped under ratified steady-state policy" in note for note in lane.acceptance_notes)
     assert any("trusted-extended unmet" in note for note in lane.acceptance_notes)
+
+
+def test_build_lane_metadata_can_block_on_strict_optional_skip_policy(tmp_path: Path) -> None:
+    pack = load_parity_pack(PACK_PATH)
+    run_dirs = {
+        "prism": tmp_path / "prism",
+        "topograph": tmp_path / "topograph",
+        "contenders": tmp_path / "contenders",
+    }
+    _write_run(run_dirs["prism"], system="prism", score_shift=0.02, budget_policy_name="evolutionary_search")
+    _write_run(run_dirs["topograph"], system="topograph", budget_policy_name="evolutionary_search")
+    _write_run(run_dirs["contenders"], system="contenders", budget_policy_name="evolutionary_search")
+    contenders_manifest_path = run_dirs["contenders"] / "manifest.json"
+    contenders_manifest = json.loads(contenders_manifest_path.read_text(encoding="utf-8"))
+    contenders_manifest["baseline_coverage"] = {
+        "benchmark_complete_policy": "all_configured_contenders_required",
+        "optional_dependency_skips": {"tabular": ["xgb_small"]},
+        "notes": ["configured optional baselines are required on this lane"],
+    }
+    contenders_manifest_path.write_text(json.dumps(contenders_manifest, indent=2), encoding="utf-8")
+
+    ingestors = {system: SystemIngestor(path) for system, path in run_dirs.items()}
+    runs = {
+        system: (ingestor.load_manifest(), ingestor.load_results())
+        for system, ingestor in ingestors.items()
+    }
+    pair_results = {}
+    for left, right in (("prism", "topograph"), ("prism", "contenders")):
+        result = ComparisonEngine().compare(
+            left_manifest=runs[left][0],
+            left_results=runs[left][1],
+            right_manifest=runs[right][0],
+            right_results=runs[right][1],
+            pack=pack,
+        )
+        pair_results[(left, right)] = (result, Path(f"{left}_vs_{right}.md"))
+
+    class CaseStub:
+        lane_preset = "local"
+        pack_name = pack.name
+        budget = 64
+        seed = 42
+        prism_run_dir = run_dirs["prism"]
+        topograph_run_dir = run_dirs["topograph"]
+        stratograph_run_dir = tmp_path / "stratograph"
+        primordia_run_dir = tmp_path / "primordia"
+        contender_run_dir = run_dirs["contenders"]
+        systems = ("prism", "topograph", "contenders")
+
+    lane = _build_lane_metadata(case=CaseStub(), runs=runs, pair_results=pair_results)
+
+    assert lane.operating_state == "contract-fair"
+    assert lane.core_systems_complete_ok is False
+    assert lane.repeatability_ready is False
+    assert lane.system_operating_states["contenders"] == "benchmark-incomplete-optional-skips"
+
+
+def test_run_fair_matrix_case_emits_failure_artifacts_when_stage_export_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = MatrixCase(
+        pack_name="tier1_core",
+        lane_preset="weekend",
+        seed=42,
+        budget=64,
+        pack_path=PACK_PATH,
+        prism_config_path=tmp_path / "configs" / "prism.yaml",
+        topograph_config_path=tmp_path / "configs" / "topograph.yaml",
+        stratograph_config_path=tmp_path / "configs" / "stratograph.yaml",
+        primordia_config_path=tmp_path / "configs" / "primordia.yaml",
+        contender_config_path=None,
+        prism_run_dir=tmp_path / "runs" / "prism",
+        topograph_run_dir=tmp_path / "runs" / "topograph",
+        stratograph_run_dir=tmp_path / "runs" / "stratograph",
+        primordia_run_dir=tmp_path / "runs" / "primordia",
+        contender_run_dir=None,
+        report_dir=tmp_path / "reports",
+        summary_output_path=tmp_path / "reports" / "fair_matrix_summary.md",
+        trend_dataset_path=tmp_path / "trends" / "fair_matrix_trends.jsonl",
+        log_dir=tmp_path / "logs",
+        systems=("prism", "topograph", "stratograph", "primordia"),
+    )
+    for path in [
+        case.prism_config_path,
+        case.topograph_config_path,
+        case.stratograph_config_path,
+        case.primordia_config_path,
+    ]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("seed: 42\n", encoding="utf-8")
+
+    monkeypatch.setattr("evonn_compare.orchestration.fair_matrix._native_runtime_available", lambda *_args, **_kwargs: False)
+
+    def fake_run_command(spec, *, log_dir):
+        if spec.name == "stratograph_export":
+            raise RuntimeError("stratograph_export failed; see synthetic log")
+        if spec.name == "stratograph_run":
+            _write_run(case.stratograph_run_dir, system="stratograph", budget_policy_name="evolutionary_search")
+
+    def fake_prism_export(**kwargs):
+        _write_run(kwargs["run_dir"], system="prism", score_shift=0.02, budget_policy_name="evolutionary_search")
+
+    def fake_topograph_export(**kwargs):
+        _write_run(kwargs["run_dir"], system="topograph", budget_policy_name="evolutionary_search")
+
+    def fake_primordia_export(**kwargs):
+        _write_run(kwargs["run_dir"], system="primordia", budget_policy_name="evolutionary_search")
+
+    monkeypatch.setattr("evonn_compare.orchestration.fair_matrix._run_command", fake_run_command)
+    monkeypatch.setattr("evonn_compare.orchestration.fair_matrix.ensure_prism_portable_smoke_export", fake_prism_export)
+    monkeypatch.setattr("evonn_compare.orchestration.fair_matrix.ensure_topograph_portable_smoke_export", fake_topograph_export)
+    monkeypatch.setattr("evonn_compare.orchestration.fair_matrix.ensure_primordia_export", fake_primordia_export)
+
+    summary_path = run_fair_matrix_case(case, parallel=False)
+
+    assert summary_path.exists()
+    lane_payload = json.loads((case.report_dir / "lane_acceptance.json").read_text(encoding="utf-8"))
+    assert lane_payload["repeatability_ready"] is False
+    assert lane_payload["system_operating_states"]["stratograph"] == "partial-run"
+    assert any("stratograph coverage: blocking benchmarks:" in note for note in lane_payload["acceptance_notes"])
+
+    trend_records = json.loads((case.report_dir / "fair_matrix_trends.json").read_text(encoding="utf-8"))
+    failed_rows = [row for row in trend_records if row["engine"] == "stratograph"]
+    assert failed_rows
+    assert all(row["outcome_status"] == "failed" for row in failed_rows)
+    assert all("stratograph_export failed" in row["failure_reason"] for row in failed_rows)

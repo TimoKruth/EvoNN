@@ -257,16 +257,23 @@ def run_search(
 
 
 def _load_runtime_bindings() -> RuntimeBindings:
+    if mlx is None:
+        return _load_fallback_runtime_bindings()
     try:
         from evonn_primordia.benchmarks import benchmark_group, get_benchmark
         from evonn_primordia.config import EvolutionConfig
         from evonn_primordia.families.compiler import compile_genome, compatible_families
         from evonn_primordia.genome import apply_random_mutation, create_seed_genome
-        from evonn_primordia.runtime.training import train_and_evaluate
     except Exception as exc:
         raise RuntimeError(
             "Primordia MLX runtime requires local MLX dependencies and Primordia's own benchmark/model modules. Run this on your Apple Silicon workspace with `uv sync --package evonn-primordia`."
         ) from exc
+    try:
+        from evonn_primordia.families.models import FAMILY_CLASSES as _native_family_classes
+        from evonn_primordia.runtime.training import train_and_evaluate
+    except Exception:
+        return _load_fallback_runtime_bindings()
+    del _native_family_classes
 
     def _seed_genome(family: str, width: int, depth: int):
         evo = EvolutionConfig(
@@ -300,6 +307,29 @@ def _load_runtime_bindings() -> RuntimeBindings:
         train_and_evaluate=train_and_evaluate,
         runtime_backend="mlx",
         runtime_version=_MLX_VERSION,
+    )
+
+
+def _load_fallback_runtime_bindings() -> RuntimeBindings:
+    try:
+        from evonn_primordia.benchmarks import benchmark_group, get_benchmark
+        from evonn_primordia.runtime import fallback
+    except Exception as exc:
+        raise RuntimeError(
+            "Primordia fallback runtime requires local benchmark loaders plus scikit-learn. "
+            "Run `uv sync --package evonn-primordia` to install the portable dependencies."
+        ) from exc
+
+    return RuntimeBindings(
+        get_benchmark=get_benchmark,
+        benchmark_group=benchmark_group,
+        compatible_families=fallback.compatible_families,
+        create_seed_genome=fallback.create_seed_genome,
+        mutate_genome=fallback.mutate_genome,
+        compile_genome=fallback.compile_genome,
+        train_and_evaluate=fallback.train_and_evaluate,
+        runtime_backend=fallback.FALLBACK_RUNTIME_BACKEND,
+        runtime_version=fallback.runtime_version(),
     )
 
 

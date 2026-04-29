@@ -20,6 +20,7 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
     budgets = sorted({row.budget for row in trend_rows})
     seeds = sorted({row.seed for row in trend_rows})
     scopes = sorted({row.matrix_scope for row in trend_rows})
+    seed_buckets = sorted({_seed_bucket(row) for row in trend_rows})
     lane_states = sorted({row.lane_operating_state for row in trend_rows})
     accounting_states = sorted({"ok" if row.lane_budget_accounting_ok else "incomplete" for row in trend_rows})
     repeatability_states = sorted({"ready" if row.lane_repeatability_ready else "not-ready" for row in trend_rows})
@@ -35,6 +36,7 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
         f"- Budgets: `{', '.join(str(value) for value in budgets)}`",
         f"- Seeds: `{', '.join(str(value) for value in seeds)}`",
         f"- Fairness Scope: `{', '.join(scopes)}`",
+        f"- Seeding Buckets: `{', '.join(seed_buckets)}`",
         f"- Lane States: `{', '.join(lane_states)}`",
         f"- Budget Accounting: `{', '.join(accounting_states)}`",
         f"- Repeatability: `{', '.join(repeatability_states)}`",
@@ -85,8 +87,8 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
             "",
             "## Benchmark Trend View",
             "",
-            "| System | Benchmark | Runs | Latest | Best | Delta | Latest Status | Budget | Seed | Scope | Lane State | Accounting | Repeatability | System State |",
-            "|---|---|---:|---:|---:|---:|---|---:|---:|---|---|---|---|---|",
+            "| System | Benchmark | Runs | Latest | Best | Delta | Latest Status | Budget | Seed | Scope | Seed Bucket | Seed Source | Lane State | Accounting | Repeatability | System State |",
+            "|---|---|---:|---:|---:|---:|---|---:|---:|---|---|---|---|---|---|---|",
         ]
     )
 
@@ -107,6 +109,7 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
         lines.append(
             f"| {system} | {benchmark_id} | {len(ordered)} | {latest_metric} | {best_metric} | "
             f"{_float_cell(delta_value)} | {latest.outcome_status} | {latest.budget} | {latest.seed} | {latest.matrix_scope} | "
+            f"{_seed_bucket(latest)} | {_seed_source(latest)} | "
             f"{latest.lane_operating_state} | {'ok' if latest.lane_budget_accounting_ok else 'incomplete'} | "
             f"{'ready' if latest.lane_repeatability_ready else 'not-ready'} | {latest.system_operating_state} |"
         )
@@ -118,3 +121,17 @@ def _float_cell(value: float | None) -> str:
     if value is None:
         return "---"
     return f"{float(value):.6f}"
+
+
+def _seed_bucket(row: MatrixTrendRow) -> str:
+    return str(row.fairness_metadata.get("seeding_bucket") or "transfer-opaque")
+
+
+def _seed_source(row: MatrixTrendRow) -> str:
+    source_system = row.fairness_metadata.get("seed_source_system")
+    source_run_id = row.fairness_metadata.get("seed_source_run_id")
+    if not source_system:
+        return "---"
+    if source_run_id:
+        return f"{source_system}:{source_run_id}"
+    return str(source_system)

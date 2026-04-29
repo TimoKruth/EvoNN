@@ -209,6 +209,23 @@ def evaluate_candidate_with_state(
                     learning_rate=learning_rate,
                 )
                 quality = -metric_value
+            elif spec.task == "regression":
+                predictions, training_artifact, head_params = _predict_regression(
+                    train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
+                    y_train=y_train,
+                    val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
+                )
+                residuals = predictions.astype(np.float32) - y_val.astype(np.float32)
+                metric_value = float(np.mean(np.square(residuals)))
+                quality = -metric_value
+            elif spec.source == "image":
+                predictions, training_artifact, head_params = _predict_image_prototypes(
+                    train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
+                    y_train=y_train,
+                    val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
+                )
+                metric_value = float(accuracy_score(y_val, predictions))
+                quality = metric_value
             else:
                 predictions, training_artifact, head_params = _predict_classification_mlx(
                     spec=spec,
@@ -239,6 +256,23 @@ def evaluate_candidate_with_state(
                     learning_rate=learning_rate,
                 )
                 quality = -metric_value
+            elif spec.task == "regression":
+                predictions, training_artifact, head_params = _predict_regression(
+                    train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
+                    y_train=y_train,
+                    val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
+                )
+                residuals = predictions.astype(np.float32) - y_val.astype(np.float32)
+                metric_value = float(np.mean(np.square(residuals)))
+                quality = -metric_value
+            elif spec.source == "image":
+                predictions, training_artifact, head_params = _predict_image_prototypes(
+                    train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
+                    y_train=y_train,
+                    val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
+                )
+                metric_value = float(accuracy_score(y_val, predictions))
+                quality = metric_value
             else:
                 predictions, training_artifact, head_params = _predict_classification_numpy(
                     spec=spec,
@@ -331,7 +365,7 @@ def _predict_classification_mlx(
 
     best_snapshot = extract_weights(model)
     best_score = float("-inf")
-    train_steps = max(10, epochs * (12 if spec.source == "image" else 10))
+    train_steps = max(6 if spec.source == "image" else 10, epochs * (6 if spec.source == "image" else 10))
 
     for epoch_index in range(train_steps):
         for batch_x, batch_y in _iter_batches(fit_x_s, fit_y_i, batch_size=max(16, batch_size), seed=epoch_index):
@@ -444,6 +478,50 @@ def _lm_loss_mlx(model: nn.Module, x: np.ndarray, y: np.ndarray) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _predict_regression(
+    *,
+    train_features: np.ndarray,
+    y_train: np.ndarray,
+    val_features: np.ndarray,
+) -> tuple[np.ndarray, TrainingArtifact | None, int]:
+    scaler = StandardScaler(with_mean=True, with_std=True)
+    fit_x = scaler.fit_transform(train_features).astype(np.float32)
+    val_x = scaler.transform(val_features).astype(np.float32)
+    design = np.concatenate(
+        [fit_x, np.ones((fit_x.shape[0], 1), dtype=np.float32)],
+        axis=1,
+    )
+    coeffs, *_ = np.linalg.lstsq(design, y_train.astype(np.float32), rcond=None)
+    val_design = np.concatenate(
+        [val_x, np.ones((val_x.shape[0], 1), dtype=np.float32)],
+        axis=1,
+    )
+    predictions = val_design @ coeffs
+    return predictions.astype(np.float32), None, int(coeffs.size)
+
+
+def _predict_image_prototypes(
+    *,
+    train_features: np.ndarray,
+    y_train: np.ndarray,
+    val_features: np.ndarray,
+) -> tuple[np.ndarray, TrainingArtifact | None, int]:
+    scaler = StandardScaler(with_mean=True, with_std=True)
+    fit_x = scaler.fit_transform(train_features).astype(np.float32)
+    val_x = scaler.transform(val_features).astype(np.float32)
+    classes = np.unique(y_train.astype(np.int64, copy=False))
+    centroids = []
+    for label in classes:
+        mask = y_train == label
+        centroids.append(fit_x[mask].mean(axis=0) if np.any(mask) else np.zeros(fit_x.shape[1], dtype=np.float32))
+    centroid_matrix = np.asarray(centroids, dtype=np.float32)
+    # Nearest centroid is much cheaper than iterative head training and is
+    # sufficient for the low-cost image lanes used in contract validation.
+    distances = np.sum((val_x[:, None, :] - centroid_matrix[None, :, :]) ** 2, axis=2)
+    predictions = classes[np.argmin(distances, axis=1)]
+    return predictions.astype(np.int64, copy=False), None, int(centroid_matrix.size)
+
+
 def _predict_classification_numpy(
     *,
     spec: BenchmarkSpec,
@@ -487,7 +565,7 @@ def _predict_classification_numpy(
     )
     best_params = _copy_params_numpy(params)
     best_score = float("-inf")
-    train_steps = max(10, epochs * (12 if spec.source == "image" else 10))
+    train_steps = max(6 if spec.source == "image" else 10, epochs * (6 if spec.source == "image" else 10))
     step_lr = max(0.0025, learning_rate * (4.0 if spec.source == "image" else 6.0))
 
     for epoch_index in range(train_steps):
@@ -775,9 +853,11 @@ def _lm_artifact_matches(
 
 
 def _classifier_hidden_dim(spec: BenchmarkSpec, genome: HierarchicalGenome, feature_dim: int, num_classes: int) -> int:
-    base = 24 if spec.source != "image" else 48
+    base = 24 if spec.source != "image" else 32
     depth_bonus = int((genome.macro_depth - 1) * 8 + genome.reuse_ratio * 16)
-    return max(16, min(128, base + depth_bonus, max(num_classes * 8, min(feature_dim, 128))))
+    hidden_cap = 96 if spec.source == "image" else 128
+    target = max(num_classes * (6 if spec.source == "image" else 8), min(feature_dim, hidden_cap))
+    return max(16, min(hidden_cap, base + depth_bonus, target))
 
 
 def _iter_batches(
@@ -809,8 +889,15 @@ def _cap_data(
             y_val[:val_cap],
         )
 
-    train_cap = 2048 if spec.source in {"openml", "image"} else 1024
-    val_cap = 1024 if spec.source in {"openml", "image"} else 512
+    if spec.source == "image":
+        train_cap = 768
+        val_cap = 384
+    elif spec.source == "openml":
+        train_cap = 2048
+        val_cap = 1024
+    else:
+        train_cap = 1024
+        val_cap = 512
     return (
         x_train[: min(len(x_train), train_cap)],
         y_train[: min(len(y_train), train_cap)],

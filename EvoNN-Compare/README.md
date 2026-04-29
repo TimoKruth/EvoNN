@@ -104,7 +104,8 @@ The default review surface is now the workspace, not an individual markdown snap
 
 ```bash
 uv run --package evonn-compare evonn-compare fair-matrix \
-  --workspace .tmp/fair-matrix-smoke
+  --workspace .tmp/fair-matrix-smoke \
+  --open
 ```
 
 That command refreshes:
@@ -113,6 +114,10 @@ That command refreshes:
 - `.tmp/fair-matrix-smoke/trends/fair_matrix_trends.json`
 - `.tmp/fair-matrix-smoke/fair_matrix_dashboard.html`
 - `.tmp/fair-matrix-smoke/fair_matrix_dashboard.json`
+
+With `--open`, the command lands directly on the canonical dashboard after the
+run, so the recurring-lane review path stays one command from execution to the
+full-system and projects-only leaderboard views.
 
 To rebuild those workspace-level views later without rerunning engines:
 
@@ -172,6 +177,11 @@ render a static HTML overview with:
 - five-system benchmark-winner tables
 - project-only benchmark-winner tables that recompute winners without contenders
 - aggregate leaderboards across all discovered runs
+
+Those two leaderboard surfaces are the primary recurring review views: the
+five-system table answers "what won across the full substrate?", and the
+projects-only table answers "what changed among the four product engines once
+contenders are removed from winner selection?"
 
 By default it scans `EvoNN-Compare/manual_compare_runs`:
 

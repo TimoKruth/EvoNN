@@ -27,6 +27,11 @@ def test_runtime_metadata_defaults_to_unknown_when_summary_is_missing(tmp_path):
         "runtime_version": "unknown",
         "precision_mode": "fp32",
     }
+    assert sym._resolved_runtime_metadata(run_dir) == {
+        "runtime_backend": "unknown",
+        "runtime_version": "unknown",
+        "precision_mode": "fp32",
+    }
 
 
 def test_resolved_runtime_metadata_prefers_recorded_version_over_host_default(monkeypatch, tmp_path):
@@ -51,7 +56,7 @@ def test_resolved_runtime_metadata_prefers_recorded_version_over_host_default(mo
     }
 
 
-def test_resolved_runtime_metadata_falls_back_to_host_version_when_recorded_unknown(monkeypatch, tmp_path):
+def test_resolved_runtime_metadata_preserves_unknown_when_recorded_unknown(monkeypatch, tmp_path):
     run_dir = tmp_path / "runtime-metadata-unknown-version"
     run_dir.mkdir()
 
@@ -67,8 +72,8 @@ def test_resolved_runtime_metadata_falls_back_to_host_version_when_recorded_unkn
     monkeypatch.setattr(sym, "_MLX_VERSION", "9.9.9-host")
 
     assert sym._resolved_runtime_metadata(run_dir) == {
-        "runtime_backend": "mlx",
-        "runtime_version": "9.9.9-host",
+        "runtime_backend": "unknown",
+        "runtime_version": "unknown",
         "precision_mode": "fp32",
     }
 

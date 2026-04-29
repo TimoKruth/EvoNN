@@ -9,11 +9,19 @@ from pathlib import Path
 from typing import Any
 
 from evonn_contenders.benchmarks import get_benchmark
-from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_pack
+from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_pack, native_id_candidates
 from evonn_contenders.config import load_config
+from evonn_contenders.export.baseline_coverage import build_baseline_coverage
 from evonn_contenders.export.report import write_report
 from evonn_contenders.storage import RunStore
-from evonn_shared.contracts import ArtifactPaths, BenchmarkEntry, BudgetEnvelope, DeviceInfo, ResultRecord, RunManifest
+from evonn_shared.contracts import (
+    ArtifactPaths,
+    BenchmarkEntry,
+    BudgetEnvelope,
+    DeviceInfo,
+    ResultRecord,
+    RunManifest,
+)
 from evonn_shared.manifests import benchmark_signature, fairness_manifest, write_json
 
 
@@ -152,6 +160,10 @@ def export_symbiosis_contract(
             ),
             code_version=_code_version(),
         ),
+        baseline_coverage=build_baseline_coverage(
+            config=config,
+            benchmark_names=config.benchmark_pool.benchmarks,
+        ),
     )
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
@@ -162,16 +174,10 @@ def export_symbiosis_contract(
 
 
 def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]]) -> str:
-    native_ids = entry.native_ids or {}
-    candidates: list[str] = []
-    for candidate in [
-        native_ids.get("contenders"),
-        fallback_native_id(entry),
-        *native_ids.values(),
-        entry.benchmark_id,
-    ]:
-        if candidate and candidate not in candidates:
-            candidates.append(candidate)
+    candidates = native_id_candidates(entry, system="contenders")
+    fallback = fallback_native_id(entry)
+    if fallback not in candidates:
+        candidates.insert(0, fallback)
     for candidate in candidates:
         if candidate in available_results:
             return candidate
@@ -217,6 +223,11 @@ def _build_contract_summary(*, run: dict[str, Any], manifest: RunManifest, resul
         "failure_count": len(failed),
         "failure_patterns": failure_patterns,
         "benchmarks_evaluated": len(results),
+        "baseline_coverage": (
+            manifest.baseline_coverage.model_dump(mode="json")
+            if manifest.baseline_coverage is not None
+            else None
+        ),
     }
 
 
@@ -252,7 +263,6 @@ def _export_epochs_per_candidate(*, pack_epochs_per_candidate: int, budget_polic
     if budget_policy_name == "prototype_equal_budget":
         return int(pack_epochs_per_candidate)
     return 1
-
 
 
 def _code_version() -> str | None:

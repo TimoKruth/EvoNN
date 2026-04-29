@@ -102,6 +102,30 @@ def get_native_id(canonical_id: str) -> str:
     return _REVERSE_IDS.get(canonical_id, canonical_id)
 
 
+def native_id_candidates(entry: ParityBenchmark, system: str = "contenders") -> list[str]:
+    native_ids = entry.native_ids or {}
+    candidates = [
+        native_ids.get(system),
+        get_native_id(entry.benchmark_id),
+        native_ids.get("evonn2"),
+        native_ids.get("hybrid"),
+        native_ids.get("stratograph"),
+        native_ids.get("prism"),
+        native_ids.get("topograph"),
+        native_ids.get("evonn"),
+        *native_ids.values(),
+        entry.benchmark_id,
+    ]
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        ordered.append(candidate)
+    return ordered
+
+
 def resolve_pack_path(pack_ref: str | Path) -> Path:
     path = Path(pack_ref)
     if path.exists():
@@ -130,16 +154,14 @@ def resolve_pack_path(pack_ref: str | Path) -> Path:
 
 
 def fallback_native_id(entry: ParityBenchmark, system: str = "contenders") -> str:
-    native_ids = entry.native_ids or {}
-    return (
-        native_ids.get(system)
-        or native_ids.get("stratograph")
-        or native_ids.get("prism")
-        or native_ids.get("topograph")
-        or native_ids.get("evonn")
-        or native_ids.get("evonn2")
-        or get_native_id(entry.benchmark_id)
-    )
+    candidates = native_id_candidates(entry, system=system)
+    for candidate in candidates:
+        try:
+            get_benchmark(candidate)
+            return candidate
+        except Exception:
+            continue
+    return candidates[0]
 
 
 def load_parity_pack(pack_path: str | Path) -> ParityPack:

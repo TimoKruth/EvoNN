@@ -107,6 +107,7 @@ def generate_topograph_config(
     seed: int,
     budget: int,
     run_dir: Path,
+    primordia_seed_candidates_path: Path | None = None,
 ) -> Path:
     pack = load_parity_pack(pack_path)
     benchmark_ids = resolve_supported_benchmark_ids(pack.benchmarks, "topograph")
@@ -130,6 +131,8 @@ def generate_topograph_config(
         "speciation": {"enabled": True, "threshold": 3.0},
         "run_dir": str(run_dir),
     }
+    if primordia_seed_candidates_path is not None:
+        payload["benchmark_pool"]["primordia_seed_candidates_path"] = str(primordia_seed_candidates_path)
     _deep_update(payload, patch)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")

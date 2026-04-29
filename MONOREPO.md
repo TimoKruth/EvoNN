@@ -50,6 +50,29 @@ Root-level strategy docs:
 - `TELEMETRY_SPEC.md`
 - `SEEDING_LADDERS_IMPLEMENTATION_PLAN.md`
 
+## Planning Hierarchy
+
+When execution docs disagree, use this order:
+
+1. `EVONN_90_DAY_PLAN.md` for the active quarter
+2. `.hermes/plans/README.md` plus the referenced branch plans for package or
+   subsystem advancement
+3. `ROADMAP.md` for long-horizon sequencing
+4. `VISION.md` for umbrella thesis and product/research framing
+
+Archived bootstrap records:
+
+- `EvoNN-Primordia/IMPLEMENTATION_PLAN.md`
+- `EvoNN-Stratograph/IMPLEMENTATION_PLAN.md`
+
+Supporting long-run strategy docs that are still valid but not the active
+quarter execution source of truth:
+
+- `SHARED_SUBSTRATE_FOUNDATION_PLAN.md`
+- `BENCHMARK_EXTRACTION_PLAN.md`
+- `CONTENDER_EXPANSION_PLAN.md`
+- `SEEDING_LADDERS_IMPLEMENTATION_PLAN.md`
+
 ## Structural Unification Policy
 
 The monorepo is allowed to unify shared research infrastructure, but it should
@@ -124,16 +147,17 @@ uv run --package topograph --extra dev pytest -q EvoNN-Topograph/tests
 
 ## Validation Matrix
 
-The trust-layer CI intentionally distinguishes Linux-safe packages from the
+The trusted recurring lane is the Linux-safe review lane for shared substrate
+changes. It intentionally distinguishes Linux-safe packages from the
 MLX-native macOS packages.
 
 Linux GitHub Actions (`.github/workflows/trust-layer-linux-ci.yml`):
-- core trust layer:
+- trusted recurring lane core:
   - `EvoNN-Shared` → `scripts/ci/shared-checks.sh`
   - `EvoNN-Compare` → `scripts/ci/compare-checks.sh`
-- quarter-critical challenger floor:
+- trusted recurring lane challenger floor:
   - `EvoNN-Contenders` → `scripts/ci/contenders-checks.sh`
-- secondary challengers for the current window:
+- trusted recurring lane secondary challengers:
   - `EvoNN-Primordia` → `scripts/ci/primordia-checks.sh`
   - `EvoNN-Stratograph` → `scripts/ci/stratograph-checks.sh`
 
@@ -148,6 +172,10 @@ Interpretation for the 90-day lane:
   challengers until the core lane is trusted
 - Prism + Topograph keep macOS CI because MLX runtime truth matters there even
   while non-MLX sibling packages run on Linux
+
+Local review expectation:
+- run the same five Linux scripts before PR for shared substrate, docs, and
+  workflow changes that affect the trusted recurring lane
 
 ## Adding More Packages
 

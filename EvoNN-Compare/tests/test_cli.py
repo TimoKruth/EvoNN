@@ -5,6 +5,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from evonn_compare.cli import fair_matrix as fair_matrix_cli
+from evonn_compare.cli import seeded_compare as seeded_compare_cli
 from evonn_compare.cli.main import app
 from evonn_compare.comparison.fair_matrix import build_matrix_trend_rows
 from evonn_compare.comparison.engine import ComparisonEngine
@@ -60,6 +61,7 @@ def test_fair_matrix_help() -> None:
     assert "--primordia-root" in text
     assert "--no-contenders" in text
     assert "--preset" in text
+    assert "--no-open" in text
     assert "smoke" in text
     assert "local" in text
     assert "overnight" in text
@@ -91,6 +93,17 @@ def test_workspace_report_help() -> None:
     assert "Fair-matrix workspace root" in text
     assert "--dashboard-output" in text
     assert "--trend-output" in text
+
+
+def test_seeded_compare_help() -> None:
+    result = _invoke_help("seeded-compare")
+    assert result.exit_code == 0
+    text = _normalized_cli_output(result.stdout)
+    assert "--workspace" in text
+    assert "--pack" in text
+    assert "--primordia-root" in text
+    assert "--topograph-root" in text
+    assert "--no-open" in text
 
 
 def test_hybrid_help() -> None:
@@ -189,7 +202,7 @@ def test_fair_matrix_execute_surfaces_manifest_and_trend_dataset(tmp_path, monke
         case.summary_output_path.write_text("# summary\n", encoding="utf-8")
         return case.summary_output_path
 
-    def fake_refresh_workspace_reports(*, workspace):
+    def fake_refresh_workspace_reports(*, workspace, open_browser=False):
         return {
             "workspace": str(workspace),
             "summary_count": 1,
@@ -215,6 +228,166 @@ def test_fair_matrix_execute_surfaces_manifest_and_trend_dataset(tmp_path, monke
     assert "workspace_dashboard_data\t" in result.stdout
 
 
+def test_fair_matrix_open_flag_surfaces_opened_dashboard_uri(tmp_path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_fair_matrix_case(case, **_kwargs):
+        case.summary_output_path.parent.mkdir(parents=True, exist_ok=True)
+        case.summary_output_path.write_text("# summary\n", encoding="utf-8")
+        return case.summary_output_path
+
+    def fake_refresh_workspace_reports(*, workspace, open_browser=False):
+        captured["open_browser"] = open_browser
+        return {
+            "workspace": str(workspace),
+            "summary_count": 1,
+            "trend_dataset": str(Path(workspace) / "trends" / "fair_matrix_trend_rows.jsonl"),
+            "trend_report": str(Path(workspace) / "trends" / "fair_matrix_trends.md"),
+            "trend_report_data": str(Path(workspace) / "trends" / "fair_matrix_trends.json"),
+            "dashboard": str(Path(workspace) / "fair_matrix_dashboard.html"),
+            "dashboard_data": str(Path(workspace) / "fair_matrix_dashboard.json"),
+        }
+
+    monkeypatch.setattr("evonn_compare.cli.fair_matrix.run_fair_matrix_case", fake_run_fair_matrix_case)
+    monkeypatch.setattr("evonn_compare.cli.fair_matrix.refresh_workspace_reports", fake_refresh_workspace_reports)
+
+    result = runner.invoke(app, ["fair-matrix", "--preset", "smoke", "--workspace", str(tmp_path), "--serial", "--open"])
+
+    assert result.exit_code == 0
+    assert captured["open_browser"] is True
+    assert f"opened\t{(tmp_path / 'fair_matrix_dashboard.html').resolve().as_uri()}" in result.stdout
+
+
+def test_seeded_compare_surfaces_workspace_artifacts(tmp_path, monkeypatch) -> None:
+    def fake_publish_seeded_vs_unseeded_workspace(**kwargs):
+        workspace = Path(kwargs["workspace"])
+        return {
+            "workspace": str(workspace),
+            "pack_path": str(workspace / "packs" / "tier1_core_smoke_eval16.yaml"),
+            "primordia_run_dir": str(workspace / "runs" / "primordia" / "source"),
+            "seed_artifact": str(workspace / "runs" / "primordia" / "source" / "seed_candidates.json"),
+            "unseeded_run_dir": str(workspace / "runs" / "topograph" / "01-unseeded"),
+            "seeded_run_dir": str(workspace / "runs" / "topograph" / "02-seeded"),
+            "seeded_vs_unseeded_report": str(workspace / "reports" / "seeded_vs_unseeded_summary.md"),
+            "seeded_vs_unseeded_data": str(workspace / "reports" / "seeded_vs_unseeded_summary.json"),
+            "trend_dataset": str(workspace / "trends" / "fair_matrix_trend_rows.jsonl"),
+            "trend_report": str(workspace / "trends" / "fair_matrix_trends.md"),
+            "trend_report_data": str(workspace / "trends" / "fair_matrix_trends.json"),
+            "dashboard": str(workspace / "fair_matrix_dashboard.html"),
+            "dashboard_data": str(workspace / "fair_matrix_dashboard.json"),
+        }
+
+    monkeypatch.setattr(
+        "evonn_compare.cli.seeded_compare.publish_seeded_vs_unseeded_workspace",
+        fake_publish_seeded_vs_unseeded_workspace,
+    )
+
+    result = runner.invoke(app, ["seeded-compare", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert f"workspace\t{tmp_path}" in result.stdout
+    assert f"seed_artifact\t{tmp_path / 'runs' / 'primordia' / 'source' / 'seed_candidates.json'}" in result.stdout
+    assert f"dashboard\t{tmp_path / 'fair_matrix_dashboard.html'}" in result.stdout
+
+
+def test_seeded_compare_open_flag_opens_dashboard(tmp_path, monkeypatch) -> None:
+    opened: list[str] = []
+
+    def fake_publish_seeded_vs_unseeded_workspace(**kwargs):
+        workspace = Path(kwargs["workspace"])
+        return {
+            "workspace": str(workspace),
+            "pack_path": str(workspace / "packs" / "tier1_core_smoke_eval16.yaml"),
+            "primordia_run_dir": str(workspace / "runs" / "primordia" / "source"),
+            "seed_artifact": str(workspace / "runs" / "primordia" / "source" / "seed_candidates.json"),
+            "unseeded_run_dir": str(workspace / "runs" / "topograph" / "01-unseeded"),
+            "seeded_run_dir": str(workspace / "runs" / "topograph" / "02-seeded"),
+            "seeded_vs_unseeded_report": str(workspace / "reports" / "seeded_vs_unseeded_summary.md"),
+            "seeded_vs_unseeded_data": str(workspace / "reports" / "seeded_vs_unseeded_summary.json"),
+            "trend_dataset": str(workspace / "trends" / "fair_matrix_trend_rows.jsonl"),
+            "trend_report": str(workspace / "trends" / "fair_matrix_trends.md"),
+            "trend_report_data": str(workspace / "trends" / "fair_matrix_trends.json"),
+            "dashboard": str(workspace / "fair_matrix_dashboard.html"),
+            "dashboard_data": str(workspace / "fair_matrix_dashboard.json"),
+        }
+
+    monkeypatch.setattr(
+        "evonn_compare.cli.seeded_compare.publish_seeded_vs_unseeded_workspace",
+        fake_publish_seeded_vs_unseeded_workspace,
+    )
+    monkeypatch.setattr(seeded_compare_cli.webbrowser, "open", lambda url: opened.append(url) or True)
+
+    result = runner.invoke(app, ["seeded-compare", "--workspace", str(tmp_path), "--open"])
+
+    assert result.exit_code == 0
+    expected_url = (tmp_path / "fair_matrix_dashboard.html").resolve().as_uri()
+    assert opened == [expected_url]
+    assert f"opened\t{expected_url}" in result.stdout
+
+
+def test_fair_matrix_execute_resets_managed_workspace_before_prepare(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    stale_report = workspace / "reports" / "stale" / "fair_matrix_summary.json"
+    stale_dataset = workspace / "trends" / "fair_matrix_trend_rows.jsonl"
+    stale_dashboard = workspace / "fair_matrix_dashboard.html"
+    for artifact in (stale_report, stale_dataset, stale_dashboard):
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text("stale\n", encoding="utf-8")
+
+    def fake_prepare_fair_matrix_cases(**kwargs):
+        assert not stale_report.exists()
+        assert not stale_dataset.exists()
+        assert not stale_dashboard.exists()
+        workspace_path = Path(kwargs["workspace"])
+        case_dir = workspace_path / "reports" / "tier1_core_eval64_seed42"
+        case = type(
+            "Case",
+            (),
+            {
+                "summary_output_path": case_dir / "fair_matrix_summary.md",
+            },
+        )()
+        paths = type(
+            "Paths",
+            (),
+            {
+                "manifest_path": workspace_path / "matrix.yaml",
+                "trends_dir": workspace_path / "trends",
+            },
+        )()
+        paths.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        paths.manifest_path.write_text("pack_name: tier1_core\n", encoding="utf-8")
+        return paths, [case]
+
+    def fake_run_fair_matrix_case(case, **_kwargs):
+        case.summary_output_path.parent.mkdir(parents=True, exist_ok=True)
+        case.summary_output_path.write_text("# summary\n", encoding="utf-8")
+        return case.summary_output_path
+
+    def fake_refresh_workspace_reports(*, workspace, open_browser=False):
+        return {
+            "workspace": str(workspace),
+            "summary_count": 1,
+            "trend_dataset": str(Path(workspace) / "trends" / "fair_matrix_trend_rows.jsonl"),
+            "trend_report": str(Path(workspace) / "trends" / "fair_matrix_trends.md"),
+            "trend_report_data": str(Path(workspace) / "trends" / "fair_matrix_trends.json"),
+            "dashboard": str(Path(workspace) / "fair_matrix_dashboard.html"),
+            "dashboard_data": str(Path(workspace) / "fair_matrix_dashboard.json"),
+        }
+
+    monkeypatch.setattr(fair_matrix_cli, "prepare_fair_matrix_cases", fake_prepare_fair_matrix_cases)
+    monkeypatch.setattr(fair_matrix_cli, "run_fair_matrix_case", fake_run_fair_matrix_case)
+    monkeypatch.setattr(fair_matrix_cli, "refresh_workspace_reports", fake_refresh_workspace_reports)
+
+    result = runner.invoke(app, ["fair-matrix", "--preset", "smoke", "--workspace", str(workspace), "--serial"])
+
+    assert result.exit_code == 0
+    assert "mode\texecute" in result.stdout
+    assert not stale_report.exists()
+    assert not stale_dataset.exists()
+    assert not stale_dashboard.exists()
+
+
 def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) -> None:
     summary_path = tmp_path / "reports" / "case" / "fair_matrix_summary.md"
 
@@ -233,7 +406,7 @@ def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) ->
     def fake_run_fair_matrix_case(*_args, **_kwargs):
         return summary_path
 
-    def fake_refresh_workspace_reports(*, workspace):
+    def fake_refresh_workspace_reports(*, workspace, open_browser=False):
         return {
             "workspace": str(workspace),
             "summary_count": 1,
@@ -464,7 +637,7 @@ def test_trend_report_accepts_structured_fair_matrix_trends_jsonl(tmp_path: Path
     assert "# Fair Matrix Trends: tier1_core_smoke" in result.stdout
     assert "- Systems: `prism`" in result.stdout
     assert "- Budget Accounting: `incomplete`" in result.stdout
-    assert "| prism | iris_classification | 1 | 0.810000 | 0.810000 | 0.000000 | ok | 16 | 42 | fair | fair | incomplete | not-ready | unknown |" in result.stdout
+    assert "| prism | iris_classification | 1 | 0.810000 | 0.810000 | 0.000000 | ok | 16 | 42 | fair | transfer-opaque | --- | fair | incomplete | not-ready | unknown |" in result.stdout
 
 
 def test_compare_output_surfaces_report_paths(tmp_path: Path) -> None:
@@ -678,6 +851,71 @@ def test_dashboard_recomputes_project_only_winners(tmp_path: Path) -> None:
     assert "Trusted Extended" in html
 
 
+def test_dashboard_payload_surfaces_run_level_seeding_metadata(tmp_path: Path) -> None:
+    summary_dir = tmp_path / "workspace" / "reports" / "tier1_core_eval64_seed42"
+    summary_dir.mkdir(parents=True)
+    (summary_dir / "fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier1_core_eval64",
+                "systems": ["primordia", "topograph"],
+                "lane": {
+                    "preset": "seeded-compare",
+                    "pack_name": "tier1_core_eval64",
+                    "expected_budget": 64,
+                    "expected_seed": 42,
+                    "operating_state": "contract-fair",
+                    "artifact_completeness_ok": True,
+                    "fairness_ok": True,
+                    "task_coverage_ok": True,
+                    "budget_consistency_ok": True,
+                    "seed_consistency_ok": True,
+                    "budget_accounting_ok": True,
+                    "core_systems_complete_ok": True,
+                    "extended_systems_complete_ok": True,
+                    "observed_task_kinds": ["classification", "regression"],
+                    "system_operating_states": {
+                        "primordia": "benchmark-complete",
+                        "topograph": "portable-smoke",
+                    },
+                    "acceptance_notes": [],
+                    "repeatability_ready": True,
+                },
+                "fair_rows": [{"budget": 64, "seed": 42, "benchmark_count": 1, "evaluation_counts": {"primordia": 64, "topograph": 64}, "wins": {"primordia": 0, "topograph": 1}, "ties": 0, "note": None}],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [
+                    _dashboard_row("primordia", "iris_classification", 0.75),
+                    _dashboard_row(
+                        "topograph",
+                        "iris_classification",
+                        0.80,
+                        seeding_bucket="direct",
+                        seed_source_system="primordia",
+                        seed_source_run_id="prim-run-7",
+                        seed_artifact_path="/tmp/seed_candidates.json",
+                        seed_selected_family="mlp",
+                    ),
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "dashboard.html"
+
+    result = runner.invoke(app, ["dashboard", str(tmp_path / "workspace"), "--output", str(output_path)])
+
+    assert result.exit_code == 0
+    payload = json.loads(output_path.with_suffix(".json").read_text(encoding="utf-8"))
+    run = payload["runs"][0]
+    assert run["system_seeding"]["topograph"]["mode"] == "direct"
+    assert run["system_seeding"]["topograph"]["source"] == "primordia:prim-run-7"
+    assert run["system_seeding"]["topograph"]["artifact"] == "/tmp/seed_candidates.json"
+    html = output_path.read_text(encoding="utf-8")
+    assert "Topograph: direct from primordia:prim-run-7 (mlp)" in html
+
+
 def test_dashboard_opens_browser_by_default(tmp_path: Path, monkeypatch) -> None:
     summary_dir = tmp_path / "workspace" / "reports" / "tier1_core_eval64_seed42"
     summary_dir.mkdir(parents=True)
@@ -747,6 +985,11 @@ def _dashboard_row(
     *,
     outcome_status: str = "ok",
     failure_reason: str | None = None,
+    seeding_bucket: str = "transfer-opaque",
+    seed_source_system: str | None = None,
+    seed_source_run_id: str | None = None,
+    seed_artifact_path: str | None = None,
+    seed_selected_family: str | None = None,
 ) -> dict[str, object]:
     return {
         "pack_name": "tier1_core_eval64",
@@ -772,6 +1015,11 @@ def _dashboard_row(
             "budget_policy_name": "prototype_equal_budget",
             "data_signature": "shared",
             "code_version": "deadbeef",
+            "seeding_bucket": seeding_bucket,
+            "seed_source_system": seed_source_system,
+            "seed_source_run_id": seed_source_run_id,
+            "seed_artifact_path": seed_artifact_path,
+            "seed_selected_family": seed_selected_family,
             "pairwise_fairness_ok": True,
         },
     }

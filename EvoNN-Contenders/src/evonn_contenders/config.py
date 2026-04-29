@@ -10,6 +10,9 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from evonn_contenders.benchmarks import get_benchmark
+from evonn_contenders.benchmarks.parity import load_parity_pack, native_id_candidates
+
 
 class BenchmarkPoolConfig(BaseModel):
     """Benchmark selection for one run."""
@@ -147,9 +150,24 @@ def load_config(path: str | Path) -> RunConfig:
     config_path = Path(path)
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if "benchmark_pool" not in payload and "benchmark_pack" in payload:
-        pack = payload["benchmark_pack"] or {}
+        pack_ref = payload["benchmark_pack"] or {}
+        benchmark_ids = list(pack_ref.get("benchmark_ids") or [])
+        if not benchmark_ids and pack_ref.get("pack_name"):
+            parity_pack = load_parity_pack(pack_ref["pack_name"])
+            benchmark_ids = [_resolve_native_benchmark_id(entry) for entry in parity_pack.benchmarks]
         payload["benchmark_pool"] = {
-            "name": pack.get("pack_name", "benchmark_pack"),
-            "benchmarks": pack.get("benchmark_ids", []),
+            "name": pack_ref.get("pack_name", "benchmark_pack"),
+            "benchmarks": benchmark_ids,
         }
     return RunConfig.model_validate(payload)
+
+
+def _resolve_native_benchmark_id(entry: object) -> str:
+    benchmark_id = str(getattr(entry, "benchmark_id"))
+    for candidate in native_id_candidates(entry, system="contenders") or [benchmark_id]:
+        try:
+            get_benchmark(candidate)
+            return candidate
+        except Exception:
+            continue
+    return benchmark_id

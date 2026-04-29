@@ -42,3 +42,38 @@ Notes:
 - adjust pools in YAML before larger sweeps
 - optional contenders are skipped by default when required extras are not installed
 - refreshed fair configs now assume `--extra boosted --extra torch` for full pool coverage
+
+Official lanes:
+
+```bash
+cd ../EvoNN-Contenders
+
+# smoke / eval16
+uv run evonn-contenders run --config configs/official_lanes/smoke.yaml
+uv run evonn-contenders symbiosis export \
+  --run-dir runs/official_smoke_seed42 \
+  --pack-path ../EvoNN-Compare/parity_packs/tier1_core_smoke.yaml
+
+# tier1_core / eval64
+uv run evonn-contenders run --config configs/official_lanes/tier1_core_eval64.yaml
+uv run evonn-contenders symbiosis export \
+  --run-dir runs/official_tier1_core_eval64_seed42 \
+  --pack-path ../EvoNN-Compare/parity_packs/tier1_core.yaml
+
+# tier1_core / eval256
+uv run evonn-contenders run --config configs/official_lanes/tier1_core_eval256.yaml
+uv run evonn-contenders symbiosis export \
+  --run-dir runs/official_tier1_core_eval256_seed42 \
+  --pack-path ../EvoNN-Compare/parity_packs/tier1_core.yaml
+
+# tier1_core / eval1000
+uv run evonn-contenders run --config configs/official_lanes/tier1_core_eval1000.yaml
+uv run evonn-contenders symbiosis export \
+  --run-dir runs/official_tier1_core_eval1000_seed42 \
+  --pack-path ../EvoNN-Compare/parity_packs/tier1_core.yaml
+```
+
+Policy note:
+
+- official lanes use `benchmark_pack.pack_name` resolution rather than hard-coded benchmark lists
+- missing optional boosted/torch contenders do not block benchmark-complete status under the ratified steady-state contender-floor policy, and exports record that rationale so Compare can surface it in lane trust summaries

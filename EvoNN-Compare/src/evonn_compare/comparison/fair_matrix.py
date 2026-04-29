@@ -204,6 +204,7 @@ def build_matrix_trend_rows(
             metric_name = record.metric_name if record is not None else benchmark.metric_name
             metric_direction = record.metric_direction if record is not None else benchmark.metric_direction
             fairness = manifest.fairness
+            seeding = manifest.seeding
             fairness_metadata = {
                 "benchmark_pack_id": fairness.benchmark_pack_id if fairness is not None else manifest.pack_name,
                 "seed": fairness.seed if fairness is not None else manifest.seed,
@@ -211,6 +212,16 @@ def build_matrix_trend_rows(
                 "budget_policy_name": fairness.budget_policy_name if fairness is not None else manifest.budget.budget_policy_name,
                 "data_signature": fairness.data_signature if fairness is not None else None,
                 "code_version": fairness.code_version if fairness is not None else None,
+                "seeding_enabled": seeding.seeding_enabled if seeding is not None else None,
+                "seeding_ladder": seeding.seeding_ladder if seeding is not None else None,
+                "seed_source_system": seeding.seed_source_system if seeding is not None else None,
+                "seed_source_run_id": seeding.seed_source_run_id if seeding is not None else None,
+                "seed_artifact_path": seeding.seed_artifact_path if seeding is not None else None,
+                "seed_target_family": seeding.seed_target_family if seeding is not None else None,
+                "seed_selected_family": seeding.seed_selected_family if seeding is not None else None,
+                "seed_rank": seeding.seed_rank if seeding is not None else None,
+                "seed_overlap_policy": seeding.seed_overlap_policy if seeding is not None else None,
+                "seeding_bucket": _seeding_bucket(manifest),
                 "pairwise_fairness_ok": matrix_scope == "fair",
                 "lane_operating_state": lane.operating_state if lane is not None else "reference-only",
                 "system_operating_state": lane.system_operating_states.get(system, "unknown") if lane is not None else "unknown",
@@ -292,3 +303,12 @@ def _data_signature(manifest: RunManifest) -> str | None:
     if manifest.fairness is not None:
         return manifest.fairness.data_signature
     return None
+
+
+def _seeding_bucket(manifest: RunManifest) -> str:
+    seeding = manifest.seeding
+    if seeding is None:
+        return "transfer-opaque"
+    if not seeding.seeding_enabled or seeding.seeding_ladder == "none":
+        return "unseeded"
+    return seeding.seeding_ladder

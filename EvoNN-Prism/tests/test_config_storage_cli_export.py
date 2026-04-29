@@ -527,6 +527,12 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
     assert manifest["device"]["precision_mode"] == "fp32"
     assert manifest["device"]["framework_version"] == "0.0-test"
     assert manifest["budget"]["wall_clock_seconds"] == 7.25
+    assert manifest["budget"]["actual_evaluations"] == 2
+    assert manifest["budget"]["cached_evaluations"] == 0
+    assert manifest["budget"]["failed_evaluations"] == 0
+    assert manifest["budget"]["invalid_evaluations"] == 0
+    assert manifest["budget"]["partial_run"] is False
+    assert "scheduled evaluation slot" in manifest["budget"]["evaluation_semantics"]
     assert len(results) == 2
     assert summary["runtime_backend"] == manifest["device"]["framework"]
     assert summary["precision_mode"] == manifest["device"]["precision_mode"]

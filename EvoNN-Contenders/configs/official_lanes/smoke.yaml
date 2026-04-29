@@ -1,0 +1,8 @@
+seed: 42
+run_name: official_smoke_seed42
+benchmark_pack:
+  pack_name: tier1_core_smoke
+baseline:
+  mode: budget_matched
+  target_evaluation_count: 16
+  cache_dir: .baseline-cache

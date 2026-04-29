@@ -13,9 +13,8 @@ from evonn_contenders.config import RunConfig, baseline_signature, resolve_basel
 from evonn_contenders.contender_pool import (
     benchmark_group,
     choose_best,
-    contender_names_for_config,
     evaluate_contender,
-    resolve_contenders,
+    resolve_configured_contenders,
 )
 from evonn_contenders.export.report import write_report
 from evonn_contenders.storage import RunStore
@@ -368,10 +367,7 @@ def _update_baseline_budget_metadata(
 
 
 def _resolve_trials(config: RunConfig, *, benchmark_name: str, group: str) -> list[ContenderTrial]:
-    contender_names = contender_names_for_config(config, group)
-    if config.selection.max_contenders_per_benchmark is not None:
-        contender_names = contender_names[: config.selection.max_contenders_per_benchmark]
-    contenders = resolve_contenders(group, contender_names)
+    contenders = resolve_configured_contenders(config, group)
     contenders = _filter_unavailable_optional_contenders(contenders, config=config)
     if not contenders:
         raise ValueError(

@@ -10,7 +10,7 @@ from pydantic import TypeAdapter
 from evonn_shared.contracts import ResultRecord, RunManifest
 from evonn_compare.contracts.parity import ParityPack, load_parity_pack
 from evonn_compare.contracts.validation import ValidationReport, validate_contract
-from evonn_shared.manifests import default_artifact, default_data_signature
+from evonn_shared.manifests import default_artifact, default_data_signature, legacy_topograph_primordia_seeding_manifest, seeding_manifest
 
 
 class SystemIngestor:
@@ -106,6 +106,12 @@ def _normalize_manifest(payload: dict, run_dir: Path) -> dict:
     fairness.setdefault("code_version", None)
     payload["fairness"] = fairness
 
+    seeding = payload.get("seeding")
+    if seeding is None:
+        seeding = _normalize_legacy_seeding(payload, budget)
+    if seeding is not None:
+        payload["seeding"] = seeding
+
     normalized_benchmarks = []
     for entry in payload.get("benchmarks", []):
         row = dict(entry)
@@ -124,3 +130,21 @@ def _normalize_results(payload: list[dict]) -> list[dict]:
         normalized.append(row)
     return normalized
 
+
+def _normalize_legacy_seeding(payload: dict, budget: dict) -> dict | None:
+    search_telemetry = payload.get("search_telemetry")
+    if isinstance(search_telemetry, dict):
+        legacy = legacy_topograph_primordia_seeding_manifest(search_telemetry.get("primordia_seeding"))
+        if legacy is not None:
+            return legacy
+
+    if budget.get("seeding_ladder") is not None:
+        return seeding_manifest(
+            seeding_enabled=budget.get("seeding_ladder") != "none",
+            seeding_ladder=str(budget.get("seeding_ladder")),
+            seed_source_system=None if budget.get("seed_source_system") is None else str(budget.get("seed_source_system")),
+            seed_source_run_id=None if budget.get("seed_source_run_id") is None else str(budget.get("seed_source_run_id")),
+            seed_artifact_path=None if budget.get("seed_artifact_path") is None else str(budget.get("seed_artifact_path")),
+            seed_overlap_policy=None if budget.get("seed_overlap_policy") is None else str(budget.get("seed_overlap_policy")),
+        )
+    return None

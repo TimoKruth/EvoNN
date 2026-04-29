@@ -16,6 +16,94 @@
 - Shared contracts, fairness helpers, JSON writers, and summary-core helpers now exist.
 - The remaining risk is not lack of substrate. It is substrate drift, partial duplication, and semantic mismatch during future extraction moves.
 
+## Verification Against Current Main (2026-04-27)
+
+After reviewing the current tree, the broad "first extraction wave" in this plan is already materially complete.
+
+Confirmed already shared on `main`:
+
+- shared compare/export contracts in `EvoNN-Shared`
+- shared fairness envelope + benchmark signature helpers reused by Compare, Contenders, Prism, Primordia, Stratograph, and Topograph
+- shared JSON artifact writing reused across the export surface
+- shared summary-core derivation reused across Compare portable smoke plus Prism, Primordia, Stratograph, and Topograph exporters
+- Linux/macOS trust-layer CI split and package-specific shared check scripts already wired
+
+That means this document should no longer be read as a broad substrate-extraction plan. The remaining useful work is a small residue of high-value convergence slices plus semantic-safety hardening.
+
+## Recommended First Remaining Slices
+
+These are the highest-leverage remaining shared-substrate moves that still preserve engine autonomy.
+
+### Slice 1 — Canonical fairness metadata normalization
+
+Why first:
+- Compare still reconstructs fairness fallback metadata in multiple places during ingest and fair-matrix trend assembly.
+- This is shared contract semantics, not engine behavior.
+
+Current duplication to target:
+- `EvoNN-Compare/src/evonn_compare/ingest/loader.py`
+- `EvoNN-Compare/src/evonn_compare/comparison/fair_matrix.py`
+- `EvoNN-Compare/src/evonn_compare/orchestration/fair_matrix.py`
+
+Recommended extraction:
+- add one `evonn_shared` helper that derives the canonical fairness metadata view from a manifest/payload, including legacy fallback defaults
+- move Compare call sites onto that helper
+- add semantic tests for missing-fairness legacy manifests and for lane metadata overlays
+
+Why safe:
+- it tightens shared compare semantics without moving any search/runtime behavior
+
+### Slice 2 — Shared contract summary builder
+
+Why next:
+- exporters still build `summary.json` with repeated field assembly patterns even after sharing summary-core derivation
+- Contenders still duplicates median/failure summarization logic locally instead of using the shared core
+
+Current duplication to target:
+- `EvoNN-Contenders/src/evonn_contenders/export/symbiosis.py`
+- `EvoNN-Primordia/src/evonn_primordia/export/symbiosis.py`
+- `EvoNN-Prism/src/prism/export/symbiosis.py`
+- `EvoNN-Stratograph/src/stratograph/export/symbiosis.py`
+- `EvoNN-Topograph/src/topograph/export/symbiosis.py`
+
+Recommended extraction:
+- introduce a minimal shared summary builder for the canonical cross-engine fields only
+- keep engine-specific telemetry/extensions package-local and merged on top by each exporter
+- convert Contenders first because it still owns the most duplicated summary math
+
+Why safe:
+- it shares compare-facing report semantics while leaving engine-specific summary sections local
+
+### Slice 3 — Shared benchmark native-id fallback resolver
+
+Why third:
+- parity-pack fallback/native-id resolution logic is still duplicated across package-local benchmark/export modules
+- this affects shared benchmark identity handling, not engine search logic
+
+Current duplication to target:
+- `EvoNN-Compare/src/evonn_compare/adapters/slots.py`
+- `EvoNN-Contenders/src/evonn_contenders/benchmarks/parity.py`
+- `EvoNN-Primordia/src/evonn_primordia/benchmarks/parity.py`
+- `EvoNN-Stratograph/src/stratograph/benchmarks/parity.py`
+
+Recommended extraction:
+- move canonical fallback ordering for mixed old/new parity-pack native ids into a shared helper near `shared-benchmarks` / `evonn_shared.benchmarks`
+- keep package-local benchmark registries and actual benchmark loading local
+- add compatibility tests covering legacy `evonn`/`evonn2` aliases and newer `prism`/`topograph`/`stratograph`/`primordia` keys
+
+Why safe:
+- it reduces compare/export glue duplication without collapsing per-engine benchmark ownership
+
+## Explicit Non-Targets For The Shared Branch
+
+Keep these in the engine plans rather than pulling them into `EvoNN-Shared`:
+
+- package-local runtime backend selectors and fallback trainers
+- package-local benchmark fixes needed to make one engine complete on official lanes
+- engine-local search heuristics, candidate scoring, and mutation policy
+- package-local checkpoint/resume/inspect/report UX
+- engine-specific telemetry or lineage fields above the shared contract minimum
+
 ## Desired End State
 
 `EvoNN-Shared` should become:

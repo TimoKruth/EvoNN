@@ -13,6 +13,22 @@ challenger systems:
 - `EvoNN-Shared`: shared contracts and trust substrate
 - `EvoNN-Contenders`, `EvoNN-Primordia`, `EvoNN-Stratograph`: challenger lanes
 
+## Active Execution Docs
+
+Use the docs below in this order when deciding what is active versus historical:
+
+- `EVONN_90_DAY_PLAN.md`: current quarter execution source of truth
+- `.hermes/plans/README.md`: active branch-plan index for package and subsystem
+  advancement work
+- `ROADMAP.md`: long-horizon umbrella sequencing
+- `VISION.md`: product and research framing
+
+Historical/bootstrap planning records that should not be used as active
+execution plans:
+
+- `EvoNN-Primordia/IMPLEMENTATION_PLAN.md`
+- `EvoNN-Stratograph/IMPLEMENTATION_PLAN.md`
+
 ## Quick Start
 
 Prerequisite:
@@ -25,13 +41,18 @@ Bootstrap the workspace from the repository root:
 uv sync --all-packages --extra dev
 ```
 
-Run the main trust-layer checks:
+Run the trusted recurring lane locally:
 
 ```bash
 bash scripts/ci/shared-checks.sh all
 bash scripts/ci/compare-checks.sh all
 bash scripts/ci/contenders-checks.sh all
+bash scripts/ci/primordia-checks.sh all
+bash scripts/ci/stratograph-checks.sh all
 ```
+
+For MLX-native engine work, keep using the macOS package checks for Prism and
+Topograph separately from this Linux-safe recurring lane.
 
 Run the default comparison surface:
 
@@ -65,7 +86,10 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the expected branch and PR flow.
 - [MONOREPO.md](./MONOREPO.md): workspace structure, commands, and validation matrix
 - [ARCHITECTURE_OVERVIEW.md](./ARCHITECTURE_OVERVIEW.md): system-level technical framing
 - [VISION.md](./VISION.md): product and research direction
-- [ROADMAP.md](./ROADMAP.md): execution sequencing
-- [EVONN_90_DAY_PLAN.md](./EVONN_90_DAY_PLAN.md): current delivery window
+- [ROADMAP.md](./ROADMAP.md): long-horizon execution sequencing
+- [EVONN_90_DAY_PLAN.md](./EVONN_90_DAY_PLAN.md): current delivery window and
+  active execution source of truth
+- [.hermes/plans/README.md](./.hermes/plans/README.md): active package and
+  subsystem branch plans
 
 Package-specific usage and testing details live in each package README.

@@ -99,6 +99,12 @@ def export_symbiosis_contract(
         del spec
 
     _write_summary_json(output_dir / "dataset_manifest.json", dataset_manifest)
+    actual_evaluations = int(budget_meta.get("evaluation_count", len(result_records)))
+    failed_evaluations = max(
+        int(budget_meta.get("benchmark_load_failures", 0) or 0),
+        sum(1 for record in result_records if record["status"] == "failed"),
+    )
+    partial_run = any(record["status"] != "ok" for record in result_records)
 
     manifest = {
         "schema_version": "1.0",
@@ -110,13 +116,22 @@ def export_symbiosis_contract(
         "seed": config.seed,
         "benchmarks": manifest_benchmarks,
         "budget": {
-            "evaluation_count": budget_meta.get("evaluation_count", len(result_records)),
+            "evaluation_count": actual_evaluations,
             "epochs_per_candidate": config.training.epochs,
             "effective_training_epochs": budget_meta.get("effective_training_epochs"),
             "wall_clock_seconds": budget_meta.get("wall_clock_seconds"),
             "generations": config.evolution.generations,
             "population_size": config.evolution.population_size,
             "budget_policy_name": "prototype_equal_budget",
+            "actual_evaluations": actual_evaluations,
+            "cached_evaluations": 0,
+            "failed_evaluations": failed_evaluations,
+            "invalid_evaluations": 0,
+            "partial_run": partial_run,
+            "evaluation_semantics": (
+                "one scheduled candidate-benchmark slot counts as one evaluation; "
+                "benchmark load failures and non-ok benchmark outcomes remain explicit in the exported partial-run state"
+            ),
         },
         "device": {
             "device_name": platform.machine(),
@@ -147,7 +162,7 @@ def export_symbiosis_contract(
         "fairness": fairness_manifest(
             pack_name=pack.name,
             seed=config.seed,
-            evaluation_count=budget_meta.get("evaluation_count", len(result_records)),
+            evaluation_count=actual_evaluations,
             budget_policy_name="prototype_equal_budget",
             benchmark_entries=manifest_benchmarks,
             data_signature=benchmark_signature(pack.name, manifest_benchmarks),

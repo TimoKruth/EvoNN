@@ -1,4 +1,4 @@
-# Primordia Implementation Plan
+# Archived Primordia Implementation Plan
 
 ## Status
 

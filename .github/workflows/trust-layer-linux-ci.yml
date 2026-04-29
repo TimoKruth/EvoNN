@@ -12,6 +12,8 @@ on:
       - "EvoNN-Primordia/**"
       - "EvoNN-Stratograph/**"
       - "shared-benchmarks/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
       - "MONOREPO.md"
       - "pyproject.toml"
       - "uv.lock"
@@ -26,6 +28,8 @@ on:
       - "EvoNN-Primordia/**"
       - "EvoNN-Stratograph/**"
       - "shared-benchmarks/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
       - "MONOREPO.md"
       - "pyproject.toml"
       - "uv.lock"
@@ -40,23 +44,23 @@ jobs:
           - label: Shared
             package: evonn-shared
             script: scripts/ci/shared-checks.sh
-            scope: core trust layer
+            scope: trusted recurring lane core
           - label: Compare
             package: evonn-compare
             script: scripts/ci/compare-checks.sh
-            scope: core trust layer
+            scope: trusted recurring lane core
           - label: Contenders
             package: evonn-contenders
             script: scripts/ci/contenders-checks.sh
-            scope: core trust lane challenger floor
+            scope: trusted recurring lane challenger floor
           - label: Primordia
             package: evonn-primordia
             script: scripts/ci/primordia-checks.sh
-            scope: secondary challenger
+            scope: trusted recurring lane secondary challenger
           - label: Stratograph
             package: stratograph
             script: scripts/ci/stratograph-checks.sh
-            scope: secondary challenger
+            scope: trusted recurring lane secondary challenger
     name: ${{ matrix.label }} (${{ matrix.scope }})
     timeout-minutes: 20
     steps:

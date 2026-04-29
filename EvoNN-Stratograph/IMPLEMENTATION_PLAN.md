@@ -1,4 +1,4 @@
-# Stratograph Implementation Plan
+# Archived Stratograph Implementation Plan
 
 ## Status
 
@@ -28,41 +28,3 @@ Keep this document only as historical context for:
   challenger
 
 It should not be treated as a current execution plan anymore.
-
-1. `moons_classification`
-2. `digits_image`
-3. `tiny_lm_synthetic`
-4. LM-only smoke
-5. full 38 at smoke budget
-6. full 38 at 76
-7. full 38 at 152
-8. full 38 at 304
-9. full 38 at current broad 608 lane
-
-Exit criteria:
-- all 38 benchmarks exported
-- budget parity accepted
-- pairwise comparison reports generated
-
-## What This Turn Implements
-
-- project folder and docs
-- fresh package scaffold
-- local benchmark boundary
-- hierarchical genome models and codec
-- hierarchical compiler
-- hierarchy-aware mutation/crossover search loop
-- fast evaluator for classification/image/LM tasks
-- compare-compatible run/export surface
-- execution ladder generation and runs
-- tests for config, benchmark loading, compiler, search, pipeline, export
-
-## What This Turn Does Not Finish
-
-- full long-horizon hierarchy-specialized trainer optimization
-- long-horizon weight inheritance across training runs
-- advanced novelty/QD scheduling beyond current lightweight archive
-- compare-side orchestration automation
-- final merged-system work across Prism/Topograph/Stratograph
-
-Those remain next slices.

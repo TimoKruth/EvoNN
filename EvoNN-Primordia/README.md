@@ -42,6 +42,7 @@ comparison against the rest of the umbrella.
 
 Current deliverables:
 - self-contained Primordia-local runtime boundary with MLX as the reference backend
+- sklearn-backed `numpy-fallback` execution path for non-MLX local parity lanes
 - Primordia-local benchmark and parity loaders
 - MLX-backed primitive candidate search
 - runtime metadata carried through run/export artifacts
@@ -73,6 +74,22 @@ uv run --package evonn-primordia primordia seed export --run-dir path/to/run
 uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/run --pack-path path/to/pack.yaml
 ```
 
+Checked-in official lane configs now live under `configs/`:
+
+```bash
+uv run --package evonn-primordia primordia run --config EvoNN-Primordia/configs/smoke.yaml
+uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/run --pack-path EvoNN-Compare/parity_packs/tier1_core_smoke.yaml
+
+uv run --package evonn-primordia primordia run --config EvoNN-Primordia/configs/tier1_core_eval64.yaml
+uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/run --pack-path EvoNN-Compare/parity_packs/tier1_core.yaml
+```
+
+The package-level official lane set is:
+- `configs/smoke.yaml` for the `tier1_core_smoke` compare lane at 16 evaluations
+- `configs/tier1_core_eval64.yaml` for the default local `tier1_core` lane
+- `configs/tier1_core_eval256.yaml` for the overnight `tier1_core` lane
+- `configs/tier1_core_eval1000.yaml` for the weekend `tier1_core` lane
+
 `primordia report` now refreshes `report.md` from the current run artifacts when
 `summary.json` is present, so stale markdown snapshots can be rebuilt after
 export or telemetry updates without deleting the old report first.
@@ -90,13 +107,22 @@ Primordia currently acts as a primitive-first search system with MLX as its
 reference execution runtime and an explicitly budget-matched evaluation count.
 The package now also installs cleanly on non-Darwin hosts by treating MLX as a
 platform-specific dependency, while run/export artifacts still record the actual
-runtime backend used. That makes it possible to include Primordia in fair
-EvoNN-Compare matrix runs alongside Prism, Topograph, Stratograph, and the
-Contenders baseline.
+runtime backend used. On hosts where MLX is unavailable, `primordia run` now
+falls back to a clearly labeled `numpy-fallback` runtime for local
+classification, regression, and image parity lanes such as
+`tier1_core_eval64`/`tier1_core_eval256`.
+
+That fallback keeps the compare/export contract intact for local fair-matrix
+reruns without pretending to be the native MLX family compiler. MLX remains the
+reference backend for native Primordia family execution, and it is still
+required for text/language-modeling validation or any run where architectural
+fidelity to the MLX families matters.
 
 ## Core Docs
 
 - `VISION.md`
-- `IMPLEMENTATION_PLAN.md`
+- `IMPLEMENTATION_PLAN.md` (archived bootstrap record only)
+- `../EVONN_90_DAY_PLAN.md`
+- `../.hermes/plans/README.md`
 - `ARCHITECTURE_RULES.md`
 - `CHANGELOG.md`

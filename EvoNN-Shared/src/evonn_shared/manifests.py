@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import hashlib
 import json
 from pathlib import Path
@@ -110,6 +111,72 @@ def fairness_manifest(
         "data_signature": data_signature or benchmark_signature(pack_name, benchmark_entries),
         "code_version": code_version,
     }
+
+
+def seeding_manifest(
+    *,
+    seeding_enabled: bool,
+    seeding_ladder: str,
+    seed_source_system: str | None = None,
+    seed_source_run_id: str | None = None,
+    seed_artifact_path: str | None = None,
+    seed_target_family: str | None = None,
+    seed_selected_family: str | None = None,
+    seed_rank: int | None = None,
+    seed_overlap_policy: str | None = None,
+    representative_genome_id: str | None = None,
+    representative_architecture_summary: str | None = None,
+) -> dict[str, Any]:
+    """Canonical seeding envelope payload builder."""
+
+    return {
+        "seeding_enabled": seeding_enabled,
+        "seeding_ladder": seeding_ladder,
+        "seed_source_system": seed_source_system,
+        "seed_source_run_id": seed_source_run_id,
+        "seed_artifact_path": seed_artifact_path,
+        "seed_target_family": seed_target_family,
+        "seed_selected_family": seed_selected_family,
+        "seed_rank": seed_rank,
+        "seed_overlap_policy": seed_overlap_policy,
+        "representative_genome_id": representative_genome_id,
+        "representative_architecture_summary": representative_architecture_summary,
+    }
+
+
+def _optional_string(value: Any) -> str | None:
+    """Normalize optional manifest strings without inventing placeholder values."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def legacy_topograph_primordia_seeding_manifest(payload: Any) -> dict[str, Any] | None:
+    """Normalize legacy Topograph seeding metadata without inventing provenance."""
+
+    if not isinstance(payload, Mapping):
+        return None
+    seed_artifact_path = _optional_string(
+        payload.get("seed_artifact_path") or payload.get("seed_path") or payload.get("seed_source_path")
+    )
+    if seed_artifact_path is None:
+        return None
+    rank = payload.get("seed_rank", payload.get("selected_rank"))
+    return seeding_manifest(
+        seeding_enabled=True,
+        seeding_ladder="direct",
+        seed_source_system=_optional_string(payload.get("seed_source_system") or payload.get("source_system")) or "primordia",
+        seed_source_run_id=_optional_string(payload.get("seed_source_run_id")),
+        seed_artifact_path=seed_artifact_path,
+        seed_target_family=_optional_string(payload.get("seed_target_family", payload.get("target_family"))),
+        seed_selected_family=_optional_string(payload.get("seed_selected_family", payload.get("selected_family"))),
+        seed_rank=None if rank is None else int(rank),
+        seed_overlap_policy=_optional_string(payload.get("seed_overlap_policy")) or "family-overlapping",
+        representative_genome_id=_optional_string(payload.get("representative_genome_id")),
+        representative_architecture_summary=_optional_string(payload.get("representative_architecture_summary")),
+    )
 
 
 def default_data_signature(payload: dict[str, Any]) -> str:

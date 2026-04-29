@@ -105,6 +105,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
         "<section class='panel'>",
         "<h2>How To Read This</h2>",
         "<p><strong>Operating State</strong> is the lane-level trust label. <strong>reference-only</strong> means fairness or accounting caveats remain. <strong>contract-fair</strong> means the lane is structurally fair but not yet benchmark-complete for the core systems. <strong>trusted-core</strong> and <strong>trusted-extended</strong> add benchmark-complete coverage for the quarter-critical core and then the secondary challengers.</p>",
+        "<p><strong>System States</strong> adds per-system detail inside a lane. Contenders may report <strong>benchmark-complete-optional-skips</strong> when the ratified sklearn-backed floor ran cleanly and optional boosted or torch breadth extras were unavailable.</p>",
         "<p><strong>Solo Wins</strong> means a system was uniquely best on a benchmark in the chosen scope. "
         "<strong>Shared Wins</strong> means a tie for best. <strong>Benchmark Failures</strong> and "
         "<strong>Missing Results</strong> are per-system outcome counts, not lane-level fairness failures.</p>",
@@ -163,6 +164,7 @@ def _build_run_entry(*, path: Path, payload: dict[str, Any], output_path: Path) 
             "extended_systems_complete_ok": bool(lane.get("extended_systems_complete_ok")),
             "system_operating_states": dict(lane.get("system_operating_states") or {}),
         },
+        "system_seeding": _system_seeding_summary(trend_rows),
         "all_scope": _scope_summary(trend_rows, systems=ALL_SYSTEMS),
         "project_scope": _scope_summary(trend_rows, systems=PROJECT_SYSTEMS),
     }
@@ -309,11 +311,16 @@ def _recent_runs_table(runs: list[dict[str, Any]]) -> str:
     lines = [
         "<table>",
         "<thead><tr><th>Pack</th><th>Budget</th><th>Seed</th><th>State</th><th>Fair</th><th>Repeatable</th>"
-        "<th>Accounting</th><th>Core Complete</th><th>Extended Complete</th><th>Artifact Complete</th><th>Budget OK</th><th>Seed OK</th><th>Report Dir</th></tr></thead>",
+        "<th>Accounting</th><th>Core Complete</th><th>Extended Complete</th><th>System States</th><th>Seeding</th><th>Artifact Complete</th><th>Budget OK</th><th>Seed OK</th><th>Report Dir</th></tr></thead>",
         "<tbody>",
     ]
     for run in runs:
         lane = run["lane"]
+        system_states = "; ".join(
+            f"{system}={state}"
+            for system, state in sorted((lane.get("system_operating_states") or {}).items())
+        ) or "---"
+        seeding_summary = _render_system_seeding(run.get("system_seeding") or {})
         lines.append(
             "<tr>"
             f"<td><code>{html.escape(run['pack_name'])}</code></td>"
@@ -325,6 +332,8 @@ def _recent_runs_table(runs: list[dict[str, Any]]) -> str:
             f"<td>{'yes' if lane['budget_accounting_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['core_systems_complete_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['extended_systems_complete_ok'] else 'no'}</td>"
+            f"<td>{html.escape(system_states)}</td>"
+            f"<td>{html.escape(seeding_summary)}</td>"
             f"<td>{'yes' if lane['artifact_completeness_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['budget_consistency_ok'] else 'no'}</td>"
             f"<td>{'yes' if lane['seed_consistency_ok'] else 'no'}</td>"
@@ -364,6 +373,50 @@ def _coerce_operating_state(lane: dict[str, Any]) -> str:
     ):
         return "contract-fair"
     return "reference-only"
+
+
+def _system_seeding_summary(trend_rows: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
+    summary: dict[str, dict[str, set[str]]] = defaultdict(
+        lambda: {"mode": set(), "source": set(), "artifact": set(), "family": set()}
+    )
+    for row in trend_rows:
+        system = str(row.get("system") or "unknown")
+        fairness = row.get("fairness_metadata") or {}
+        source_system = fairness.get("seed_source_system")
+        source_run_id = fairness.get("seed_source_run_id")
+        source = "---"
+        if source_system is not None:
+            source = str(source_system)
+            if source_run_id:
+                source = f"{source}:{source_run_id}"
+        family = fairness.get("seed_selected_family") or fairness.get("seed_target_family") or "---"
+        summary[system]["mode"].add(str(fairness.get("seeding_bucket") or "transfer-opaque"))
+        summary[system]["source"].add(source)
+        summary[system]["artifact"].add(str(fairness.get("seed_artifact_path") or "---"))
+        summary[system]["family"].add(str(family))
+    return {
+        system: {
+            key: ", ".join(sorted(values))
+            for key, values in fields.items()
+        }
+        for system, fields in summary.items()
+    }
+
+
+def _render_system_seeding(system_seeding: dict[str, dict[str, str]]) -> str:
+    if not system_seeding:
+        return "none"
+    parts = []
+    for system, fields in sorted(system_seeding.items()):
+        segment = f"{_titleize(system)}: {fields.get('mode', 'transfer-opaque')}"
+        source = fields.get("source") or "---"
+        family = fields.get("family") or "---"
+        if source != "---":
+            segment += f" from {source}"
+        if family != "---":
+            segment += f" ({family})"
+        parts.append(segment)
+    return "; ".join(parts)
 
 
 def _relative_path(target: Path, base_dir: Path) -> str:

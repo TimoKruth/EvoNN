@@ -3,12 +3,25 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from evonn_primordia.cli import app
+from evonn_primordia.config import load_config
 
 
 runner = CliRunner()
+REPO_ROOT = Path(__file__).resolve().parents[2]
+OFFICIAL_BENCHMARKS = [
+    "iris_classification",
+    "wine_classification",
+    "breast_cancer",
+    "moons_classification",
+    "digits_image",
+    "diabetes",
+    "friedman1",
+    "credit_g",
+]
 
 
 def test_inspect_renders_compact_run_summary(tmp_path: Path) -> None:
@@ -156,6 +169,30 @@ def test_inspect_handles_status_only_failures_in_grouped_patterns_and_recent_row
     assert "Recent Failures" in result.output
 
 
+@pytest.mark.parametrize(
+    ("config_name", "run_name", "pool_name", "budget", "epochs"),
+    [
+        ("smoke.yaml", "official_tier1_core_smoke_eval16_seed42", "tier1_core_smoke_eval16", 16, 1),
+        ("tier1_core_eval64.yaml", "official_tier1_core_eval64_seed42", "tier1_core_eval64", 64, 20),
+        ("tier1_core_eval256.yaml", "official_tier1_core_eval256_seed42", "tier1_core_eval256", 256, 20),
+        ("tier1_core_eval1000.yaml", "official_tier1_core_eval1000_seed42", "tier1_core_eval1000", 1000, 20),
+    ],
+)
+def test_official_lane_configs_load_expected_budgets(
+    config_name: str,
+    run_name: str,
+    pool_name: str,
+    budget: int,
+    epochs: int,
+) -> None:
+    config = load_config(REPO_ROOT / "EvoNN-Primordia" / "configs" / config_name)
+
+    assert config.run_name == run_name
+    assert config.benchmark_pool.name == pool_name
+    assert config.benchmark_pool.benchmarks == OFFICIAL_BENCHMARKS
+    assert config.search.mode == "budget_matched"
+    assert config.search.target_evaluation_count == budget
+    assert config.training.epochs_per_candidate == epochs
 
 def test_inspect_rebuilds_primitive_bank_from_summary_and_trials_when_bank_artifact_is_missing(tmp_path: Path) -> None:
     run_dir = tmp_path / "rebuild_bank"

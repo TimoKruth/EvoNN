@@ -78,6 +78,9 @@ def run_evolution(
     benchmark_names = config.benchmark_pool.benchmarks
     novelty_scores: list[float] = []
     occupied_niches: set[tuple[int, int, int, int]] = set()
+    prior_budget_meta = store.load_budget_metadata(run_id) if resume else {}
+    scheduled_evaluation_slots = int(prior_budget_meta.get("evaluation_count", 0) or 0)
+    benchmark_load_failures = int(prior_budget_meta.get("benchmark_load_failures", 0) or 0)
     _write_status(
         status_path,
         run_id=run_id,
@@ -95,6 +98,7 @@ def run_evolution(
         try:
             data = spec.load_data(seed=config.seed)
         except Exception as exc:
+            benchmark_load_failures += 1
             failed_genome = _make_candidate(
                 benchmark_name=benchmark_name,
                 task=spec.task,
@@ -152,6 +156,7 @@ def run_evolution(
             evaluated: list[tuple[HierarchicalGenome, EvaluationRecord, float]] = []
             trained_states: dict[str, TrainingArtifact | None] = {}
             for genome in population:
+                scheduled_evaluation_slots += 1
                 try:
                     outcome = evaluate_candidate_with_state(
                         genome,
@@ -249,12 +254,14 @@ def run_evolution(
             state="running",
         )
 
-    evaluation_count = config.evolution.population_size * config.evolution.generations * len(benchmark_names)
     wall_clock_seconds = time.perf_counter() - started
     store.save_budget_metadata(
         run_id=run_id,
         payload={
-            "evaluation_count": evaluation_count,
+            "evaluation_count": scheduled_evaluation_slots,
+            "configured_evaluation_slots": (
+                config.evolution.population_size * config.evolution.generations * len(benchmark_names)
+            ),
             "effective_training_epochs": config.training.epochs,
             "wall_clock_seconds": wall_clock_seconds,
             "created_at": created_at,
@@ -262,6 +269,8 @@ def run_evolution(
             "runtime_version": RUNTIME_VERSION,
             "precision_mode": PRECISION_MODE,
             "architecture_mode": architecture_mode,
+            "benchmark_load_failures": benchmark_load_failures,
+            "completed_benchmark_count": len(completed_benchmarks),
             "allow_clone_mutation": variant_policy["allow_clone_mutation"],
             "motif_bias": variant_policy["motif_bias"],
             "novelty_archive_final_size": len(novelty_scores),

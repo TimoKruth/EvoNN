@@ -112,6 +112,8 @@ def export_symbiosis_contract(
     _write_summary_json(output_dir / "seed_candidates.json", seed_candidates)
 
     evaluation_count = int(summary.get("evaluation_count", len(trial_records)))
+    failure_count = int(summary.get("failure_count", 0))
+    partial_run = failure_count > 0 or any(record["status"] != "ok" for record in result_records)
     compare_summary = _build_compare_summary(summary=summary, results=result_records, evaluation_count=evaluation_count)
     _write_summary_json(output_dir / "compare_summary.json", compare_summary)
     _write_summary_json(output_dir / "summary.json", compare_summary)
@@ -134,6 +136,15 @@ def export_symbiosis_contract(
             "generations": 1,
             "population_size": evaluation_count,
             "budget_policy_name": BUDGET_POLICY_NAME,
+            "actual_evaluations": evaluation_count,
+            "cached_evaluations": 0,
+            "failed_evaluations": failure_count,
+            "invalid_evaluations": 0,
+            "partial_run": partial_run,
+            "evaluation_semantics": (
+                "one primitive family-benchmark trial counts as one evaluation; "
+                "failed trials still count and no cached evaluations are exported separately"
+            ),
         },
         "device": {
             "device_name": platform.machine(),
@@ -155,7 +166,7 @@ def export_symbiosis_contract(
             "effective_training_epochs": config.training.epochs_per_candidate,
             "primitive_usage": summary.get("primitive_usage", {}),
             "group_counts": summary.get("group_counts", {}),
-            "failure_count": int(summary.get("failure_count", 0)),
+            "failure_count": failure_count,
             "wall_clock_seconds": summary.get("wall_clock_seconds"),
         },
         "fairness": fairness_manifest(

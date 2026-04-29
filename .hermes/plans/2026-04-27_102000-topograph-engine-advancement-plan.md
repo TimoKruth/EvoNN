@@ -35,6 +35,42 @@ Topograph should become:
 4. Harden budget semantics and reused-candidate accounting.
 5. Strengthen operator trust, inspection, and repeatability.
 
+## Remaining Mergeable Slices From Current Main
+
+These are the next merge-back-sized Topograph slices after the recurring-lane
+substrate landing.
+
+1. Backend portability slice
+   - add the explicit backend selector and correctness-first fallback runtime
+   - preserve current artifact contracts rather than changing shared export
+     semantics in this branch
+2. Official-lane correctness slice
+   - re-verify `smoke` and `tier1_core` at `64/256/1000`
+   - fix Topograph-local benchmark failures and reused-candidate accounting
+     drift that originates inside the engine
+3. Topology-search slice
+   - improve parent retention, mutation pressure, and novelty/exploit balance
+   - expose topology-specific rationale in Topograph artifacts only
+4. Runtime maturity slice
+   - improve checkpoint/resume/live inspection for longer challenger runs
+   - keep the change focused on operating Topograph, not repo-wide reporting
+5. Challenger evidence slice
+   - add Topograph-local tests or metadata proving where it wins or loses while
+     continuing to consume the existing Compare substrate
+
+## Shared-Substrate Boundaries
+
+Do in Topograph:
+- runtime/backend work inside `EvoNN-Topograph`
+- Topograph-local benchmark accounting fixes and search/training behavior
+- Topograph-local explanatory fields layered on the shared contracts
+
+Do not duplicate in Topograph:
+- shared fairness fallback derivation
+- shared summary builder logic
+- shared parity-pack native-id fallback handling
+- fair-matrix/trend/dashboard or repo-wide budget semantics changes
+
 ## Primary Strategy
 
 1. Backend portability first

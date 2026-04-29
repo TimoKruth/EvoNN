@@ -3,8 +3,10 @@ from pathlib import Path
 import json
 from typer.testing import CliRunner
 
+from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_pack
 from evonn_contenders.cli import app
 from evonn_contenders.config import load_config
+from evonn_contenders.export.report import write_report
 from evonn_contenders.export.symbiosis import export_symbiosis_contract
 from evonn_contenders.pipeline import materialize_baseline_run, run_contenders
 from evonn_contenders.storage import RunStore
@@ -405,6 +407,267 @@ selection:
     assert "catboost_small" not in contender_names
     assert all(record["status"] == "ok" for record in contenders)
     assert results[0]["status"] == "ok"
+
+
+def test_export_records_optional_skip_policy_metadata(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: optional_skip_export
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+selection:
+  max_contenders_per_benchmark: null
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    pack_path = tmp_path / "pack.yaml"
+    pack_path.write_text(
+        """
+name: smoke_pack
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      contenders: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+budget_policy:
+  evaluation_count: 8
+  epochs_per_candidate: 1
+seed_policy:
+  mode: shared
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    real_find_spec = __import__("importlib.util").util.find_spec
+
+    def fake_find_spec(name: str, *args, **kwargs):
+        if name in {"xgboost", "lightgbm", "catboost"}:
+            return None
+        return real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr("evonn_contenders.pipeline.importlib.util.find_spec", fake_find_spec)
+    monkeypatch.setattr("evonn_contenders.export.baseline_coverage.importlib.util.find_spec", fake_find_spec)
+
+    config = load_config(config_path)
+    run_dir = tmp_path / "run"
+    run_contenders(config, run_dir=run_dir, config_path=config_path)
+    manifest_path, _ = export_symbiosis_contract(run_dir, pack_path, run_dir)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["baseline_coverage"]["benchmark_complete_policy"] == "required_only_optional_skips_allowed"
+    assert manifest["baseline_coverage"]["policy_stage"] == "steady_state"
+    assert "sklearn-backed contender pool" in manifest["baseline_coverage"]["policy_reason"]
+    assert manifest["baseline_coverage"]["optional_dependency_skips"]["tabular"] == [
+        "catboost_small",
+        "lgbm_small",
+        "xgb_small",
+    ]
+
+
+def test_export_optional_skip_metadata_respects_selection_cap(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: capped_optional_skip_export
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+contender_pool:
+  tabular:
+  - hist_gb
+  - extra_trees
+  - xgb_small
+selection:
+  max_contenders_per_benchmark: 2
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    pack_path = tmp_path / "pack.yaml"
+    pack_path.write_text(
+        """
+name: smoke_pack
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      contenders: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+budget_policy:
+  evaluation_count: 2
+  epochs_per_candidate: 1
+seed_policy:
+  mode: shared
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    real_find_spec = __import__("importlib.util").util.find_spec
+
+    def fake_find_spec(name: str, *args, **kwargs):
+        if name == "xgboost":
+            return None
+        return real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr("evonn_contenders.pipeline.importlib.util.find_spec", fake_find_spec)
+    monkeypatch.setattr("evonn_contenders.export.baseline_coverage.importlib.util.find_spec", fake_find_spec)
+
+    config = load_config(config_path)
+    run_dir = tmp_path / "run"
+    run_contenders(config, run_dir=run_dir, config_path=config_path)
+    manifest_path, _ = export_symbiosis_contract(run_dir, pack_path, run_dir)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["baseline_coverage"]["benchmark_complete_policy"] == "required_only_optional_skips_allowed"
+    assert manifest["baseline_coverage"]["policy_stage"] == "steady_state"
+    assert manifest["baseline_coverage"]["optional_dependency_skips"] == {}
+
+
+def test_report_surfaces_optional_skip_policy_metadata(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: optional_skip_report
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+selection:
+  max_contenders_per_benchmark: null
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    real_find_spec = __import__("importlib.util").util.find_spec
+
+    def fake_find_spec(name: str, *args, **kwargs):
+        if name in {"xgboost", "lightgbm", "catboost"}:
+            return None
+        return real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr("evonn_contenders.pipeline.importlib.util.find_spec", fake_find_spec)
+    monkeypatch.setattr("evonn_contenders.export.baseline_coverage.importlib.util.find_spec", fake_find_spec)
+
+    config = load_config(config_path)
+    run_dir = tmp_path / "run"
+    run_contenders(config, run_dir=run_dir, config_path=config_path)
+
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+
+    assert "## Baseline Coverage" in report
+    assert "required_only_optional_skips_allowed" in report
+    assert "steady_state" in report
+    assert "sklearn-backed contender pool" in report
+    assert "xgb_small" in report
+    assert "lgbm_small" in report
+    assert "catboost_small" in report
+
+
+def test_report_surfaces_failure_reasons(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: failure_report
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+contender_pool:
+  tabular: [hist_gb]
+  synthetic: [hist_gb]
+  image: [mlp]
+  language_modeling: [bigram_lm]
+selection:
+  max_contenders_per_benchmark: 1
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "run"
+
+    store = RunStore(run_dir / "metrics.duckdb")
+    store.record_run(
+        run_id="run",
+        run_name="failure_report",
+        created_at="2026-04-29T00:00:00+00:00",
+        seed=42,
+        config=config.model_dump(mode="json"),
+    )
+    failed_record = {
+        "contender_name": "hist_gb",
+        "family": "gradient_boosting",
+        "metric_name": "accuracy",
+        "metric_direction": "max",
+        "metric_value": None,
+        "quality": float("-inf"),
+        "parameter_count": 0,
+        "train_seconds": 0.0,
+        "architecture_summary": "load_failed",
+        "contender_id": "iris:hist_gb:seed42",
+        "status": "failed",
+        "failure_reason": "dataset loader exploded",
+    }
+    store.replace_contenders(run_id="run", benchmark_name="iris", records=[failed_record])
+    store.replace_result(run_id="run", benchmark_name="iris", record=failed_record)
+    store.save_budget_metadata(
+        run_id="run",
+        payload={
+            "evaluation_count": 1,
+            "executed_evaluation_count": 1,
+            "cache_hits": 0,
+        },
+    )
+    store.close()
+
+    report_path = write_report(run_dir)
+    report = report_path.read_text(encoding="utf-8")
+
+    assert "## Failure Summary" in report
+    assert "dataset loader exploded" in report
+    assert "| iris | failed | dataset loader exploded |" in report
+
+
+def test_official_lane_config_resolves_benchmark_pack_names() -> None:
+    config_path = (
+        Path(__file__).resolve().parents[1]
+        / "configs"
+        / "official_lanes"
+        / "tier1_core_eval64.yaml"
+    )
+    config = load_config(config_path)
+
+    assert config.benchmark_pool.name == "tier1_core"
+    assert "iris" in config.benchmark_pool.benchmarks
+    assert "diabetes" in config.benchmark_pool.benchmarks
+    assert config.baseline.target_evaluation_count == 64
+
+
+def test_official_lane_pack_prefers_contender_resolvable_aliases() -> None:
+    pack_path = (
+        Path(__file__).resolve().parents[2]
+        / "EvoNN-Compare"
+        / "parity_packs"
+        / "tier1_core_smoke.yaml"
+    )
+    pack = load_parity_pack(pack_path)
+    diabetes_entry = next(entry for entry in pack.benchmarks if entry.benchmark_id == "diabetes_regression")
+
+    assert fallback_native_id(diabetes_entry) == "diabetes"
 
 
 def test_run_contenders_emits_progress_lines(tmp_path: Path, capsys) -> None:

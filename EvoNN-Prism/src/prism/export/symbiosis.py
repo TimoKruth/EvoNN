@@ -157,6 +157,8 @@ def export_symbiosis_contract(
         benchmark_count=len(pack_specs),
         fallback=len(evaluations),
     )
+    actual_evaluations = len(evaluations) if evaluations else total_evaluations
+    failed_evaluations = sum(1 for row in evaluations if row.get("status") not in {None, "ok"})
     config_snapshot_name = "config.yaml" if (output_dir / "config.yaml").exists() else "config.json"
     report_name = "report.md"
 
@@ -176,6 +178,15 @@ def export_symbiosis_contract(
             population_size=config.evolution.population_size,
             wall_clock_seconds=_load_wall_clock_seconds(output_dir),
             budget_policy_name="prototype_equal_budget",
+            actual_evaluations=actual_evaluations,
+            cached_evaluations=0,
+            failed_evaluations=failed_evaluations,
+            invalid_evaluations=0,
+            partial_run=failed_evaluations > 0,
+            evaluation_semantics=(
+                "one persisted genome-benchmark evaluation row counts as one scheduled evaluation slot; "
+                "weight inheritance still counts as a fresh evaluation and is not reported as a cached evaluation"
+            ),
         ),
         device=DeviceInfo(
             device_name=_detect_device(),
@@ -360,17 +371,9 @@ def _load_runtime_metadata(run_dir: Path) -> dict[str, str | None]:
 
 def _resolved_runtime_metadata(run_dir: Path) -> dict[str, str]:
     runtime_meta = _load_runtime_metadata(run_dir)
-    backend = runtime_meta["runtime_backend"]
-    if backend == "unknown":
-        backend = "mlx"
-
-    runtime_version = runtime_meta["runtime_version"]
-    if runtime_version == "unknown" and backend == "mlx":
-        runtime_version = _MLX_VERSION or "unknown"
-
     return {
-        "runtime_backend": backend,
-        "runtime_version": runtime_version,
+        "runtime_backend": runtime_meta["runtime_backend"] or "unknown",
+        "runtime_version": runtime_meta["runtime_version"] or "unknown",
         "precision_mode": runtime_meta["precision_mode"] or "fp32",
     }
 

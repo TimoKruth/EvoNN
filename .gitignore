@@ -90,3 +90,6 @@ deprecated/
 
 # Generated dashboards / extracted history
 dashboard/compare-history/
+
+# Local recurring-lane workspaces
+.tmp/

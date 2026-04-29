@@ -12,6 +12,7 @@ from evonn_compare.cli.workspace_report import refresh_workspace_reports
 from evonn_compare.orchestration.lane_presets import lane_preset_help, resolve_lane_preset
 from evonn_compare.orchestration.fair_matrix import (
     prepare_fair_matrix_cases,
+    reset_fair_matrix_workspace,
     run_fair_matrix_case,
 )
 
@@ -30,12 +31,17 @@ def fair_matrix(
     include_contenders: bool = typer.Option(True, "--include-contenders/--no-contenders", help="Include contender baselines in the fair-matrix run"),
     parallel: bool = typer.Option(True, "--parallel/--serial", help="Run project stages concurrently"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Only generate configs and print cases"),
+    open_browser: bool = typer.Option(False, "--open/--no-open", help="Open the refreshed dashboard in the default browser"),
 ) -> None:
     """Generate and optionally execute fair four-way compare cases."""
 
     preset_name = preset or (None if pack else "smoke")
     preset_spec = resolve_lane_preset(preset_name) if preset_name else None
     pack_name = pack or (preset_spec.pack if preset_spec else None)
+    workspace_path = Path(workspace)
+
+    if not dry_run:
+        reset_fair_matrix_workspace(workspace_path)
 
     pack_path = resolve_pack_path(pack_name)
     pack_spec = load_parity_pack(pack_path)
@@ -45,7 +51,7 @@ def fair_matrix(
         seeds=_parse_optional_csv_ints(seeds) or (list(preset_spec.seeds) if preset_spec else [42]),
         budgets=_parse_optional_csv_ints(budgets)
         or (list(preset_spec.budgets) if preset_spec else [pack_spec.budget_policy.evaluation_count]),
-        workspace=Path(workspace),
+        workspace=workspace_path,
         prism_root=Path(prism_root),
         topograph_root=Path(topograph_root),
         stratograph_root=Path(stratograph_root),
@@ -79,11 +85,13 @@ def fair_matrix(
         for label, artifact_path in _trend_artifact_paths(summary_path).items():
             typer.echo(f"{label}\t{artifact_path}")
 
-    workspace_artifacts = refresh_workspace_reports(workspace=Path(workspace))
+    workspace_artifacts = refresh_workspace_reports(workspace=workspace_path, open_browser=open_browser)
     typer.echo(f"workspace_trend_report\t{workspace_artifacts['trend_report']}")
     typer.echo(f"workspace_trend_report_data\t{workspace_artifacts['trend_report_data']}")
     typer.echo(f"workspace_dashboard\t{workspace_artifacts['dashboard']}")
     typer.echo(f"workspace_dashboard_data\t{workspace_artifacts['dashboard_data']}")
+    if open_browser:
+        typer.echo(f"opened\t{Path(str(workspace_artifacts['dashboard'])).resolve().as_uri()}")
 
 
 def _trend_artifact_paths(summary_path: Path) -> dict[str, Path]:

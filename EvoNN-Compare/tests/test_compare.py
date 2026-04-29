@@ -27,6 +27,7 @@ def _write_run(
     budget_policy_name: str | None = None,
     pack_name_override: str | None = None,
     data_signature: str | None = "shared-signature",
+    seeding: dict | None = None,
 ) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "config_snapshot.json").write_text("{}", encoding="utf-8")
@@ -63,6 +64,7 @@ def _write_run(
             config_snapshot="config_snapshot.json",
             report_markdown="report.md",
         ),
+        seeding=seeding,
         fairness={
             "benchmark_pack_id": pack_name_override or pack.name,
             "seed": 42,
@@ -232,3 +234,48 @@ def test_compare_marks_pack_id_mismatch_as_incomparable(tmp_path: Path) -> None:
 
     assert result.parity_status == "incomparable"
     assert result.reasons == ["benchmark pack ID mismatch"]
+
+
+def test_ingest_normalizes_legacy_topograph_seeding_metadata(tmp_path: Path) -> None:
+    run_dir = tmp_path / "topograph"
+    _write_run(run_dir, system="topograph")
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["search_telemetry"] = {
+        "primordia_seeding": {
+            "seed_path": "/tmp/primordia/seed_candidates.json",
+            "target_family": "tabular",
+            "selected_family": "sparse_mlp",
+            "selected_rank": 2,
+            "seed_source_run_id": "prim-run-7",
+        }
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    loaded = SystemIngestor(run_dir).load_manifest()
+
+    assert loaded.seeding is not None
+    assert loaded.seeding.seeding_ladder == "direct"
+    assert loaded.seeding.seed_source_system == "primordia"
+    assert loaded.seeding.seed_source_run_id == "prim-run-7"
+    assert loaded.seeding.seed_artifact_path == "/tmp/primordia/seed_candidates.json"
+
+
+def test_ingest_ignores_legacy_topograph_seeding_metadata_without_seed_artifact_path(tmp_path: Path) -> None:
+    run_dir = tmp_path / "topograph"
+    _write_run(run_dir, system="topograph")
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["search_telemetry"] = {
+        "primordia_seeding": {
+            "target_family": "tabular",
+            "selected_family": "sparse_mlp",
+            "selected_rank": 2,
+            "seed_source_run_id": "prim-run-7",
+        }
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    loaded = SystemIngestor(run_dir).load_manifest()
+
+    assert loaded.seeding is None

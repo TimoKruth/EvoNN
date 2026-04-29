@@ -98,6 +98,12 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
     assert manifest["budget"]["wall_clock_seconds"] == budget_meta["wall_clock_seconds"]
+    assert manifest["budget"]["actual_evaluations"] == budget_meta["evaluation_count"]
+    assert manifest["budget"]["cached_evaluations"] == 0
+    assert manifest["budget"]["failed_evaluations"] == budget_meta["benchmark_load_failures"]
+    assert manifest["budget"]["invalid_evaluations"] == 0
+    assert manifest["budget"]["partial_run"] is False
+    assert "scheduled candidate-benchmark slot" in manifest["budget"]["evaluation_semantics"]
     assert manifest["search_telemetry"]["architecture_mode"] == budget_meta["architecture_mode"]
     assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
     assert manifest["device"]["framework_version"] == (budget_meta["runtime_version"] or "unknown")
@@ -385,3 +391,70 @@ def test_build_execution_ladder(tmp_path) -> None:
     assert len(cases) == 9
     assert cases[0].name == "single_moons_classification"
     assert cases[-1].name.endswith("eval608")
+
+
+def test_budget_metadata_counts_actual_scheduled_slots_on_partial_resume(repo_root, tmp_path) -> None:
+    config = load_config(repo_root / "configs" / "tier1_core_eval64.yaml")
+    partial_config = config.model_copy(
+        update={"benchmark_pool": BenchmarkPoolConfig(name="partial", benchmarks=["iris_classification"])}
+    )
+    config_path = tmp_path / "partial.yaml"
+    config_path.write_text(
+        yaml.safe_dump(partial_config.model_dump(mode="python"), sort_keys=False),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "partial_run"
+
+    run_evolution(partial_config, run_dir=run_dir, config_path=config_path)
+    run_evolution(partial_config, run_dir=run_dir, config_path=config_path, resume=True)
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        budget_meta = store.load_budget_metadata(run_dir.name)
+
+    assert budget_meta["evaluation_count"] == 8
+    assert budget_meta["configured_evaluation_slots"] == 8
+    assert budget_meta["completed_benchmark_count"] == 1
+    assert budget_meta["benchmark_load_failures"] == 0
+
+
+def test_official_lane_configs_encode_exact_budget_targets(repo_root) -> None:
+    expected_counts = {
+        "smoke.yaml": 16,
+        "tier1_core_eval64.yaml": 64,
+        "tier1_core_eval256.yaml": 256,
+        "tier1_core_eval1000.yaml": 1000,
+    }
+
+    for filename, expected in expected_counts.items():
+        config = load_config(repo_root / "configs" / filename)
+        benchmark_count = len(config.benchmark_pool.benchmarks)
+        actual = config.evolution.population_size * config.evolution.generations * benchmark_count
+        assert actual == expected, filename
+
+
+def test_regression_benchmarks_complete_successfully_in_runtime(repo_root, tmp_path) -> None:
+    base_config = load_config(repo_root / "configs" / "tier1_core_eval64.yaml")
+    config = base_config.model_copy(
+        update={
+            "run_name": "regression_pair",
+            "benchmark_pool": BenchmarkPoolConfig(name="regression_pair", benchmarks=["diabetes", "friedman1"]),
+            "evolution": base_config.evolution.model_copy(update={"population_size": 1, "generations": 1}),
+        }
+    )
+    config_path = tmp_path / "regression_pair.yaml"
+    config_path.write_text(
+        yaml.safe_dump(config.model_dump(mode="python"), sort_keys=False),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "regression_pair"
+
+    run_evolution(config, run_dir=run_dir, config_path=config_path)
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        results = store.load_results(run_dir.name)
+        budget_meta = store.load_budget_metadata(run_dir.name)
+
+    assert len(results) == 2
+    assert {row["status"] for row in results} == {"ok"}
+    assert budget_meta["evaluation_count"] == 2
+    assert budget_meta["benchmark_load_failures"] == 0

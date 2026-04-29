@@ -72,6 +72,7 @@ def test_generate_prism_and_topograph_configs_use_legacy_slots(tmp_path: Path) -
         seed=42,
         budget=64,
         run_dir=tmp_path / "runs" / "topograph",
+        primordia_seed_candidates_path=tmp_path / "seed_candidates.json",
     )
 
     prism_payload = yaml.safe_load(prism_path.read_text(encoding="utf-8"))
@@ -79,6 +80,7 @@ def test_generate_prism_and_topograph_configs_use_legacy_slots(tmp_path: Path) -
 
     assert prism_payload["benchmark_pack"]["benchmark_ids"][0] == "iris_classification"
     assert topograph_payload["benchmark_pool"]["benchmarks"][0] in {"iris", "iris_classification"}
+    assert topograph_payload["benchmark_pool"]["primordia_seed_candidates_path"].endswith("seed_candidates.json")
     assert prism_payload["evolution"]["num_generations"] == 1
     assert topograph_payload["training"]["parallel_workers"] == 2
 def test_generate_prism_config_uses_mlp_and_attention_for_mixed_lm_pack(tmp_path: Path) -> None:

@@ -86,6 +86,43 @@ Non-target:
 - Do not chase large-scale frontier benchmark coverage before `smoke` and `tier1_core` are strong.
 - Do not add expensive search machinery whose cost erases Primordia’s strategic role.
 
+## Remaining Mergeable Slices From Current Main
+
+These are the next merge-back-sized Primordia slices after the recurring-lane
+substrate landing.
+
+1. Backend portability slice
+   - add the explicit backend selector and Linux-capable fallback runtime
+   - preserve current compare/export contracts instead of redesigning shared
+     artifact semantics here
+2. Official-lane completeness slice
+   - land the canonical `smoke` and `tier1_core` configs plus the tests and
+     regression fixes needed to make those lanes benchmark-complete
+3. Primitive-search slice
+   - replace slot-based round-robin evaluation with the bounded elite/archive
+     loop described below
+   - keep the change focused on Primordia search state and lineage artifacts
+4. Runtime maturity slice
+   - improve status, resume, artifact quality, and operator inspection inside
+     `EvoNN-Primordia`
+   - keep shared dashboards and cross-engine reporting out of scope here
+5. Downstream seeding slice
+   - strengthen Primordia-local seed quality and provenance surfaces without
+     moving seeded compare semantics into this branch
+
+## Shared-Substrate Boundaries
+
+Do in Primordia:
+- backend/runtime work inside `EvoNN-Primordia`
+- Primordia-local benchmark fixes, search-loop evolution, and training changes
+- Primordia-local seed and lineage artifacts layered on shared contracts
+
+Do not duplicate in Primordia:
+- canonical fairness metadata fallback logic
+- canonical cross-engine summary field assembly
+- shared parity-pack native-id fallback ordering
+- fair-matrix/trend/dashboard or seeded-compare orchestration semantics
+
 ---
 
 ## Primary Strategy

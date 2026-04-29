@@ -9,6 +9,7 @@ from evonn_compare.cli.compare import compare
 from evonn_compare.cli.dashboard import dashboard
 from evonn_compare.cli.fair_matrix import fair_matrix
 from evonn_compare.cli.hybrid import run as hybrid_run
+from evonn_compare.cli.seeded_compare import seeded_compare
 from evonn_compare.cli.trend_report import trend_report
 from evonn_compare.cli.validate import validate
 from evonn_compare.cli.workspace_report import workspace_report
@@ -22,6 +23,7 @@ app.command("compare")(compare)
 app.command("validate")(validate)
 app.command("campaign")(campaign)
 app.command("fair-matrix")(fair_matrix)
+app.command("seeded-compare")(seeded_compare)
 app.command("trend-report")(trend_report)
 app.command("dashboard")(dashboard)
 app.command("workspace-report")(workspace_report)

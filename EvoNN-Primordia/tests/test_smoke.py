@@ -14,6 +14,9 @@ from evonn_primordia.export.symbiosis import export_symbiosis_contract
 from evonn_primordia.pipeline import run_search
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
 @dataclass(frozen=True)
 class FakeGenome:
     family: str
@@ -98,8 +101,16 @@ class FakeRuntimeBindings:
         self.runtime_version = runtime_version
         self.benchmarks = {
             "iris": FakeBenchmarkSpec("iris", "classification", "accuracy", "max", 4, 3),
+            "iris_classification": FakeBenchmarkSpec("iris_classification", "classification", "accuracy", "max", 4, 3),
+            "wine_classification": FakeBenchmarkSpec("wine_classification", "classification", "accuracy", "max", 13, 3),
+            "breast_cancer": FakeBenchmarkSpec("breast_cancer", "classification", "accuracy", "max", 30, 2),
             "tiny_lm_synthetic": FakeBenchmarkSpec("tiny_lm_synthetic", "language_modeling", "perplexity", "min", 3, 8),
             "circles": FakeBenchmarkSpec("circles", "classification", "accuracy", "max", 4, 2),
+            "moons_classification": FakeBenchmarkSpec("moons_classification", "classification", "accuracy", "max", 2, 2),
+            "digits_image": FakeBenchmarkSpec("digits_image", "classification", "accuracy", "max", 64, 10),
+            "diabetes": FakeBenchmarkSpec("diabetes", "regression", "mse", "min", 10, 1),
+            "friedman1": FakeBenchmarkSpec("friedman1", "regression", "mse", "min", 10, 1),
+            "credit_g": FakeBenchmarkSpec("credit_g", "classification", "accuracy", "max", 20, 2),
         }
         self.family_scores = {
             "mlp": 0.78,
@@ -147,11 +158,18 @@ class FakeRuntimeBindings:
         batch_size: int,
         parameter_count: int,
     ) -> FakeEvalResult:
-        del x_train, y_train, x_val, y_val, task, epochs, lr, batch_size
+        del x_train, y_train, x_val, y_val, epochs, lr, batch_size
         family = model["genome"].split("-")[0]
         metric_value = self.family_scores[family]
-        quality = metric_value if family in {"mlp", "sparse_mlp", "moe_mlp"} else -metric_value
-        metric_name = "accuracy" if family in {"mlp", "sparse_mlp", "moe_mlp"} else "perplexity"
+        if task == "language_modeling":
+            quality = -metric_value
+            metric_name = "perplexity"
+        elif task == "regression":
+            quality = -metric_value
+            metric_name = "mse"
+        else:
+            quality = metric_value
+            metric_name = "accuracy"
         return FakeEvalResult(
             metric_name=metric_name,
             metric_value=metric_value,
@@ -245,6 +263,12 @@ seed_policy:
     assert manifest["device"]["precision_mode"] == summary["precision_mode"]
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["budget"]["wall_clock_seconds"] == summary["wall_clock_seconds"]
+    assert manifest["budget"]["actual_evaluations"] == summary["evaluation_count"]
+    assert manifest["budget"]["cached_evaluations"] == 0
+    assert manifest["budget"]["failed_evaluations"] == 0
+    assert manifest["budget"]["invalid_evaluations"] == 0
+    assert manifest["budget"]["partial_run"] is False
+    assert "primitive family-benchmark trial" in manifest["budget"]["evaluation_semantics"]
     assert manifest["artifacts"]["model_summary_json"] == "compare_summary.json"
     assert manifest["artifacts"]["primitive_bank_summary_json"] == "primitive_bank_summary.json"
     assert manifest["artifacts"]["seed_candidates_json"] == "seed_candidates.json"
@@ -276,6 +300,43 @@ seed_policy:
     assert sparse["best_metric_name"] == "accuracy"
     assert sparse["best_metric_value"] == 0.81
     assert {record["benchmark_id"] for record in results} == {"iris_classification", "tiny_lm_synthetic"}
+
+
+def test_checked_in_official_smoke_config_runs_and_exports(tmp_path: Path, fake_runtime) -> None:
+    config_path = REPO_ROOT / "EvoNN-Primordia" / "configs" / "smoke.yaml"
+    pack_path = REPO_ROOT / "EvoNN-Compare" / "parity_packs" / "tier1_core_smoke.yaml"
+    config = load_config(config_path)
+    run_dir = tmp_path / "official_smoke_run"
+
+    run_search(config, run_dir=run_dir, config_path=config_path)
+    run_summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    manifest_path, results_path = export_symbiosis_contract(run_dir, pack_path, run_dir)
+
+    export_summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    results = json.loads(results_path.read_text(encoding="utf-8"))
+
+    assert run_summary["run_name"] == "official_tier1_core_smoke_eval16_seed42"
+    assert run_summary["target_evaluation_count"] == 16
+    assert run_summary["evaluation_count"] == 16
+    assert run_summary["failure_count"] == 0
+    assert len(results) == 8
+    assert {row["benchmark_id"] for row in results} == {
+        "iris_classification",
+        "wine_classification",
+        "breast_cancer",
+        "moons_classification",
+        "digits_image",
+        "diabetes_regression",
+        "friedman1_regression",
+        "credit_g_classification",
+    }
+    assert manifest["pack_name"] == "tier1_core_smoke"
+    assert manifest["budget"]["actual_evaluations"] == 16
+    assert manifest["budget"]["partial_run"] is False
+    assert export_summary["run_id"] == run_summary["run_id"]
+    assert export_summary["system"] == "primordia"
+    assert (run_dir / "config.yaml").read_text(encoding="utf-8") == config_path.read_text(encoding="utf-8")
 
 
 
@@ -1183,6 +1244,67 @@ training:
     config = load_config(config_path)
     with pytest.raises(RuntimeError, match="mlx unavailable"):
         run_search(config, run_dir=tmp_path / "run", config_path=config_path)
+
+
+def test_runtime_bindings_fall_back_when_native_family_bootstrap_is_unavailable(monkeypatch) -> None:
+    import sys
+    from types import ModuleType
+
+    from evonn_primordia import pipeline as primordia_pipeline
+
+    monkeypatch.setattr("evonn_primordia.pipeline.mlx", object())
+    fake_models = ModuleType("evonn_primordia.families.models")
+    monkeypatch.setitem(sys.modules, "evonn_primordia.families.models", fake_models)
+
+    bindings = primordia_pipeline._load_runtime_bindings()
+
+    assert bindings.runtime_backend == "numpy-fallback"
+
+
+def test_run_search_uses_numpy_fallback_runtime_when_mlx_is_unavailable(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("evonn_primordia.pipeline.mlx", None)
+    monkeypatch.setattr("evonn_primordia.pipeline._MLX_VERSION", None)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: local_fallback_tier1_subset
+benchmark_pool:
+  name: local_fallback_tier1_subset
+  benchmarks:
+    - iris_classification
+    - digits_image
+    - diabetes
+search:
+  mode: budget_matched
+  target_evaluation_count: 3
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp]
+  synthetic: [mlp]
+  image: [conv2d]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+    run_dir = tmp_path / "fallback_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    best_results = json.loads((run_dir / "best_results.json").read_text(encoding="utf-8"))
+    trials = json.loads((run_dir / "trial_records.json").read_text(encoding="utf-8"))
+
+    assert summary["runtime"] == "numpy-fallback"
+    assert summary["failure_count"] == 0
+    assert summary["benchmark_count"] == 3
+    assert {row["benchmark_name"] for row in best_results} == {"iris_classification", "digits_image", "diabetes"}
+    assert all(row["status"] == "ok" for row in best_results)
+    assert {row["primitive_family"] for row in trials} == {"mlp", "conv2d"}
+    assert all(row["runtime"] == "numpy-fallback" for row in trials)
 
 
 def test_write_seed_candidates_and_report_include_transfer_section(tmp_path: Path) -> None:

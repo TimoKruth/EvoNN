@@ -166,3 +166,13 @@ def contender_names_for_config(config: Any, group: str) -> list[str]:
     if group == "language_modeling":
         return config.contender_pool.language_modeling
     return config.contender_pool.tabular
+
+
+def resolve_configured_contenders(config: Any, group: str) -> list[ContenderSpec]:
+    """Resolve the effective configured contender set for one group."""
+
+    contender_names = contender_names_for_config(config, group)
+    max_contenders = getattr(getattr(config, "selection", None), "max_contenders_per_benchmark", None)
+    if max_contenders is not None:
+        contender_names = contender_names[:max_contenders]
+    return resolve_contenders(group, contender_names)

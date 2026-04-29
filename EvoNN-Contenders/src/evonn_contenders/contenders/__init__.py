@@ -4,6 +4,7 @@ from evonn_contenders.contenders.registry import (
     ContenderSpec,
     benchmark_group,
     contender_names_for_config,
+    resolve_configured_contenders,
     resolve_contenders,
 )
 from evonn_contenders.contenders.runtime import choose_best, evaluate_contender
@@ -14,5 +15,6 @@ __all__ = [
     "choose_best",
     "contender_names_for_config",
     "evaluate_contender",
+    "resolve_configured_contenders",
     "resolve_contenders",
 ]

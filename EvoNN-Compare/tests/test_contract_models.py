@@ -11,3 +11,4 @@ def test_compare_contract_models_remain_shared_reexports() -> None:
     assert compare_models.ResultRecord is shared_contracts.ResultRecord
     assert compare_models.RunManifest is shared_contracts.RunManifest
     assert compare_models.SearchTelemetry is shared_contracts.SearchTelemetry
+    assert compare_models.SeedingEnvelope is shared_contracts.SeedingEnvelope

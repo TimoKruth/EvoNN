@@ -27,10 +27,16 @@ git worktree add ../EvoNN-evo-24 -b agent/evo-24-short-description origin/main
 ```
 
 Before opening a PR, run the relevant package checks from the repository root.
-At minimum, prefer the trust-layer scripts for shared-surface changes:
+For shared-surface changes and updates to the trusted recurring lane docs or
+workflow, run the full Linux-safe recurring lane:
 
 ```bash
 bash scripts/ci/shared-checks.sh all
 bash scripts/ci/compare-checks.sh all
 bash scripts/ci/contenders-checks.sh all
+bash scripts/ci/primordia-checks.sh all
+bash scripts/ci/stratograph-checks.sh all
 ```
+
+If the change also touches Prism or Topograph runtime behavior, run the
+package-local macOS checks in their native lane as well.
