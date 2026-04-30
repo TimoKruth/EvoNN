@@ -126,3 +126,24 @@ Reject for revision when:
   - PR closes without merge.
   - Child issue closes as `cancelled`.
   - Keep the artifact links so the failed branch does not get rediscovered later as a fake win.
+
+## EVO-46 Closeout Evidence
+
+The `cto/evo-46-handoff-20260430` closeout run completed the trusted Tier 1
+ladder with `tier1_core` at budgets `64,256,1000`, seed `42`.
+
+- Full ladder workspace: `.tmp/fair-matrix-tier1-evo46-full`
+- Full ladder performance rows: `.tmp/performance-baselines/evo46-tier1-full/perf_rows.jsonl`
+- Smoke before/after report: `.tmp/performance-reports/evo46-smoke-vs-last/performance_report.md`
+- Lane verdict: budgets `64`, `256`, and `1000` all reached `trusted-extended`,
+  repeatability-ready, and budget-accounting `ok`.
+- Runtime verdict: correctness and accounting improved, but runtime improvement is
+  not proven. The matched smoke before/after report was `slower-no-regression`
+  with median wall-clock `+112.62%` and eval/sec `-51.51%`.
+
+## Deferred Follow-Ups
+
+- Fair-matrix progress reporting: during the `tier1_core_eval1000_seed42` run,
+  `state.json` reported `current_stage=export` while Primordia and then
+  Contenders were still actively running. Split run/export state reporting for
+  those paths so live orchestration status reflects active work accurately.
