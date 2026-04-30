@@ -1,13 +1,14 @@
-# Active Branch Plans
+# Branch Plans And Backlog
 
-This directory is the active branch-oriented planning surface for package-level
-advancement work that is broader than the current quarter execution scope.
+This directory holds branch-sized package and subsystem plans. Treat these files
+as scoped backlog/reference material after the recurring-lane tranche has landed,
+not as proof that a matching branch is currently open.
 
-If a package README or older plan points somewhere else, this directory wins for
-active branch execution planning.
+If a package README or older plan points somewhere else for future package
+advancement work, this directory is the best starting point.
 
-Use these files when the goal is to push one package or subsystem forward on a
-dedicated branch and merge the work back in slices.
+Use these files when opening a new issue-specific branch and merging work back in
+slices.
 
 ## Execution Guardrails For Remaining Engine Advancement
 
@@ -31,7 +32,7 @@ Merge rule:
   not include a new shared-helper extraction unless the change is explicitly
   handed off to the Shared or Compare branch plans
 
-## Current Branch Plans
+## Branch-Sized Backlog
 
 - `2026-04-26_211820-primordia-quality-parity-plan.md`
   - full Primordia engine-advancement plan
@@ -60,6 +61,9 @@ Merge rule:
 
 - `EVONN_90_DAY_PLAN.md`
   - remains the current quarter execution source of truth
+- `README.md`, `MONOREPO.md`, `CONTRIBUTING.md`, and
+  `RESEARCH_DECISION_GATE.md`
+  - remain the current command and review-policy surface
 - `ROADMAP.md`
   - remains the long-horizon umbrella sequence
 - `SHARED_SUBSTRATE_FOUNDATION_PLAN.md`

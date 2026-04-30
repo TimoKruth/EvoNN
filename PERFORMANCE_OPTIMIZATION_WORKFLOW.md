@@ -1,5 +1,11 @@
 # Performance Optimization Workflow
 
+Status: `EVO-46` performance-discipline epic closeout.
+
+This document is the canonical completion artifact for the `EVO-46` performance
+epic. It defines how optimization branches are planned, measured, accepted, or
+scrapped, and it is the reference that performance PRs must cite.
+
 Canonical review workflow for `perf/<system-or-layer>-<optimization-name>` branches.
 
 ## Required Inputs

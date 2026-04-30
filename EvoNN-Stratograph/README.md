@@ -30,27 +30,25 @@ Core docs:
 - `ARCHITECTURE_RULES.md`
 - `RESEARCH_NOTES.md`
 
-CLI:
-- `uv run stratograph evolve --config configs/smoke.yaml --run-dir runs/smoke`
-- `uv run stratograph evolve --config configs/tier1_core_eval64.yaml --run-dir runs/tier1_core_eval64`
-- `uv run stratograph evolve --config configs/tier1_core_eval256.yaml --run-dir runs/tier1_core_eval256`
-- `uv run stratograph evolve --config configs/tier1_core_eval1000.yaml --run-dir runs/tier1_core_eval1000`
-- `uv run stratograph evolve --config configs/tier_b_core_eval256.yaml --run-dir runs/tier_b_core_eval256`
-- `uv run stratograph evolve --config configs/tier_b_core_eval1000.yaml --run-dir runs/tier_b_core_eval1000`
-- `uv run stratograph benchmarks`
-- `uv run stratograph warm-cache --config configs/ablation_matrix_smoke.yaml`
-- `uv run stratograph list-lm-caches`
-- `uv run stratograph evolve --config configs/working_33_plus_5_lm_smoke.yaml --run-dir runs/demo`
-- `uv run stratograph report runs/demo`
-- `uv run stratograph inspect runs/demo`
-- `uv run stratograph symbiosis export runs/demo --pack /path/to/pack.yaml`
-- `uv run stratograph ladder --workspace manual_compare_runs/execution_ladder_20260417`
-- `uv run stratograph ablate --config configs/two_level_value_probe.yaml --workspace manual_compare_runs/two_level_value_probe_20260417`
-- `uv run stratograph ablate-matrix --config configs/ablation_matrix_smoke.yaml --workspace manual_compare_runs/ablation_matrix_20260417_g2`
-- `uv run stratograph ablate --config configs/ablation_image_hard.yaml --workspace manual_compare_runs/ablation_image_hard_20260417`
-- `uv run stratograph ablate --config configs/ablation_openml_structured.yaml --workspace manual_compare_runs/ablation_openml_structured_20260417`
-- `uv run stratograph ablate --config configs/ablation_lm_full.yaml --workspace manual_compare_runs/ablation_lm_full_20260417`
-- `uv run stratograph motifs analyze --run-dir manual_compare_runs/two_level_value_probe_20260417/runs/two_level_value_probe__two_level_shared`
+## CLI
+
+From the monorepo root:
+
+```bash
+uv run --package stratograph stratograph --help
+uv run --package stratograph stratograph evolve \
+  --config EvoNN-Stratograph/configs/smoke.yaml \
+  --run-dir EvoNN-Stratograph/runs/smoke
+uv run --package stratograph stratograph inspect EvoNN-Stratograph/runs/smoke
+uv run --package stratograph stratograph report EvoNN-Stratograph/runs/smoke
+uv run --package stratograph stratograph symbiosis export \
+  --run-dir EvoNN-Stratograph/runs/smoke \
+  --pack-path EvoNN-Compare/parity_packs/tier1_core_smoke.yaml
+```
+
+For recurring cross-project comparison, prefer the monorepo-level
+`evonn-compare fair-matrix` presets instead of running dated manual comparison
+workspaces directly.
 
 Official lane runtime example:
 

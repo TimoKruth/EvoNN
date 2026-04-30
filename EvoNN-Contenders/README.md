@@ -4,7 +4,7 @@ Fixed contender zoo for EvoNN benchmark packs.
 
 Purpose:
 
-- run strong non-evolutionary baselines on current 38-benchmark pack
+- run strong non-evolutionary baselines on shared EvoNN benchmark packs
 - keep contender sets editable in config
 - export `manifest.json` + `results.json` for `evonn-compare`
 
@@ -15,24 +15,15 @@ Current contender groups:
 - `image`: flat-feature MLP / tree baselines plus optional `cnn_small`
 - `language_modeling`: n-gram baselines plus optional `transformer_lm_tiny`
 
-Quick start:
+Quick start from the monorepo root:
 
 ```bash
-cd ../EvoNN-Contenders
-uv run --extra boosted --extra torch evonn-contenders run --config configs/working_33_plus_5_lm_contenders.yaml
-uv run evonn-contenders symbiosis export \
-  --run-dir runs/working_33_plus_5_lm_contenders_seed42 \
-  --pack-path ../EvoNN-Compare/manual_compare_runs/20260417_budget608_seed42_broad_w2_retry/packs/working_33_plus_5_lm_compare_broad_608_w2_r2_eval608.yaml
-```
-
-Compare example:
-
-```bash
-cd ../EvoNN-Compare
-uv run evonn-compare compare \
-  ../EvoNN-Topograph/runs/working_33_plus_5_lm_compare_broad_608_w2_r2_eval608_seed42 \
-  ../EvoNN-Contenders/runs/working_33_plus_5_lm_contenders_seed42 \
-  --pack ../EvoNN-Compare/manual_compare_runs/20260417_budget608_seed42_broad_w2_retry/packs/working_33_plus_5_lm_compare_broad_608_w2_r2_eval608.yaml
+uv run --package evonn-contenders evonn-contenders --help
+uv run --package evonn-contenders evonn-contenders run \
+  --config EvoNN-Contenders/configs/official_lanes/smoke.yaml
+uv run --package evonn-contenders evonn-contenders symbiosis export \
+  --run-dir EvoNN-Contenders/runs/official_smoke_seed42 \
+  --pack-path EvoNN-Compare/parity_packs/tier1_core_smoke.yaml
 ```
 
 Notes:
@@ -46,43 +37,47 @@ Notes:
 Official lanes:
 
 ```bash
-cd ../EvoNN-Contenders
-
 # smoke / eval16
-uv run evonn-contenders run --config configs/official_lanes/smoke.yaml
-uv run evonn-contenders symbiosis export \
-  --run-dir runs/official_smoke_seed42 \
-  --pack-path ../EvoNN-Compare/parity_packs/tier1_core_smoke.yaml
+uv run --package evonn-contenders evonn-contenders run \
+  --config EvoNN-Contenders/configs/official_lanes/smoke.yaml
+uv run --package evonn-contenders evonn-contenders symbiosis export \
+  --run-dir EvoNN-Contenders/runs/official_smoke_seed42 \
+  --pack-path EvoNN-Compare/parity_packs/tier1_core_smoke.yaml
 
 # tier1_core / eval64
-uv run evonn-contenders run --config configs/official_lanes/tier1_core_eval64.yaml
-uv run evonn-contenders symbiosis export \
-  --run-dir runs/official_tier1_core_eval64_seed42 \
-  --pack-path ../EvoNN-Compare/parity_packs/tier1_core.yaml
+uv run --package evonn-contenders evonn-contenders run \
+  --config EvoNN-Contenders/configs/official_lanes/tier1_core_eval64.yaml
+uv run --package evonn-contenders evonn-contenders symbiosis export \
+  --run-dir EvoNN-Contenders/runs/official_tier1_core_eval64_seed42 \
+  --pack-path EvoNN-Compare/parity_packs/tier1_core.yaml
 
 # tier1_core / eval256
-uv run evonn-contenders run --config configs/official_lanes/tier1_core_eval256.yaml
-uv run evonn-contenders symbiosis export \
-  --run-dir runs/official_tier1_core_eval256_seed42 \
-  --pack-path ../EvoNN-Compare/parity_packs/tier1_core.yaml
+uv run --package evonn-contenders evonn-contenders run \
+  --config EvoNN-Contenders/configs/official_lanes/tier1_core_eval256.yaml
+uv run --package evonn-contenders evonn-contenders symbiosis export \
+  --run-dir EvoNN-Contenders/runs/official_tier1_core_eval256_seed42 \
+  --pack-path EvoNN-Compare/parity_packs/tier1_core.yaml
 
 # tier1_core / eval1000
-uv run evonn-contenders run --config configs/official_lanes/tier1_core_eval1000.yaml
-uv run evonn-contenders symbiosis export \
-  --run-dir runs/official_tier1_core_eval1000_seed42 \
-  --pack-path ../EvoNN-Compare/parity_packs/tier1_core.yaml
+uv run --package evonn-contenders evonn-contenders run \
+  --config EvoNN-Contenders/configs/official_lanes/tier1_core_eval1000.yaml
+uv run --package evonn-contenders evonn-contenders symbiosis export \
+  --run-dir EvoNN-Contenders/runs/official_tier1_core_eval1000_seed42 \
+  --pack-path EvoNN-Compare/parity_packs/tier1_core.yaml
 
 # tier_b_core / eval256
-uv run evonn-contenders run --config configs/official_lanes/tier_b_core_eval256.yaml
-uv run evonn-contenders symbiosis export \
-  --run-dir runs/official_tier_b_core_eval256_seed42 \
-  --pack-path ../shared-benchmarks/suites/parity/tier_b_core.yaml
+uv run --package evonn-contenders evonn-contenders run \
+  --config EvoNN-Contenders/configs/official_lanes/tier_b_core_eval256.yaml
+uv run --package evonn-contenders evonn-contenders symbiosis export \
+  --run-dir EvoNN-Contenders/runs/official_tier_b_core_eval256_seed42 \
+  --pack-path shared-benchmarks/suites/parity/tier_b_core.yaml
 
 # tier_b_core / eval1000
-uv run evonn-contenders run --config configs/official_lanes/tier_b_core_eval1000.yaml
-uv run evonn-contenders symbiosis export \
-  --run-dir runs/official_tier_b_core_eval1000_seed42 \
-  --pack-path ../shared-benchmarks/suites/parity/tier_b_core.yaml
+uv run --package evonn-contenders evonn-contenders run \
+  --config EvoNN-Contenders/configs/official_lanes/tier_b_core_eval1000.yaml
+uv run --package evonn-contenders evonn-contenders symbiosis export \
+  --run-dir EvoNN-Contenders/runs/official_tier_b_core_eval1000_seed42 \
+  --pack-path shared-benchmarks/suites/parity/tier_b_core.yaml
 ```
 
 Policy note:

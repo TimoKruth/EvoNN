@@ -379,13 +379,15 @@ What still looks like future improvement rather than a Milestone-5 blocker:
 
 What is clearly complete in code/docs now:
 - Prism is the documented default path for the routine low-cost compare flow
-- `campaign` and `fair-matrix` both default to the `smoke` lane when no `--pack` or `--preset` is supplied
+- `campaign` and `fair-matrix` both default to the `local` `tier1_core` lane
+  when no `--pack` or `--preset` is supplied; `smoke` remains the explicit
+  lowest-cost validation preset
 - Topograph remains on the same compare/report/fairness surface as the first challenger rather than falling off into a separate workflow
 - intentional remaining Compare-side engine-specific branches are documented explicitly
 - Stratograph and Primordia remain wired into fair-matrix orchestration and budget/config generation on the shared substrate
 
 Functional evidence currently present in tests:
-- CLI tests cover the default `smoke`-lane behavior for `campaign` and `fair-matrix`
+- CLI tests cover preset/default lane behavior for `campaign` and `fair-matrix`
 - fair-matrix orchestration tests cover Prism, Topograph, Stratograph, and Primordia producing the expected artifact set in the shared matrix flow
 - config-generation tests cover Stratograph and Primordia on the shared benchmark/budget surface
 
@@ -404,7 +406,8 @@ What still looks like future improvement rather than a Milestone-6 blocker:
 
 This plan succeeds when EvoNN has a real shared research substrate instead of a
 partial scaffold, and when that substrate supports:
-- a concrete, routinely rerunnable Compare lane beginning with the named `smoke` preset
+- a concrete, routinely rerunnable Compare lane beginning with the named `smoke`
+  preset for validation and the default `local` lane for trusted daily runs
 - honest Prism-vs-Topograph and Contender-vs-Prism comparisons on a shared minimum fairness surface
 - trend-capable structured artifacts that accumulate over time without per-engine parsing hacks
 - a default-Prism operating path that is earned by comparable evidence rather than assumed in advance

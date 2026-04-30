@@ -4,8 +4,8 @@ EvoNN is a research monorepo for multiple evolutionary/neural search systems,
 their shared trust substrate, and the comparison workflows used to evaluate
 them on a common benchmark surface.
 
-The workspace is organized around one default operating lane and several
-challenger systems:
+The workspace is organized around one default operating engine, a shared compare
+surface, and several challenger systems:
 
 - `EvoNN-Prism`: default day-to-day operating engine
 - `EvoNN-Topograph`: first serious challenger
@@ -13,21 +13,29 @@ challenger systems:
 - `EvoNN-Shared`: shared contracts and trust substrate
 - `EvoNN-Contenders`, `EvoNN-Primordia`, `EvoNN-Stratograph`: challenger lanes
 
-## Active Execution Docs
+## Documentation Map
 
-Use the docs below in this order when deciding what is active versus historical:
+Start here for current work:
 
-- `EVONN_90_DAY_PLAN.md`: current quarter execution source of truth
-- `.hermes/plans/README.md`: active branch-plan index for package and subsystem
-  advancement work
-- `ROADMAP.md`: long-horizon umbrella sequencing
-- `VISION.md`: product and research framing
+- [MONOREPO.md](./MONOREPO.md): workspace structure, commands, and validation matrix
+- [EvoNN-Compare/README.md](./EvoNN-Compare/README.md): compare lanes,
+  fair-matrix presets, trend artifacts, dashboards, and transfer workflows
+- [PERFORMANCE_OPTIMIZATION_WORKFLOW.md](./PERFORMANCE_OPTIMIZATION_WORKFLOW.md):
+  `EVO-46` performance epic closeout and optimization-branch review workflow
+- [RESEARCH_DECISION_GATE.md](./RESEARCH_DECISION_GATE.md): evidence required
+  before claiming a branch improved a system or should affect the default lane
+- [EVONN_90_DAY_PLAN.md](./EVONN_90_DAY_PLAN.md): current quarter direction
 
-Historical/bootstrap planning records that should not be used as active
-execution plans:
+Use these for strategy and backlog context:
 
-- `EvoNN-Primordia/IMPLEMENTATION_PLAN.md`
-- `EvoNN-Stratograph/IMPLEMENTATION_PLAN.md`
+- [ROADMAP.md](./ROADMAP.md): long-horizon umbrella sequencing
+- [VISION.md](./VISION.md): product and research framing
+- [.hermes/plans/README.md](./.hermes/plans/README.md): branch-sized
+  package and subsystem advancement backlog
+
+Historical/bootstrap plans are kept for context only. Do not use package-local
+`IMPLEMENTATION_PLAN.md` files as the active execution source unless a newer doc
+explicitly points back to them.
 
 ## Quick Start
 
@@ -41,7 +49,7 @@ Bootstrap the workspace from the repository root:
 uv sync --all-packages --extra dev
 ```
 
-Run the trusted recurring lane locally:
+Run the trusted recurring lane checks locally:
 
 ```bash
 bash scripts/ci/shared-checks.sh all
@@ -54,11 +62,19 @@ bash scripts/ci/stratograph-checks.sh all
 For MLX-native engine work, keep using the macOS package checks for Prism and
 Topograph separately from this Linux-safe recurring lane.
 
-Run the default comparison surface:
+Run a low-cost all-project comparison smoke:
 
 ```bash
 uv run --package evonn-compare python -m evonn_compare fair-matrix \
+  --preset smoke \
   --workspace .tmp/fair-matrix-smoke
+```
+
+Run the default trusted daily comparison lane:
+
+```bash
+uv run --package evonn-compare python -m evonn_compare fair-matrix \
+  --workspace .tmp/fair-matrix-local
 ```
 
 ## Operating Model
@@ -85,15 +101,8 @@ Engine-advancement PRs must also follow
 
 ## Where To Read Next
 
-- [MONOREPO.md](./MONOREPO.md): workspace structure, commands, and validation matrix
 - [ARCHITECTURE_OVERVIEW.md](./ARCHITECTURE_OVERVIEW.md): system-level technical framing
-- [VISION.md](./VISION.md): product and research direction
-- [ROADMAP.md](./ROADMAP.md): long-horizon execution sequencing
-- [EVONN_90_DAY_PLAN.md](./EVONN_90_DAY_PLAN.md): current delivery window and
-  active execution source of truth
-- [RESEARCH_DECISION_GATE.md](./RESEARCH_DECISION_GATE.md): decision categories,
-  evidence bundle, and PR expectations for advancement claims
-- [.hermes/plans/README.md](./.hermes/plans/README.md): active package and
-  subsystem branch plans
-
-Package-specific usage and testing details live in each package README.
+- [BENCHMARK_LADDER.md](./BENCHMARK_LADDER.md): benchmark tiering and intended use
+- [BUDGET_ACCOUNTING_POLICY.md](./BUDGET_ACCOUNTING_POLICY.md): evaluation-count
+  and fairness accounting rules
+- Package-specific usage and testing details live in each package README.

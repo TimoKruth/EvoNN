@@ -42,31 +42,36 @@ Search packages:
 - `EvoNN-Topograph`
 - `EvoNN-Stratograph`
 
-Root-level strategy docs:
-- `VISION.md`
-- `ROADMAP.md`
+Root-level current docs:
+- `README.md`
+- `EVONN_90_DAY_PLAN.md`
+- `MONOREPO.md`
+- `CONTRIBUTING.md`
+- `RESEARCH_DECISION_GATE.md`
 - `BENCHMARK_LADDER.md`
+- `BUDGET_ACCOUNTING_POLICY.md`
 - `BUDGET_CONTRACT.md`
 - `TELEMETRY_SPEC.md`
-- `SEEDING_LADDERS_IMPLEMENTATION_PLAN.md`
 
 ## Planning Hierarchy
 
 When execution docs disagree, use this order:
 
 1. `EVONN_90_DAY_PLAN.md` for the active quarter
-2. `.hermes/plans/README.md` plus the referenced branch plans for package or
-   subsystem advancement
-3. `ROADMAP.md` for long-horizon sequencing
-4. `VISION.md` for umbrella thesis and product/research framing
+2. `README.md`, `MONOREPO.md`, `CONTRIBUTING.md`, and
+   `RESEARCH_DECISION_GATE.md` for current commands and review policy
+3. `.hermes/plans/README.md` plus the referenced branch plans for scoped package
+   or subsystem backlog
+4. `ROADMAP.md` for long-horizon sequencing
+5. `VISION.md` for umbrella thesis and product/research framing
 
 Archived bootstrap records:
 
 - `EvoNN-Primordia/IMPLEMENTATION_PLAN.md`
 - `EvoNN-Stratograph/IMPLEMENTATION_PLAN.md`
 
-Supporting long-run strategy docs that are still valid but not the active
-quarter execution source of truth:
+Supporting long-run strategy and history docs that are still useful but not the
+primary command/reference surface:
 
 - `SHARED_SUBSTRATE_FOUNDATION_PLAN.md`
 - `BENCHMARK_EXTRACTION_PLAN.md`
@@ -109,6 +114,7 @@ For the current local-first workflow:
   `local` lane (`tier1_core` @ `64`) when no explicit pack or preset is supplied
 - named compare presets now cover the main quarter-critical `tier1_core`
   budgets directly:
+  - `smoke` → `16`
   - `local` → `64`
   - `overnight` → `256`
   - `weekend` → `1000`
@@ -133,6 +139,21 @@ uv run --package evonn-primordia primordia --help
 uv run --package prism prism --help
 uv run --package stratograph stratograph --help
 uv run --package topograph topograph --help
+```
+
+Run the low-cost all-project smoke comparison:
+
+```bash
+uv run --package evonn-compare python -m evonn_compare fair-matrix \
+  --preset smoke \
+  --workspace .tmp/fair-matrix-smoke
+```
+
+Run the default trusted daily comparison lane:
+
+```bash
+uv run --package evonn-compare python -m evonn_compare fair-matrix \
+  --workspace .tmp/fair-matrix-local
 ```
 
 Run package tests from root where implemented:
@@ -176,6 +197,10 @@ Interpretation for the 90-day lane:
 Local review expectation:
 - run the same five Linux scripts before PR for shared substrate, docs, and
   workflow changes that affect the trusted recurring lane
+- run `scripts/ci/prism-checks.sh` or `scripts/ci/topograph-checks.sh` when
+  touching the MLX-native engines
+- run the smoke fair-matrix command above when changing compare/export contracts,
+  lane presets, or cross-project docs
 
 ## Adding More Packages
 

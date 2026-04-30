@@ -120,8 +120,10 @@ Contenders baseline.
 ## Core Docs
 
 - `VISION.md`
-- `IMPLEMENTATION_PLAN.md`
+- `IMPLEMENTATION_PLAN.md` (archived bootstrap record only)
 - `ARCHITECTURE_RULES.md`
 - `BASELINE_MATRIX.md`
 - `CHANGELOG.md`
 - `docs/QUALITY_SCORECARD.md`
+- `../EVONN_90_DAY_PLAN.md`
+- `../.hermes/plans/README.md`
