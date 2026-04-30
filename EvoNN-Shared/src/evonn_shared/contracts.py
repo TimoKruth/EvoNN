@@ -14,6 +14,7 @@ BaselineCoveragePolicy = Literal[
     "required_only_optional_skips_allowed",
     "all_configured_contenders_required",
 ]
+BaselineCoverageStage = Literal["temporary", "steady_state"]
 SystemName = Literal[
     "evonn",
     "evonn2",
@@ -25,6 +26,13 @@ SystemName = Literal[
     "contenders",
 ]
 TaskKind = Literal["classification", "regression", "language_modeling"]
+SeedingLadder = Literal["none", "direct", "staged"]
+SeedOverlapPolicy = Literal[
+    "benchmark-disjoint",
+    "benchmark-overlapping",
+    "family-overlapping",
+    "unknown",
+]
 
 
 class BenchmarkEntry(BaseModel):
@@ -77,6 +85,13 @@ class BudgetEnvelope(BaseModel):
         if self.resumed_evaluations is not None and self.resumed_from_run_id is None:
             raise ValueError("resumed_from_run_id is required when resumed_evaluations is set")
         return self
+
+    def accounted_evaluations(self) -> int | None:
+        """Return the compare-surface evaluation count including cached reruns."""
+
+        if self.actual_evaluations is None:
+            return None
+        return self.actual_evaluations + (self.cached_evaluations or 0)
 
 
 class DeviceInfo(BaseModel):
@@ -143,12 +158,47 @@ class FairnessEnvelope(BaseModel):
     code_version: str | None = None
 
 
+class SeedingEnvelope(BaseModel):
+    """Transfer/seeding provenance carried across compare-grade exports."""
+
+    model_config = ConfigDict(frozen=True)
+
+    seeding_enabled: bool
+    seeding_ladder: SeedingLadder
+    seed_source_system: SystemName | None = None
+    seed_source_run_id: str | None = None
+    seed_artifact_path: str | None = None
+    seed_target_family: str | None = None
+    seed_selected_family: str | None = None
+    seed_rank: int | None = None
+    seed_overlap_policy: SeedOverlapPolicy | None = None
+    representative_genome_id: str | None = None
+    representative_architecture_summary: str | None = None
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> "SeedingEnvelope":
+        if self.seed_rank is not None and self.seed_rank < 1:
+            raise ValueError("seed_rank must be >= 1 when provided")
+        if self.seeding_enabled:
+            if self.seeding_ladder == "none":
+                raise ValueError("seeding_ladder must not be 'none' when seeding_enabled is true")
+            if self.seed_source_system is None:
+                raise ValueError("seed_source_system is required when seeding_enabled is true")
+            if self.seed_artifact_path is None:
+                raise ValueError("seed_artifact_path is required when seeding_enabled is true")
+        elif self.seeding_ladder != "none":
+            raise ValueError("seeding_ladder must be 'none' when seeding_enabled is false")
+        return self
+
+
 class BaselineCoverageEnvelope(BaseModel):
     """Optional baseline-completeness policy metadata for fixed-baseline systems."""
 
     model_config = ConfigDict(frozen=True)
 
     benchmark_complete_policy: BaselineCoveragePolicy
+    policy_stage: BaselineCoverageStage = "temporary"
+    policy_reason: str | None = None
     optional_dependency_skips: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     notes: tuple[str, ...] = ()
 
@@ -170,6 +220,7 @@ class RunManifest(BaseModel):
     device: DeviceInfo
     artifacts: ArtifactPaths
     search_telemetry: SearchTelemetry | None = None
+    seeding: SeedingEnvelope | None = None
     fairness: FairnessEnvelope | None = None
     baseline_coverage: BaselineCoverageEnvelope | None = None
 

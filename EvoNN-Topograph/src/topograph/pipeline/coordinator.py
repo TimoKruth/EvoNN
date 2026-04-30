@@ -569,7 +569,10 @@ def _resolve_primordia_seeding(
 
     selected = matching[0]
     return {
+        "seed_source_system": str(payload.get("system") or "primordia"),
+        "seed_source_run_id": payload.get("run_id"),
         "seed_path": str(seed_path),
+        "seed_overlap_policy": "family-overlapping",
         "target_family": target_family,
         "selected_family": str(selected.get("family") or "unknown"),
         "selected_rank": int(selected.get("seed_rank", 0)),

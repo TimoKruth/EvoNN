@@ -62,6 +62,15 @@ Typical examples:
 Primary value:
 this should be the default proving ground for most day-to-day EvoNN work.
 
+Current canonical pack:
+- `tier_b_core` is the canonical benchmark-ladder Tier B pack
+- `tier1_core` remains the trusted recurring compare lane, not a synonym for ladder Tier B
+
+Naming rule:
+- use lettered names like `tier_b_*` for benchmark-ladder packs
+- keep legacy numeric names like `tier1_core` or `tier2_evonn_leaning` for compare-lane or symmetry-class assets
+- do not introduce `tier2_core`; it would collide with the existing numeric tier vocabulary
+
 ## Tier C: Architecture-Sensitive Packs
 
 Purpose:

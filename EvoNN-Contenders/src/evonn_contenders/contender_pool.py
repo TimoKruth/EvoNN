@@ -6,6 +6,7 @@ from evonn_contenders.contenders import (
     choose_best,
     contender_names_for_config,
     evaluate_contender,
+    resolve_configured_contenders,
     resolve_contenders,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "choose_best",
     "contender_names_for_config",
     "evaluate_contender",
+    "resolve_configured_contenders",
     "resolve_contenders",
 ]

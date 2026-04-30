@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -90,6 +91,12 @@ def test_portable_prism_smoke_export_produces_valid_compare_contract(tmp_path: P
     results = SystemIngestor(run_dir).load_results()
     assert manifest.system == "prism"
     assert manifest.device.framework == "portable-sklearn"
+    assert manifest.budget.actual_evaluations == 4
+    assert manifest.budget.cached_evaluations == 0
+    assert manifest.budget.failed_evaluations == 0
+    assert manifest.budget.invalid_evaluations == 0
+    assert manifest.budget.partial_run is False
+    assert "portable candidate-benchmark trial" in manifest.budget.evaluation_semantics
     assert all(row.status == "ok" for row in results)
     assert (run_dir / "summary.json").exists()
 
@@ -127,8 +134,74 @@ def test_portable_topograph_smoke_export_produces_valid_compare_contract(tmp_pat
     results = SystemIngestor(run_dir).load_results()
     assert manifest.system == "topograph"
     assert manifest.device.framework == "portable-sklearn"
+    assert manifest.budget.actual_evaluations == 4
+    assert manifest.budget.cached_evaluations == 0
+    assert manifest.budget.failed_evaluations == 0
+    assert manifest.budget.invalid_evaluations == 0
+    assert manifest.budget.partial_run is False
+    assert "portable candidate-benchmark trial" in manifest.budget.evaluation_semantics
     assert all(row.status == "ok" for row in results)
     assert (run_dir / "summary.json").exists()
+
+
+def test_portable_topograph_smoke_export_surfaces_primordia_seeding(tmp_path: Path) -> None:
+    pack_path = _write_pack(tmp_path / "pack.yaml")
+    seed_candidates_path = tmp_path / "seed_candidates.json"
+    seed_candidates_path.write_text(
+        json.dumps(
+            {
+                "system": "primordia",
+                "run_id": "prim-run-7",
+                "seed_candidates": [
+                    {
+                        "seed_rank": 1,
+                        "family": "mlp",
+                        "benchmark_groups": ["tabular"],
+                        "representative_genome_id": "seeded-genome",
+                        "representative_architecture_summary": "mlp[64x64]",
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "topograph.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "seed": 42,
+                "benchmark": "iris",
+                "benchmark_pool": {
+                    "benchmarks": ["iris", "diabetes"],
+                    "sample_k": 2,
+                    "primordia_seed_candidates_path": str(seed_candidates_path),
+                },
+                "training": {"epochs": 1},
+                "evolution": {"population_size": 2, "num_generations": 1},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "topograph-run"
+
+    ensure_topograph_portable_smoke_export(
+        config_path=config_path,
+        pack_path=pack_path,
+        run_dir=run_dir,
+        output_dir=run_dir,
+    )
+
+    manifest = SystemIngestor(run_dir).load_manifest()
+
+    assert manifest.seeding is not None
+    assert manifest.seeding.seeding_ladder == "direct"
+    assert manifest.seeding.seed_source_system == "primordia"
+    assert manifest.seeding.seed_source_run_id == "prim-run-7"
+    assert manifest.seeding.seed_artifact_path == str(seed_candidates_path)
+    assert manifest.seeding.seed_selected_family == "mlp"
+    assert manifest.seeding.representative_architecture_summary == "mlp[64x64]"
 
 
 def test_load_benchmark_arrays_preserves_original_loader_error_for_unknown_fallbacks() -> None:

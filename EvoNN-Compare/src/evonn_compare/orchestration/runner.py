@@ -30,7 +30,7 @@ class CampaignRunner:
     def prism_run_dir(self, case: CampaignCase) -> Path:
         return self.prism_root / "runs" / case.prism_config_path.stem
 
-    def prism_command(self, case: CampaignCase) -> CommandSpec:
+    def prism_command(self, case: CampaignCase, *, resume: bool = False) -> CommandSpec:
         run_dir = self.prism_run_dir(case)
         script = (
             "from pathlib import Path; "
@@ -39,7 +39,7 @@ class CampaignRunner:
             "from prism.pipeline.coordinator import run_evolution; "
             f"cfg = load_config(Path(r'{case.prism_config_path}')); "
             "benchmarks = [get_benchmark(name) for name in (cfg.benchmark_pack.benchmark_ids or [])]; "
-            f"run_evolution(cfg, benchmarks, run_dir=r'{run_dir}', resume=False)"
+            f"run_evolution(cfg, benchmarks, run_dir=r'{run_dir}', resume={str(resume)})"
         )
         return CommandSpec(
             name="prism_run",
@@ -47,20 +47,23 @@ class CampaignRunner:
             argv=["uv", "run", "python", "-c", script],
         )
 
-    def topograph_command(self, case: CampaignCase) -> CommandSpec:
+    def topograph_command(self, case: CampaignCase, *, resume: bool = False) -> CommandSpec:
+        argv = [
+            "uv",
+            "run",
+            "topograph",
+            "evolve",
+            "--config",
+            str(case.topograph_config_path),
+            "--run-dir",
+            str(case.topograph_run_dir),
+        ]
+        if resume:
+            argv.append("--resume")
         return CommandSpec(
             name="topograph_run",
             cwd=self.topograph_root,
-            argv=[
-                "uv",
-                "run",
-                "topograph",
-                "evolve",
-                "--config",
-                str(case.topograph_config_path),
-                "--run-dir",
-                str(case.topograph_run_dir),
-            ],
+            argv=argv,
         )
 
     def prism_export_command(self, run_dir: Path, pack: str | Path) -> CommandSpec:
@@ -87,19 +90,19 @@ class CampaignRunner:
             argv=["uv", "run", "python", "-c", script],
         )
 
-    def planned_commands(self, case: CampaignCase) -> list[CommandSpec]:
+    def planned_commands(self, case: CampaignCase, *, resume: bool = False) -> list[CommandSpec]:
         return [
             spec
-            for stage in self.execution_stages(case)
+            for stage in self.execution_stages(case, resume=resume)
             for spec in stage
         ]
 
-    def execution_stages(self, case: CampaignCase) -> list[list[CommandSpec]]:
+    def execution_stages(self, case: CampaignCase, *, resume: bool = False) -> list[list[CommandSpec]]:
         prism_run_dir = self.prism_run_dir(case)
         return [
             [
-                self.prism_command(case),
-                self.topograph_command(case),
+                self.prism_command(case, resume=resume),
+                self.topograph_command(case, resume=resume),
             ],
             [
                 self.prism_export_command(prism_run_dir, case.pack_path),
@@ -107,8 +110,8 @@ class CampaignRunner:
             ],
         ]
 
-    def execution_commands(self, case: CampaignCase) -> list[CommandSpec]:
-        return self.planned_commands(case)
+    def execution_commands(self, case: CampaignCase, *, resume: bool = False) -> list[CommandSpec]:
+        return self.planned_commands(case, resume=resume)
 
     def compare_exports(self, *, left_dir: Path, right_dir: Path, pack_path: Path, output_path: Path) -> None:
         pack = load_parity_pack(pack_path)

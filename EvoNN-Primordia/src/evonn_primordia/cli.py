@@ -39,7 +39,10 @@ def main(ctx: typer.Context) -> None:
     table.add_row("Fair export contract", "ready")
     table.add_row("Primitive bank export", "ready")
     console.print(table)
-    console.print("Run `primordia run --config ...` or inspect the roadmap in VISION.md / IMPLEMENTATION_PLAN.md.")
+    console.print(
+        "Run `primordia run --config ...` or inspect VISION.md, "
+        "EVONN_90_DAY_PLAN.md, and .hermes/plans/README.md for active planning."
+    )
 
 
 @app.command("run")

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import itertools
 import json
 from pathlib import Path
+import shutil
 import subprocess
 from typing import Any
 
@@ -22,6 +23,7 @@ from evonn_compare.comparison.engine import ComparisonEngine
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.ingest.loader import SystemIngestor
 from evonn_compare.orchestration.benchmark_resolution import resolve_supported_benchmark_ids
+from evonn_compare.orchestration.campaign_state import StopRequested, sync_workspace_state
 from evonn_compare.orchestration.config_gen import (
     DEFAULT_PRISM_ROOT,
     DEFAULT_TOPOGRAPH_ROOT,
@@ -41,11 +43,18 @@ from evonn_compare.reporting import (
     render_fair_matrix_markdown,
     render_fair_matrix_trend_markdown,
 )
+from evonn_compare.specialization import (
+    infer_benchmark_family,
+    infer_expected_specialization,
+    infer_search_profile,
+)
 from evonn_compare.comparison.fair_matrix import (
     CORE_TRUSTED_SYSTEMS,
     EXTENDED_TRUSTED_SYSTEMS,
     LaneMetadata,
 )
+from evonn_shared.contracts import ArtifactPaths, BenchmarkEntry, BudgetEnvelope, DeviceInfo, ResultRecord, RunManifest
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
 
 
 COMPARE_ROOT = Path(__file__).resolve().parents[3]
@@ -54,6 +63,14 @@ DEFAULT_PRIMORDIA_ROOT = WORKSPACE_ROOT / "EvoNN-Primordia"
 DEFAULT_CONTENDERS_ROOT = WORKSPACE_ROOT / "EvoNN-Contenders"
 SYSTEM_ORDER = ("prism", "topograph", "stratograph", "primordia", "contenders")
 FOUR_PROJECT_SYSTEM_ORDER = ("prism", "topograph", "stratograph", "primordia")
+MANAGED_WORKSPACE_ROOTS = ("packs", "runs", "configs", "reports", "trends", "logs")
+MANAGED_WORKSPACE_FILES = (
+    "matrix.yaml",
+    "fair_matrix_dashboard.html",
+    "fair_matrix_dashboard.json",
+    "fair_matrix_trend_rows.jsonl",
+    "fair_matrix_trends.md",
+)
 
 
 @dataclass(frozen=True)
@@ -101,6 +118,38 @@ class CommandSpec:
     name: str
     cwd: Path
     argv: list[str]
+
+
+def reset_fair_matrix_workspace(workspace: Path) -> None:
+    workspace_path = workspace.resolve()
+    for relative_path in MANAGED_WORKSPACE_ROOTS:
+        _remove_generated_path(workspace_path / relative_path)
+    for relative_path in MANAGED_WORKSPACE_FILES:
+        _remove_generated_path(workspace_path / relative_path)
+
+
+def _reset_case_outputs(case: MatrixCase) -> None:
+    generated_paths = [
+        case.report_dir,
+        case.log_dir,
+        case.prism_run_dir,
+        case.topograph_run_dir,
+        case.stratograph_run_dir,
+        case.primordia_run_dir,
+    ]
+    if case.contender_run_dir is not None:
+        generated_paths.append(case.contender_run_dir)
+    for path in generated_paths:
+        _remove_generated_path(path)
+
+
+def _remove_generated_path(path: Path) -> None:
+    if not path.exists() and not path.is_symlink():
+        return
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+        return
+    path.unlink()
 
 
 def prepare_fair_matrix_cases(
@@ -224,6 +273,7 @@ def prepare_fair_matrix_cases(
 
     payload = {
         "pack_name": pack_name,
+        "lane_preset": lane_preset,
         "seeds": seeds,
         "budgets": budgets,
         "systems": list(systems),
@@ -238,6 +288,14 @@ def prepare_fair_matrix_cases(
         ],
     }
     paths.manifest_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    sync_workspace_state(
+        workspace_kind="fair_matrix",
+        workspace=paths.workspace,
+        manifest_path=paths.manifest_path,
+        cases=cases,
+        lane_preset=lane_preset,
+        trend_dataset_path=paths.trends_dir / "fair_matrix_trends.jsonl",
+    )
     return paths, cases
 
 
@@ -346,9 +404,16 @@ def run_fair_matrix_case(
     primordia_root: Path = DEFAULT_PRIMORDIA_ROOT,
     contenders_root: Path = DEFAULT_CONTENDERS_ROOT,
     parallel: bool = True,
+    resume: bool = False,
+    stage_callback: Any | None = None,
+    stop_requested: Any | None = None,
 ) -> Path:
+    if not resume:
+        _reset_case_outputs(case)
     case.report_dir.mkdir(parents=True, exist_ok=True)
     case.log_dir.mkdir(parents=True, exist_ok=True)
+    pack = load_parity_pack(case.pack_path)
+    failures: dict[str, str] = {}
 
     use_portable_prism = not _native_runtime_available(prism_root.resolve(), "prism.pipeline.coordinator")
     use_portable_topograph = not _native_runtime_available(topograph_root.resolve(), "topograph.pipeline.coordinator")
@@ -360,7 +425,10 @@ def run_fair_matrix_case(
             CommandSpec(
                 name="prism_run",
                 cwd=prism_root.resolve(),
-                argv=["uv", "run", "prism", "evolve", "--config", str(case.prism_config_path), "--run-dir", str(case.prism_run_dir)],
+                argv=_append_resume_flag(
+                    ["uv", "run", "prism", "evolve", "--config", str(case.prism_config_path), "--run-dir", str(case.prism_run_dir)],
+                    resume=resume,
+                ),
             )
         )
         stage_exports.append(
@@ -386,7 +454,10 @@ def run_fair_matrix_case(
             CommandSpec(
                 name="topograph_run",
                 cwd=topograph_root.resolve(),
-                argv=["uv", "run", "topograph", "evolve", "--config", str(case.topograph_config_path), "--run-dir", str(case.topograph_run_dir)],
+                argv=_append_resume_flag(
+                    ["uv", "run", "topograph", "evolve", "--config", str(case.topograph_config_path), "--run-dir", str(case.topograph_run_dir)],
+                    resume=resume,
+                ),
             )
         )
         stage_exports.append(
@@ -412,7 +483,10 @@ def run_fair_matrix_case(
         CommandSpec(
             name="stratograph_run",
             cwd=stratograph_root.resolve(),
-            argv=["uv", "run", "stratograph", "evolve", "--config", str(case.stratograph_config_path), "--run-dir", str(case.stratograph_run_dir)],
+            argv=_append_resume_flag(
+                ["uv", "run", "stratograph", "evolve", "--config", str(case.stratograph_config_path), "--run-dir", str(case.stratograph_run_dir)],
+                resume=resume,
+            ),
         )
     )
     stage_exports.append(
@@ -435,51 +509,63 @@ def run_fair_matrix_case(
         )
     )
 
-    for stage in (stage_runs, stage_exports):
-        if not stage:
-            continue
-        if parallel:
-            _run_stage_parallel(stage, log_dir=case.log_dir)
-        else:
-            for spec in stage:
-                _run_command(spec, log_dir=case.log_dir)
+    _notify_stage(stage_callback, "run")
+    run_failures = _execute_stage_specs(specs=stage_runs, log_dir=case.log_dir, parallel=parallel)
+    failures.update(run_failures)
+    _raise_if_stop_requested(stop_requested, reason="stop requested after run stage")
+    _notify_stage(stage_callback, "export")
+    export_specs = [spec for spec in stage_exports if _system_name_from_stage(spec.name) not in failures]
+    export_failures = _execute_stage_specs(specs=export_specs, log_dir=case.log_dir, parallel=parallel)
+    failures.update(export_failures)
 
     if use_portable_prism:
-        ensure_prism_portable_smoke_export(
-            config_path=case.prism_config_path,
-            pack_path=case.pack_path,
-            run_dir=case.prism_run_dir,
-            output_dir=case.prism_run_dir,
-            log_dir=case.log_dir,
-        )
+        try:
+            ensure_prism_portable_smoke_export(
+                config_path=case.prism_config_path,
+                pack_path=case.pack_path,
+                run_dir=case.prism_run_dir,
+                output_dir=case.prism_run_dir,
+                log_dir=case.log_dir,
+            )
+        except Exception as exc:
+            failures["prism"] = f"prism portable export failed: {type(exc).__name__}: {exc}"
     if use_portable_topograph:
-        ensure_topograph_portable_smoke_export(
-            config_path=case.topograph_config_path,
+        try:
+            ensure_topograph_portable_smoke_export(
+                config_path=case.topograph_config_path,
+                pack_path=case.pack_path,
+                run_dir=case.topograph_run_dir,
+                output_dir=case.topograph_run_dir,
+                log_dir=case.log_dir,
+            )
+        except Exception as exc:
+            failures["topograph"] = f"topograph portable export failed: {type(exc).__name__}: {exc}"
+
+    try:
+        ensure_primordia_export(
+            primordia_root=primordia_root.resolve(),
+            config_path=case.primordia_config_path,
             pack_path=case.pack_path,
-            run_dir=case.topograph_run_dir,
-            output_dir=case.topograph_run_dir,
+            run_dir=case.primordia_run_dir,
+            output_dir=case.primordia_run_dir,
             log_dir=case.log_dir,
         )
-
-    ensure_primordia_export(
-        primordia_root=primordia_root.resolve(),
-        config_path=case.primordia_config_path,
-        pack_path=case.pack_path,
-        run_dir=case.primordia_run_dir,
-        output_dir=case.primordia_run_dir,
-        log_dir=case.log_dir,
-    )
+    except Exception as exc:
+        failures["primordia"] = f"primordia export failed: {type(exc).__name__}: {exc}"
     if case.contender_config_path is not None and case.contender_run_dir is not None:
-        ensure_contender_export(
-            contenders_root=contenders_root.resolve(),
-            config_path=case.contender_config_path,
-            pack_path=case.pack_path,
-            run_dir=case.contender_run_dir,
-            output_dir=case.contender_run_dir,
-            log_dir=case.log_dir,
-        )
+        try:
+            ensure_contender_export(
+                contenders_root=contenders_root.resolve(),
+                config_path=case.contender_config_path,
+                pack_path=case.pack_path,
+                run_dir=case.contender_run_dir,
+                output_dir=case.contender_run_dir,
+                log_dir=case.log_dir,
+            )
+        except Exception as exc:
+            failures["contenders"] = f"contenders export failed: {type(exc).__name__}: {exc}"
 
-    pack = load_parity_pack(case.pack_path)
+    _raise_if_stop_requested(stop_requested, reason="stop requested after export stage")
     run_dirs = {
         "prism": case.prism_run_dir,
         "topograph": case.topograph_run_dir,
@@ -488,15 +574,19 @@ def run_fair_matrix_case(
     }
     if case.contender_run_dir is not None:
         run_dirs["contenders"] = case.contender_run_dir
-    ingestors = {
-        system: SystemIngestor(run_dir)
-        for system, run_dir in run_dirs.items()
-    }
-    runs = {
-        system: (ingestor.load_manifest(), ingestor.load_results())
-        for system, ingestor in ingestors.items()
-    }
+    for system, failure_reason in failures.items():
+        if system not in run_dirs:
+            continue
+        _materialize_failed_run_export(
+            case=case,
+            pack=pack,
+            system=system,
+            run_dir=run_dirs[system],
+            failure_reason=failure_reason,
+        )
+    runs = _load_runs_with_failure_fallback(case=case, pack=pack, run_dirs=run_dirs, failures=failures)
 
+    _notify_stage(stage_callback, "compare")
     pair_results: dict[tuple[str, str], tuple[Any, Path]] = {}
     for left_system, right_system in itertools.combinations(case.systems, 2):
         left_manifest, left_results = runs[left_system]
@@ -516,6 +606,7 @@ def run_fair_matrix_case(
         )
         pair_results[(left_system, right_system)] = (result, report_path)
 
+    _raise_if_stop_requested(stop_requested, reason="stop requested after compare stage")
     fair_row, reference_row, parity_rows = summarize_matrix_case(
         pack=pack,
         budget=case.budget,
@@ -542,6 +633,7 @@ def run_fair_matrix_case(
         ),
         systems=case.systems,
     )
+    _notify_stage(stage_callback, "report")
     case.summary_output_path.write_text(render_fair_matrix_markdown(summary), encoding="utf-8")
     case.summary_output_path.with_suffix(".json").write_text(
         json.dumps(asdict(summary), indent=2, default=str),
@@ -647,7 +739,11 @@ def _build_lane_metadata(
         elif accounting_issues:
             system_operating_states[system] = "accounting-incomplete"
         else:
-            system_operating_states[system] = coverage["operating_state"]
+            system_operating_states[system] = _runtime_truth_operating_state(
+                system=system,
+                manifest=manifest,
+                coverage_state=coverage["operating_state"],
+            )
         observed_task_kinds.update(entry.task_kind for entry in manifest.benchmarks)
 
     fairness_ok = all(result.parity_status == "fair" for result, _report_path in pair_results.values())
@@ -668,10 +764,14 @@ def _build_lane_metadata(
         system in case_systems and system_benchmark_complete.get(system, False)
         for system in EXTENDED_TRUSTED_SYSTEMS
     )
-    if contract_fair_ok and core_systems_complete_ok and extended_systems_complete_ok:
+    native_runtime_truth_gaps = _native_runtime_truth_gaps(case_systems=case_systems, runs=runs)
+    native_runtime_truth_ok = not native_runtime_truth_gaps
+    if contract_fair_ok and core_systems_complete_ok and extended_systems_complete_ok and native_runtime_truth_ok:
         operating_state = "trusted-extended"
-    elif contract_fair_ok and core_systems_complete_ok:
+    elif contract_fair_ok and core_systems_complete_ok and native_runtime_truth_ok:
         operating_state = "trusted-core"
+    elif contract_fair_ok and not native_runtime_truth_ok:
+        operating_state = "portable-contract-fair"
     elif contract_fair_ok:
         operating_state = "contract-fair"
     else:
@@ -694,8 +794,10 @@ def _build_lane_metadata(
             if issues:
                 accounting_notes.append(f"{system} ({'; '.join(issues)})")
         acceptance_notes.append("budget accounting incomplete: " + ", ".join(accounting_notes))
+    if contract_fair_ok and native_runtime_truth_gaps:
+        acceptance_notes.append("native runtime truth unmet: " + ", ".join(native_runtime_truth_gaps))
     for system in sorted(system_coverage_notes):
-        acceptance_notes.append(f"{system} coverage policy: {system_coverage_notes[system]}")
+        acceptance_notes.append(f"{system} coverage: {system_coverage_notes[system]}")
     if contract_fair_ok and not core_systems_complete_ok:
         missing_core = [
             f"{system}={system_operating_states.get(system, 'not-participating')}"
@@ -752,9 +854,11 @@ def _budget_accounting_issues(manifest: Any) -> list[str]:
         issues.append("missing actual_evaluations")
     elif budget.partial_run:
         issues.append("partial_run=true")
-    elif budget.actual_evaluations != budget.evaluation_count:
+    elif budget.accounted_evaluations() != budget.evaluation_count:
         issues.append(
-            f"actual_evaluations {budget.actual_evaluations} != declared {budget.evaluation_count}"
+            "accounted evaluations "
+            f"{budget.accounted_evaluations()} != declared {budget.evaluation_count} "
+            f"(actual={budget.actual_evaluations}, cached={budget.cached_evaluations or 0})"
         )
     if not budget.evaluation_semantics:
         issues.append("missing evaluation_semantics")
@@ -763,26 +867,52 @@ def _budget_accounting_issues(manifest: Any) -> list[str]:
     return issues
 
 
+def _runtime_truth_operating_state(*, system: str, manifest: Any, coverage_state: str) -> str:
+    framework = getattr(manifest.device, "framework", None)
+    if system in {"prism", "topograph"} and framework == "portable-sklearn" and coverage_state.startswith("benchmark-"):
+        return f"portable-{coverage_state}"
+    return coverage_state
+
+
+def _native_runtime_truth_gaps(
+    *,
+    case_systems: tuple[str, ...],
+    runs: dict[str, tuple[Any, list[Any]]],
+) -> list[str]:
+    gaps: list[str] = []
+    for system in ("prism", "topograph"):
+        if system not in case_systems or system not in runs:
+            continue
+        manifest, _results = runs[system]
+        framework = getattr(manifest.device, "framework", None) or "unknown"
+        if framework != "mlx":
+            gaps.append(f"{system}={framework}")
+    return gaps
+
+
 def _system_benchmark_complete(*, manifest: Any, results: list[Any]) -> bool:
     return bool(_system_coverage_assessment(manifest=manifest, results=results)["benchmark_complete"])
 
 
 def _system_coverage_assessment(*, manifest: Any, results: list[Any]) -> dict[str, Any]:
     result_by_benchmark = {record.benchmark_id: record for record in results}
+    blocking_benchmarks: list[str] = []
     for entry in manifest.benchmarks:
         if entry.status != "ok":
-            return {
-                "benchmark_complete": False,
-                "operating_state": "benchmark-incomplete",
-                "note": None,
-            }
+            blocking_benchmarks.append(_render_blocking_benchmark(entry.benchmark_id, entry.status, None))
+            continue
         record = result_by_benchmark.get(entry.benchmark_id)
-        if record is None or record.status != "ok":
-            return {
-                "benchmark_complete": False,
-                "operating_state": "benchmark-incomplete",
-                "note": None,
-            }
+        if record is None:
+            blocking_benchmarks.append(_render_blocking_benchmark(entry.benchmark_id, "missing", None))
+            continue
+        if record.status != "ok":
+            blocking_benchmarks.append(_render_blocking_benchmark(entry.benchmark_id, record.status, record.failure_reason))
+    if blocking_benchmarks:
+        return {
+            "benchmark_complete": False,
+            "operating_state": "benchmark-incomplete",
+            "note": "blocking benchmarks: " + "; ".join(blocking_benchmarks),
+        }
     coverage = getattr(manifest, "baseline_coverage", None)
     optional_skips = getattr(coverage, "optional_dependency_skips", {}) if coverage is not None else {}
     if not optional_skips:
@@ -802,11 +932,227 @@ def _system_coverage_assessment(*, manifest: Any, results: list[Any]) -> dict[st
             "operating_state": "benchmark-incomplete-optional-skips",
             "note": f"configured optional baselines were skipped: {rendered_skips}",
         }
+    policy_stage = getattr(coverage, "policy_stage", "temporary")
+    policy_reason = getattr(coverage, "policy_reason", None)
+    note = f"optional baselines skipped but tolerated by policy: {rendered_skips}"
+    if policy_stage == "steady_state":
+        note = f"optional baselines skipped under ratified steady-state policy: {rendered_skips}"
+    if policy_reason:
+        note = f"{note} ({policy_reason})"
     return {
         "benchmark_complete": True,
         "operating_state": "benchmark-complete-optional-skips",
-        "note": f"optional baselines skipped but tolerated by policy: {rendered_skips}",
+        "note": note,
     }
+
+
+def _render_blocking_benchmark(benchmark_id: str, status: str, failure_reason: str | None) -> str:
+    if failure_reason:
+        return f"{benchmark_id}={status} ({failure_reason})"
+    return f"{benchmark_id}={status}"
+
+
+def _append_resume_flag(argv: list[str], *, resume: bool) -> list[str]:
+    if not resume:
+        return argv
+    return [*argv, "--resume"]
+
+
+def _notify_stage(stage_callback: Any | None, stage: str) -> None:
+    if stage_callback is None:
+        return
+    stage_callback(stage)
+
+
+def _raise_if_stop_requested(stop_requested_fn: Any | None, *, reason: str) -> None:
+    if stop_requested_fn is None:
+        return
+    if stop_requested_fn():
+        raise StopRequested(reason)
+
+
+def _execute_stage_specs(*, specs: list[CommandSpec], log_dir: Path, parallel: bool) -> dict[str, str]:
+    if not specs:
+        return {}
+    if parallel:
+        return _run_stage_parallel(specs, log_dir=log_dir)
+    failures: dict[str, str] = {}
+    for spec in specs:
+        try:
+            _run_command(spec, log_dir=log_dir)
+        except Exception as exc:
+            failures[_system_name_from_stage(spec.name)] = str(exc)
+    return failures
+
+
+def _load_runs_with_failure_fallback(
+    *,
+    case: MatrixCase,
+    pack: Any,
+    run_dirs: dict[str, Path],
+    failures: dict[str, str],
+) -> dict[str, tuple[Any, list[Any]]]:
+    runs: dict[str, tuple[Any, list[Any]]] = {}
+    for system, run_dir in run_dirs.items():
+        ingestor = SystemIngestor(run_dir)
+        try:
+            runs[system] = (ingestor.load_manifest(), ingestor.load_results())
+        except Exception as exc:
+            failure_reason = failures.get(system) or f"ingest failed: {type(exc).__name__}: {exc}"
+            _materialize_failed_run_export(
+                case=case,
+                pack=pack,
+                system=system,
+                run_dir=run_dir,
+                failure_reason=failure_reason,
+            )
+            fallback_ingestor = SystemIngestor(run_dir)
+            runs[system] = (fallback_ingestor.load_manifest(), fallback_ingestor.load_results())
+    return runs
+
+
+def _materialize_failed_run_export(
+    *,
+    case: MatrixCase,
+    pack: Any,
+    system: str,
+    run_dir: Path,
+    failure_reason: str,
+) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    benchmark_entries = [
+        {
+            "benchmark_id": entry.benchmark_id,
+            "task_kind": entry.task_kind,
+            "metric_name": entry.metric_name,
+            "metric_direction": entry.metric_direction,
+            "status": "failed",
+        }
+        for entry in pack.benchmarks
+    ]
+    result_payloads = [
+        {
+            "system": system,
+            "run_id": run_dir.name,
+            "benchmark_id": entry.benchmark_id,
+            "metric_name": entry.metric_name,
+            "metric_direction": entry.metric_direction,
+            "metric_value": None,
+            "quality": None,
+            "parameter_count": None,
+            "train_seconds": None,
+            "peak_memory_mb": None,
+            "architecture_summary": None,
+            "genome_id": None,
+            "status": "failed",
+            "failure_reason": failure_reason,
+        }
+        for entry in pack.benchmarks
+    ]
+    results = [ResultRecord(**payload) for payload in result_payloads]
+    manifest = RunManifest(
+        schema_version="1.0",
+        system=system,
+        run_id=run_dir.name,
+        run_name=run_dir.name,
+        created_at=datetime.now(timezone.utc),
+        pack_name=pack.name,
+        seed=case.seed,
+        benchmarks=[BenchmarkEntry(**entry) for entry in benchmark_entries],
+        budget=BudgetEnvelope(
+            evaluation_count=case.budget,
+            epochs_per_candidate=int(pack.budget_policy.epochs_per_candidate),
+            effective_training_epochs=int(pack.budget_policy.epochs_per_candidate),
+            wall_clock_seconds=None,
+            generations=None,
+            population_size=None,
+            budget_policy_name=str(getattr(pack.budget_policy, "budget_policy_name", None) or "fair_matrix_stage_failure"),
+            actual_evaluations=0,
+            cached_evaluations=0,
+            failed_evaluations=case.budget,
+            invalid_evaluations=0,
+            partial_run=True,
+            evaluation_semantics="fair-matrix stage failure emitted synthetic failed records to preserve lane artifacts",
+        ),
+        device=DeviceInfo(
+            device_name="unknown",
+            precision_mode="unknown",
+            framework="fair-matrix-orchestrator",
+            framework_version=None,
+        ),
+        artifacts=ArtifactPaths(
+            config_snapshot="config.yaml",
+            report_markdown="report.md",
+            dataset_manifest_json="dataset_manifest.json",
+        ),
+        fairness=fairness_manifest(
+            pack_name=pack.name,
+            seed=case.seed,
+            evaluation_count=case.budget,
+            budget_policy_name="fair_matrix_stage_failure",
+            benchmark_entries=benchmark_entries,
+            data_signature=benchmark_signature(pack.name, benchmark_entries),
+            code_version=_code_version(),
+        ),
+    )
+    dataset_manifest = [
+        {
+            "benchmark_id": entry.benchmark_id,
+            "task_kind": entry.task_kind,
+            "metric_name": entry.metric_name,
+            "metric_direction": entry.metric_direction,
+        }
+        for entry in pack.benchmarks
+    ]
+    summary = {
+        "system": system,
+        "run_id": run_dir.name,
+        "run_name": run_dir.name,
+        "runtime_backend": "fair-matrix-stage-failure",
+        "runtime_version": None,
+        "precision_mode": "unknown",
+        "total_evaluations": case.budget,
+        **summary_core_from_results(results=result_payloads, parameter_counts=[]),
+        "wall_clock_seconds": None,
+        "best_results": [],
+        "best_family": None,
+        "failure_reason": failure_reason,
+    }
+    report_lines = [
+        f"# {system.title()} Fair Matrix Failure Report",
+        "",
+        f"- Run ID: `{run_dir.name}`",
+        f"- Pack: `{pack.name}`",
+        f"- Seed: `{case.seed}`",
+        f"- Budget: `{case.budget}`",
+        f"- Failure Reason: `{failure_reason}`",
+        "",
+        "## Blocking Benchmarks",
+        "",
+    ]
+    report_lines.extend(f"- `{entry.benchmark_id}` failed before export completed" for entry in pack.benchmarks)
+    config_source = _config_path_for_system(case, system)
+    if config_source.exists():
+        shutil.copy2(config_source, run_dir / "config.yaml")
+    (run_dir / "manifest.json").write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+    write_json(run_dir / "results.json", [record.model_dump(mode="json") for record in results])
+    write_json(run_dir / "summary.json", summary)
+    (run_dir / "report.md").write_text("\n".join(report_lines) + "\n", encoding="utf-8")
+    write_json(run_dir / "dataset_manifest.json", dataset_manifest)
+
+
+def _config_path_for_system(case: MatrixCase, system: str) -> Path:
+    mapping = {
+        "prism": case.prism_config_path,
+        "topograph": case.topograph_config_path,
+        "stratograph": case.stratograph_config_path,
+        "primordia": case.primordia_config_path,
+        "contenders": case.contender_config_path,
+    }
+    config_path = mapping[system]
+    if config_path is None:
+        raise ValueError(f"no config path for system {system}")
+    return config_path
 
 
 def _build_trend_records(
@@ -832,6 +1178,11 @@ def _build_trend_records(
                     "pack": case.pack_name,
                     "benchmark": benchmark.benchmark_id,
                     "task_kind": benchmark.task_kind,
+                    "benchmark_family": infer_benchmark_family(
+                        benchmark.benchmark_id,
+                        task_kind=benchmark.task_kind,
+                        explicit_family=getattr(benchmark, "benchmark_family", None),
+                    ),
                     "engine": system,
                     "run_id": manifest.run_id,
                     "run_name": manifest.run_name,
@@ -842,8 +1193,11 @@ def _build_trend_records(
                     "metric_name": benchmark.metric_name,
                     "metric_direction": benchmark.metric_direction,
                     "metric_value": float(record.metric_value) if record is not None and record.metric_value is not None else None,
+                    "architecture_summary": record.architecture_summary if record is not None else None,
                     "quality": float(record.quality) if record is not None and record.quality is not None else None,
                     "failure_reason": record.failure_reason if record is not None else None,
+                    "search_profile": infer_search_profile(system),
+                    "expected_specialization": infer_expected_specialization(system),
                     "fairness": {
                         "benchmark_pack_id": fairness.benchmark_pack_id if fairness is not None else manifest.pack_name,
                         "seed": fairness.seed if fairness is not None else manifest.seed,
@@ -892,17 +1246,23 @@ def _run_command(spec: CommandSpec, *, log_dir: Path) -> None:
         raise RuntimeError(f"{spec.name} failed; see {log_path}")
 
 
-def _run_stage_parallel(specs: list[CommandSpec], *, log_dir: Path) -> None:
-    errors: list[Exception] = []
+def _run_stage_parallel(specs: list[CommandSpec], *, log_dir: Path) -> dict[str, str]:
+    errors: dict[str, str] = {}
     with ThreadPoolExecutor(max_workers=len(specs)) as pool:
-        futures = [pool.submit(_run_command, spec, log_dir=log_dir) for spec in specs]
-        for future in futures:
+        futures = {
+            pool.submit(_run_command, spec, log_dir=log_dir): spec
+            for spec in specs
+        }
+        for future, spec in futures.items():
             try:
                 future.result()
             except Exception as exc:
-                errors.append(exc)
-    if errors:
-        raise errors[0]
+                errors[_system_name_from_stage(spec.name)] = str(exc)
+    return errors
+
+
+def _system_name_from_stage(stage_name: str) -> str:
+    return stage_name.split("_", 1)[0]
 
 
 def _native_runtime_available(project_root: Path, module_name: str) -> bool:
@@ -926,6 +1286,13 @@ def _exact_factorization(units: int, *, preferred_population_cap: int) -> tuple[
         if units % population_size == 0:
             return population_size, units // population_size
     return units, 1
+
+
+def _code_version() -> str | None:
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parents[4], text=True).strip()
+    except Exception:
+        return None
 
 
 def _contender_native_id(entry) -> str:

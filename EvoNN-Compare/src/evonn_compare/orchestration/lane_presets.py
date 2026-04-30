@@ -1,4 +1,4 @@
-"""Named local-first compare lane presets."""
+"""Named compare lane presets for recurring and exploratory workflows."""
 
 from __future__ import annotations
 
@@ -20,14 +20,14 @@ LANE_PRESETS: dict[str, LanePreset] = {
         pack="tier1_core_smoke",
         seeds=(42,),
         budgets=(16,),
-        description="Lowest-cost repeatable compare lane for contract and artifact validation.",
+        description="Lowest-cost validation lane for contract and artifact checks; not the trusted daily default.",
     ),
     "local": LanePreset(
         name="local",
         pack="tier1_core",
         seeds=(42,),
         budgets=(64,),
-        description="Default local-first compare lane for a fuller but still practical head-to-head.",
+        description="Default trusted daily tier1_core lane for a fuller but still practical head-to-head.",
     ),
     "overnight": LanePreset(
         name="overnight",
@@ -42,6 +42,27 @@ LANE_PRESETS: dict[str, LanePreset] = {
         seeds=(42,),
         budgets=(1000,),
         description="High-budget trusted-lane preset for repeated weekend-scale comparison studies.",
+    ),
+    "tier_b_local": LanePreset(
+        name="tier_b_local",
+        pack="tier_b_core",
+        seeds=(42,),
+        budgets=(64,),
+        description="Default bounded local Tier B research loop on the canonical ladder pack.",
+    ),
+    "tier_b_overnight": LanePreset(
+        name="tier_b_overnight",
+        pack="tier_b_core",
+        seeds=(42,),
+        budgets=(256,),
+        description="Preferred deeper Tier B study preset on the canonical ladder pack.",
+    ),
+    "tier_b_weekend": LanePreset(
+        name="tier_b_weekend",
+        pack="tier_b_core",
+        seeds=(42,),
+        budgets=(1000,),
+        description="High-budget Tier B preset for repeated longer local studies.",
     ),
 }
 

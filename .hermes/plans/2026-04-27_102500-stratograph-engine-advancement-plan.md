@@ -34,6 +34,44 @@ Stratograph should become:
 4. Strengthen status, checkpoint, report, and export maturity.
 5. Make Stratograph’s hierarchy-specific value clearer in artifacts and comparisons.
 
+## Remaining Mergeable Slices From Current Main
+
+These are the next merge-back-sized Stratograph slices after the recurring-lane
+substrate landing.
+
+1. Portability-hardening slice
+   - audit the MLX vs fallback split for hidden MLX assumptions
+   - make backend selection and runtime limits explicit in config, docs, and
+     artifacts without changing shared contracts
+2. Official-lane correctness slice
+   - re-verify `smoke` and `tier1_core` at `64/256/1000`
+   - land only Stratograph-local benchmark/export/accounting fixes needed for
+     those lanes
+3. Hierarchy-search slice
+   - improve parent/elite policy, hierarchy-aware mutation pressure, and
+     cell-library reuse
+   - surface hierarchy-specific rationale in Stratograph artifacts only
+4. Runtime maturity slice
+   - harden status/checkpoint/resume and partial-run inspection behavior
+   - keep the work package-local rather than expanding shared report surfaces
+5. Hierarchy-evidence slice
+   - add Stratograph-local metadata or tests that clarify what hierarchy buys
+     you while still consuming the current shared compare substrate
+
+## Shared-Substrate Boundaries
+
+Do in Stratograph:
+- runtime portability and backend-limit documentation inside
+  `EvoNN-Stratograph`
+- Stratograph-local benchmark fixes, search policy, and runtime maturity work
+- hierarchy-specific artifact fields layered on shared contracts
+
+Do not duplicate in Stratograph:
+- canonical fairness metadata normalization
+- canonical summary builder logic
+- shared parity-pack native-id fallback ordering
+- fair-matrix/trend/dashboard or repo-wide accounting semantics changes
+
 ## Phase 1 — Harden backend portability
 
 **Objective:** Turn the current portability direction into a deliberate, tested runtime boundary.

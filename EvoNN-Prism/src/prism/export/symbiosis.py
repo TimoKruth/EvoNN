@@ -74,11 +74,6 @@ def export_symbiosis_contract(
     best_per_benchmark = store.load_best_per_benchmark(run_id)
     latest_gen = store.latest_generation(run_id)
     lineage_records = store.load_lineage(run_id)
-    evaluations_by_benchmark: dict[str, list[dict[str, Any]]] = {}
-    for row in evaluations:
-        benchmark_id = row.get("benchmark_id")
-        if benchmark_id:
-            evaluations_by_benchmark.setdefault(str(benchmark_id), []).append(row)
 
     # 4. Load parity pack benchmarks
     pack_specs = load_parity_pack(pack_path)
@@ -104,14 +99,6 @@ def export_symbiosis_contract(
             genome_id = best.get("genome_id")
             status = "ok"
             failure_reason = None
-        elif failed := next((row for row in evaluations_by_benchmark.get(native_name, []) if _failure_label(row)), None):
-            metric_value = failed.get("metric_value")
-            quality = failed.get("quality")
-            parameter_count = failed.get("parameter_count")
-            train_seconds = failed.get("train_seconds")
-            genome_id = failed.get("genome_id")
-            status = "failed"
-            failure_reason = _failure_label(failed)
         elif representative:
             metric_value = None
             quality = None
@@ -162,6 +149,7 @@ def export_symbiosis_contract(
 
     # 7. Build manifest
     runtime_meta = _resolved_runtime_metadata(run_dir)
+    run_summary = _load_run_summary(run_dir)
     pack_name = Path(pack_path).stem
     generations = (latest_gen + 1) if latest_gen is not None else 0
     total_evaluations = _intended_evaluation_count(
@@ -170,10 +158,12 @@ def export_symbiosis_contract(
         benchmark_count=len(pack_specs),
         fallback=len(evaluations),
     )
-    failed_evaluations = sum(1 for row in evaluations if _failure_label(row) is not None)
-    invalid_evaluations = 0
-    cached_evaluations = 0
-    actual_evaluations = len(evaluations)
+    actual_evaluations = _resolved_actual_evaluations(
+        run_summary=run_summary,
+        evaluations=evaluations,
+        fallback=total_evaluations,
+    )
+    failed_evaluations = sum(1 for row in evaluations if row.get("status") not in {None, "ok"})
     config_snapshot_name = "config.yaml" if (output_dir / "config.yaml").exists() else "config.json"
     report_name = "report.md"
 
@@ -194,13 +184,13 @@ def export_symbiosis_contract(
             wall_clock_seconds=_load_wall_clock_seconds(output_dir),
             budget_policy_name="prototype_equal_budget",
             actual_evaluations=actual_evaluations,
-            cached_evaluations=cached_evaluations,
+            cached_evaluations=0,
             failed_evaluations=failed_evaluations,
-            invalid_evaluations=invalid_evaluations,
-            partial_run=actual_evaluations < total_evaluations,
+            invalid_evaluations=0,
+            partial_run=failed_evaluations > 0,
             evaluation_semantics=(
-                "one genome evaluation counted for each model candidate evaluated on each benchmark; "
-                "evaluation_count = population_size * generations * benchmark_count"
+                "one persisted genome-benchmark evaluation row counts as one scheduled evaluation slot; "
+                "weight inheritance still counts as a fresh evaluation and is not reported as a cached evaluation"
             ),
         ),
         device=DeviceInfo(
@@ -368,15 +358,18 @@ def _detect_device() -> str:
     return f"{system.lower()}_{machine}"
 
 
-def _load_runtime_metadata(run_dir: Path) -> dict[str, str | None]:
+def _load_run_summary(run_dir: Path) -> dict[str, Any]:
     summary_path = run_dir / "summary.json"
-    if summary_path.exists():
-        try:
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            summary = {}
-    else:
-        summary = {}
+    if not summary_path.exists():
+        return {}
+    try:
+        return json.loads(summary_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _load_runtime_metadata(run_dir: Path) -> dict[str, str | None]:
+    summary = _load_run_summary(run_dir)
     return {
         "runtime_backend": summary.get("runtime_backend") or "unknown",
         "runtime_version": summary.get("runtime_version") or "unknown",
@@ -386,17 +379,9 @@ def _load_runtime_metadata(run_dir: Path) -> dict[str, str | None]:
 
 def _resolved_runtime_metadata(run_dir: Path) -> dict[str, str]:
     runtime_meta = _load_runtime_metadata(run_dir)
-    backend = runtime_meta["runtime_backend"]
-    if backend == "unknown":
-        backend = "mlx"
-
-    runtime_version = runtime_meta["runtime_version"]
-    if runtime_version == "unknown" and backend == "mlx":
-        runtime_version = _MLX_VERSION or "unknown"
-
     return {
-        "runtime_backend": backend,
-        "runtime_version": runtime_version,
+        "runtime_backend": runtime_meta["runtime_backend"] or "unknown",
+        "runtime_version": runtime_meta["runtime_version"] or "unknown",
         "precision_mode": runtime_meta["precision_mode"] or "fp32",
     }
 
@@ -450,13 +435,26 @@ def _intended_evaluation_count(
     return config.evolution.population_size * generations * benchmark_count
 
 
+def _resolved_actual_evaluations(
+    *,
+    run_summary: dict[str, Any],
+    evaluations: list[dict[str, Any]],
+    fallback: int,
+) -> int:
+    persisted_total = run_summary.get("total_evaluations")
+    if persisted_total is not None:
+        try:
+            return int(persisted_total)
+        except (TypeError, ValueError):
+            pass
+    if evaluations:
+        return len(evaluations)
+    return fallback
+
+
 def _load_wall_clock_seconds(run_dir: Path) -> float | None:
-    summary_path = run_dir / "summary.json"
-    if not summary_path.exists():
-        return None
-    try:
-        payload = json.loads(summary_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    payload = _load_run_summary(run_dir)
+    if not payload:
         return None
     value = payload.get("wall_clock_seconds", payload.get("elapsed_seconds"))
     if value is None:

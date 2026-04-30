@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 from random import Random
+from types import SimpleNamespace
 from time import perf_counter
 from typing import Any
 
@@ -16,12 +17,15 @@ from evonn_primordia.export.report import build_primitive_bank_summary, write_re
 from evonn_primordia.export.seeding import build_seed_candidates
 from evonn_primordia.genome import ModelGenome
 from evonn_primordia.objectives import candidate_signature, search_score
+from evonn_primordia.runtime import backends as runtime_backends
 from evonn_primordia.runtime.backends import RuntimeBindings, resolve_runtime_bindings
 from evonn_primordia.search_state import CandidateSeed, EliteArchive
 from evonn_primordia.status import load_checkpoint, write_checkpoint, write_status
 
 BUDGET_POLICY_NAME = "prototype_equal_budget"
 PRECISION_MODE = "fp32"
+mlx = runtime_backends.mlx
+_MLX_VERSION = getattr(mlx, "__version__", None) if mlx is not None else None
 
 
 def run_search(
@@ -574,7 +578,10 @@ def _evaluate_candidate(
     return record
 
 
-def _load_runtime_bindings(config: RunConfig) -> RuntimeBindings:
+def _load_runtime_bindings(config: RunConfig | None = None) -> RuntimeBindings:
+    runtime_backends.mlx = mlx
+    if config is None:
+        config = SimpleNamespace(runtime=SimpleNamespace(backend="auto", allow_fallback=True))
     return resolve_runtime_bindings(config)
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -55,6 +56,7 @@ class ParityBenchmark(BaseModel):
     benchmark_id: str
     native_ids: dict[str, str] | None = None
     task_kind: Literal["classification", "regression", "language_modeling"]
+    benchmark_family: str | None = None
     metric_name: str
     metric_direction: Literal["max", "min"]
     comparison_status: Literal["supported", "asymmetric", "unsupported"] = "supported"
@@ -75,25 +77,42 @@ class ParityPack(BaseModel):
     exploration_policy: ExplorationPolicy | None = None
 
 
-DEFAULT_PACKS_DIR = Path(__file__).resolve().parents[3] / "parity_packs"
+COMPARE_ROOT = Path(__file__).resolve().parents[3]
+WORKSPACE_ROOT = COMPARE_ROOT.parent
+DEFAULT_PACKS_DIR = COMPARE_ROOT / "parity_packs"
+_SHARED_ROOT_ENV_VAR = "EVONN_SHARED_BENCHMARKS_DIR"
+
+
+def _shared_pack_dirs() -> list[Path]:
+    shared_root = os.environ.get(_SHARED_ROOT_ENV_VAR)
+    root = Path(shared_root).expanduser() if shared_root else WORKSPACE_ROOT / "shared-benchmarks"
+    return [
+        root / "suites" / "parity",
+        root / "suites",
+    ]
+
+
+def _pack_search_dirs(packs_dir: Path | None = None) -> list[Path]:
+    if packs_dir is not None:
+        return [packs_dir]
+    return [DEFAULT_PACKS_DIR, *_shared_pack_dirs()]
 
 
 def resolve_pack_path(pack_name: str, packs_dir: Path | None = None) -> Path:
     """Resolve a pack name or explicit path to a YAML file."""
 
-    if packs_dir is None:
-        packs_dir = DEFAULT_PACKS_DIR
-
     candidate = Path(pack_name)
     if candidate.suffix in {".yaml", ".yml"} and candidate.exists():
         return candidate.resolve()
 
-    for suffix in (".yaml", ".yml"):
-        direct = packs_dir / f"{pack_name}{suffix}"
-        if direct.exists():
-            return direct.resolve()
+    for directory in _pack_search_dirs(packs_dir):
+        for suffix in (".yaml", ".yml"):
+            direct = directory / f"{pack_name}{suffix}"
+            if direct.exists():
+                return direct.resolve()
 
-    raise FileNotFoundError(f"Parity pack '{pack_name}' not found in {packs_dir}")
+    search_dirs = ", ".join(str(path) for path in _pack_search_dirs(packs_dir))
+    raise FileNotFoundError(f"Parity pack '{pack_name}' not found in {search_dirs}")
 
 
 def load_parity_pack(path_or_name: str | Path, packs_dir: Path | None = None) -> ParityPack:
@@ -106,16 +125,15 @@ def load_parity_pack(path_or_name: str | Path, packs_dir: Path | None = None) ->
 
 def list_parity_packs(packs_dir: Path | None = None) -> list[Path]:
     """List available parity pack YAML files."""
-
-    if packs_dir is None:
-        packs_dir = DEFAULT_PACKS_DIR
-
-    if not packs_dir.exists():
-        return []
-
-    return sorted(
-        [path for path in packs_dir.iterdir() if path.suffix in {".yaml", ".yml"}]
-    )
+    resolved: dict[str, Path] = {}
+    for directory in _pack_search_dirs(packs_dir):
+        if not directory.exists():
+            continue
+        for path in sorted(directory.iterdir()):
+            if path.suffix not in {".yaml", ".yml"}:
+                continue
+            resolved.setdefault(path.name, path)
+    return sorted(resolved.values())
 
 
 def parity_summary(pack: ParityPack) -> str:
@@ -127,13 +145,13 @@ def parity_summary(pack: ParityPack) -> str:
         f"**Tier:** {pack.tier}",
         f"**Description:** {pack.description.strip()}",
         "",
-        "| Benchmark ID | Task | Metric | Direction | Status |",
-        "|---|---|---|---|---|",
+        "| Benchmark ID | Task | Family | Metric | Direction | Status |",
+        "|---|---|---|---|---|---|",
     ]
     for benchmark in pack.benchmarks:
         lines.append(
-            f"| {benchmark.benchmark_id} | {benchmark.task_kind} | {benchmark.metric_name} | "
-            f"{benchmark.metric_direction} | {benchmark.comparison_status} |"
+            f"| {benchmark.benchmark_id} | {benchmark.task_kind} | {benchmark.benchmark_family or '---'} | "
+            f"{benchmark.metric_name} | {benchmark.metric_direction} | {benchmark.comparison_status} |"
         )
     lines.extend(
         [

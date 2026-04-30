@@ -194,6 +194,12 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     assert budget["evaluation_count"] == 24
     assert budget["population_size"] == cfg.evolution.population_size
     assert budget["budget_policy_name"] == "prototype_equal_budget"
+    assert budget["actual_evaluations"] == 24
+    assert budget["cached_evaluations"] == 0
+    assert budget["failed_evaluations"] == 0
+    assert budget["invalid_evaluations"] == 0
+    assert budget["partial_run"] is False
+    assert "scheduled candidate-benchmark slot" in budget["evaluation_semantics"]
 
     telemetry_none = sym._search_telemetry(RunConfig(training={"multi_fidelity": False}), {})
     assert telemetry_none is None
@@ -234,7 +240,10 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
             "evaluation_count": 5,
             "wall_clock_seconds": 2.0,
             "primordia_seeding": {
+                "seed_source_system": "primordia",
+                "seed_source_run_id": "prim-run-7",
                 "seed_path": "/tmp/primordia/seed_candidates.json",
+                "seed_overlap_policy": "family-overlapping",
                 "target_family": "tabular",
                 "selected_family": "sparse_mlp",
                 "selected_rank": 2,
@@ -255,11 +264,17 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     assert summary["failure_count"] == 1
     assert summary["benchmarks_evaluated"] == 2
     assert summary["median_benchmark_quality"] == pytest.approx(0.89)
+    assert summary["seeding_enabled"] is True
+    assert summary["seeding_ladder"] == "direct"
     assert summary["seed_source_system"] == "primordia"
+    assert summary["seed_source_run_id"] == "prim-run-7"
+    assert summary["seed_artifact_path"] == "/tmp/primordia/seed_candidates.json"
     assert summary["seed_source_path"] == "/tmp/primordia/seed_candidates.json"
     assert summary["seed_target_family"] == "tabular"
     assert summary["seed_selected_family"] == "sparse_mlp"
+    assert summary["seed_rank"] == 2
     assert summary["seed_selected_rank"] == 2
+    assert summary["seed_overlap_policy"] == "family-overlapping"
     assert summary["seed_representative_genome_id"] == "prim-g7"
     assert summary["seed_representative_architecture_summary"] == "4L/6C sparse"
 
@@ -338,6 +353,8 @@ def test_symbiosis_export_preserves_failed_benchmarks(tmp_path: Path, monkeypatc
     assert manifest["device"]["framework"] == "unknown"
     assert manifest["device"]["framework_version"] == "unknown"
     assert manifest["device"]["precision_mode"] == "unknown"
+    assert manifest["seeding"]["seeding_enabled"] is False
+    assert manifest["seeding"]["seeding_ladder"] == "none"
 
 
 def test_export_symbiosis_uses_recorded_runtime_metadata_in_manifest_and_summary(tmp_path: Path):

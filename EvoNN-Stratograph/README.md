@@ -24,7 +24,9 @@ Current state:
 
 Core docs:
 - `VISION.md`
-- `IMPLEMENTATION_PLAN.md`
+- `IMPLEMENTATION_PLAN.md` (archived bootstrap record only)
+- `../EVONN_90_DAY_PLAN.md`
+- `../.hermes/plans/README.md`
 - `ARCHITECTURE_RULES.md`
 - `RESEARCH_NOTES.md`
 
@@ -33,6 +35,8 @@ CLI:
 - `uv run stratograph evolve --config configs/tier1_core_eval64.yaml --run-dir runs/tier1_core_eval64`
 - `uv run stratograph evolve --config configs/tier1_core_eval256.yaml --run-dir runs/tier1_core_eval256`
 - `uv run stratograph evolve --config configs/tier1_core_eval1000.yaml --run-dir runs/tier1_core_eval1000`
+- `uv run stratograph evolve --config configs/tier_b_core_eval256.yaml --run-dir runs/tier_b_core_eval256`
+- `uv run stratograph evolve --config configs/tier_b_core_eval1000.yaml --run-dir runs/tier_b_core_eval1000`
 - `uv run stratograph benchmarks`
 - `uv run stratograph warm-cache --config configs/ablation_matrix_smoke.yaml`
 - `uv run stratograph list-lm-caches`
@@ -79,4 +83,6 @@ evolution:
 
 The official local ladder is captured directly in `configs/smoke.yaml`,
 `configs/tier1_core_eval64.yaml`, `configs/tier1_core_eval256.yaml`, and
-`configs/tier1_core_eval1000.yaml`.
+`configs/tier1_core_eval1000.yaml`. The checked-in Tier B ladder now also
+includes `configs/tier_b_core_eval256.yaml` and
+`configs/tier_b_core_eval1000.yaml`.

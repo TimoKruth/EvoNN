@@ -141,7 +141,10 @@ def export_symbiosis_contract(
             "failed_evaluations": int(summary.get("failed_evaluations", 0)),
             "invalid_evaluations": int(summary.get("skipped_evaluations", 0)),
             "partial_run": partial_run,
-            "evaluation_semantics": "one evolved candidate trained/evaluated on the requested benchmark surface",
+            "evaluation_semantics": (
+                "one primitive family-benchmark trial counts as one evaluation; "
+                "failed trials still count and no cached evaluations are exported separately"
+            ),
         },
         "device": {
             "device_name": platform.machine(),

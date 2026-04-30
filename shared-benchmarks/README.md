@@ -19,3 +19,6 @@ Environment:
 Current baseline:
 
 - catalog and suites were initialized from `EvoNN-Topograph/benchmarks/`
+
+Canonical shared parity packs live under `suites/parity/`. The ladder Tier B
+pack is `suites/parity/tier_b_core.yaml`.

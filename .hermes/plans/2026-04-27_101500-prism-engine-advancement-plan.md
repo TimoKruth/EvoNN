@@ -37,6 +37,45 @@ Prism should become:
 4. Strengthen runtime observability, resume, and export confidence.
 5. Keep Prism the cleanest consumer of the shared compare substrate.
 
+## Remaining Mergeable Slices From Current Main
+
+These are the next merge-back-sized Prism slices after the recurring-lane
+substrate landing.
+
+1. Backend portability slice
+   - add the explicit backend selector, fallback smoke path, and honest runtime
+     metadata
+   - keep artifact contracts unchanged rather than redesigning shared export
+     semantics here
+2. Official-lane completeness slice
+   - re-verify `smoke` and `tier1_core` at `64/256/1000`
+   - land only Prism-local benchmark fixes, configs, and tests needed to make
+     those lanes trustworthy
+3. Search-quality slice
+   - tighten selection pressure, family balance, and candidate scoring
+   - make search rationale visible in Prism artifacts without changing shared
+     compare contracts
+4. Runtime maturity slice
+   - harden checkpoint/resume/status behavior and Prism-local inspect/report
+     surfaces
+   - keep this about operating Prism, not about shared dashboard/report logic
+5. Default-engine evidence slice
+   - add Prism-specific regression tests or metadata that prove it remains the
+     clean default engine while consuming the existing shared substrate
+
+## Shared-Substrate Boundaries
+
+Do in Prism:
+- backend/runtime selection inside `EvoNN-Prism`
+- Prism-local benchmark fixes and training/search behavior
+- Prism-local artifact extensions layered on shared contracts
+
+Do not duplicate in Prism:
+- canonical fairness metadata fallback logic
+- canonical cross-engine summary field assembly
+- parity-pack native-id fallback ordering shared across packages
+- fair-matrix, trend, dashboard, or repo-wide budget/accounting semantics
+
 ## Primary Strategy
 
 1. Backend portability first

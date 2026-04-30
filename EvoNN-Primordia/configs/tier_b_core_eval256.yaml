@@ -1,0 +1,21 @@
+seed: 42
+run_name: official_tier_b_core_eval256_seed42
+runtime:
+  backend: auto
+benchmark_pool:
+  name: tier_b_core_eval256
+  benchmarks:
+    - gas_sensor
+    - cpu_performance
+    - fashion_mnist
+    - tinystories_lm_smoke
+search:
+  mode: budget_matched
+  target_evaluation_count: 256
+training:
+  epochs_per_candidate: 20
+primitive_pool:
+  tabular: [mlp, sparse_mlp, moe_mlp]
+  synthetic: [mlp, sparse_mlp]
+  image: [mlp, conv2d, lite_conv2d]
+  language_modeling: [embedding, attention, sparse_attention]

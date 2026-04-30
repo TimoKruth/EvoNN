@@ -5,19 +5,17 @@ from __future__ import annotations
 import platform
 import subprocess
 from datetime import datetime, timezone
-import importlib.util
 from pathlib import Path
 from typing import Any
 
 from evonn_contenders.benchmarks import get_benchmark
 from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_pack
 from evonn_contenders.config import load_config
-from evonn_contenders.contenders.registry import benchmark_group, contender_names_for_config, resolve_contenders
+from evonn_contenders.export.baseline_coverage import build_baseline_coverage
 from evonn_contenders.export.report import write_report
 from evonn_contenders.storage import RunStore
 from evonn_shared.contracts import (
     ArtifactPaths,
-    BaselineCoverageEnvelope,
     BenchmarkEntry,
     BudgetEnvelope,
     DeviceInfo,
@@ -162,7 +160,10 @@ def export_symbiosis_contract(
             ),
             code_version=_code_version(),
         ),
-        baseline_coverage=_build_baseline_coverage(config=config, pack=pack),
+        baseline_coverage=build_baseline_coverage(
+            config=config,
+            benchmark_names=config.benchmark_pool.benchmarks,
+        ),
     )
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
@@ -275,44 +276,6 @@ def _export_epochs_per_candidate(*, pack_epochs_per_candidate: int, budget_polic
     if budget_policy_name == "prototype_equal_budget":
         return int(pack_epochs_per_candidate)
     return 1
-
-
-def _build_baseline_coverage(*, config: Any, pack: Any) -> BaselineCoverageEnvelope:
-    active_groups = sorted(
-        {
-            benchmark_group(get_benchmark(fallback_native_id(entry)))
-            for entry in pack.benchmarks
-        }
-    )
-    optional_dependency_skips: dict[str, tuple[str, ...]] = {}
-    notes: list[str] = []
-    for group in active_groups:
-        skipped = [
-            contender.name
-            for contender in resolve_contenders(group, contender_names_for_config(config, group))
-            if _is_optional_skip(contender=contender, config=config)
-        ]
-        if skipped:
-            optional_dependency_skips[group] = tuple(sorted(skipped))
-            notes.append(f"{group}: {', '.join(sorted(skipped))}")
-    if notes:
-        notes.insert(0, "optional dependency backends skipped under required-only completeness policy")
-    return BaselineCoverageEnvelope(
-        benchmark_complete_policy="required_only_optional_skips_allowed",
-        optional_dependency_skips=optional_dependency_skips,
-        notes=tuple(notes),
-    )
-
-
-def _is_optional_skip(*, contender: Any, config: Any) -> bool:
-    dependency = getattr(contender, "optional_dependency", None)
-    if dependency is None or importlib.util.find_spec(dependency) is not None:
-        return False
-    if dependency == "torch":
-        return bool(getattr(config.torch, "allow_optional_missing", True))
-    return bool(getattr(config.boosted_trees, "allow_optional_missing", True))
-
-
 
 def _code_version() -> str | None:
     try:

@@ -29,7 +29,14 @@ except importlib.metadata.PackageNotFoundError:
         _MLX_VERSION = None
 
 import topograph
-from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
+from evonn_shared.manifests import (
+    benchmark_signature,
+    fairness_manifest,
+    legacy_topograph_primordia_seeding_manifest,
+    seeding_manifest,
+    summary_core_from_results,
+    write_json,
+)
 from topograph.benchmarks.parity import (
     get_canonical_id,
     load_parity_pack,
@@ -187,6 +194,7 @@ def export_symbiosis_contract(
             representative, benchmark_names, config, pack_name, run_dir,
         ),
         "search_telemetry": _search_telemetry(config, budget_meta),
+        "seeding": _seeding_envelope(budget_meta),
         "fairness": fairness_manifest(
             pack_name=pack_name,
             seed=config.seed,
@@ -300,7 +308,7 @@ def _budget_manifest(
         + int(budget_meta.get("cache_reused_count", 0))
         < int(evaluation_count),
         "evaluation_semantics": (
-            "one topology evaluation counted for each genome evaluated on each benchmark; "
+            "one scheduled candidate-benchmark slot counted for each genome evaluated on each benchmark; "
             "evaluation_count = population_size * generations * benchmark_count"
         ),
     }
@@ -375,6 +383,15 @@ def _runtime_metadata_from_budget(budget_meta: dict[str, Any]) -> dict[str, str]
         "runtime_version": str(budget_meta.get("runtime_version") or "unknown"),
         "precision_mode": str(budget_meta.get("precision_mode") or "unknown"),
     }
+
+
+def _seeding_envelope(budget_meta: dict[str, Any]) -> dict[str, Any]:
+    """Canonical Topograph seeding envelope for compare-grade manifests."""
+
+    seeded = legacy_topograph_primordia_seeding_manifest(budget_meta.get("primordia_seeding"))
+    if seeded is not None:
+        return seeded
+    return seeding_manifest(seeding_enabled=False, seeding_ladder="none")
 
 
 def _estimate_model_bytes(genome: Genome) -> int:
@@ -610,7 +627,11 @@ def _write_summary_json(
 
     budget = manifest.get("budget", {})
     device = manifest.get("device", {})
-    seeding = budget.get("primordia_seeding") if isinstance(budget.get("primordia_seeding"), dict) else None
+    seeding = manifest.get("seeding")
+    if not isinstance(seeding, dict):
+        seeding = legacy_topograph_primordia_seeding_manifest(budget.get("primordia_seeding"))
+    if not isinstance(seeding, dict):
+        seeding = seeding_manifest(seeding_enabled=False, seeding_ladder="none")
     summary = {
         "system": "topograph",
         "run_id": manifest["run_id"],
@@ -624,14 +645,18 @@ def _write_summary_json(
         "runtime_backend": device.get("framework", "unknown"),
         "runtime_version": device.get("framework_version", "unknown"),
         "precision_mode": device.get("precision_mode", "unknown"),
-        "seed_source_system": "primordia" if seeding else None,
-        "seed_source_path": seeding.get("seed_path") if seeding else None,
-        "seed_target_family": seeding.get("target_family") if seeding else None,
-        "seed_selected_family": seeding.get("selected_family") if seeding else None,
-        "seed_selected_rank": seeding.get("selected_rank") if seeding else None,
-        "seed_representative_genome_id": seeding.get("representative_genome_id") if seeding else None,
-        "seed_representative_architecture_summary": (
-            seeding.get("representative_architecture_summary") if seeding else None
-        ),
+        "seeding_enabled": seeding["seeding_enabled"],
+        "seeding_ladder": seeding["seeding_ladder"],
+        "seed_source_system": seeding.get("seed_source_system"),
+        "seed_source_run_id": seeding.get("seed_source_run_id"),
+        "seed_artifact_path": seeding.get("seed_artifact_path"),
+        "seed_source_path": seeding.get("seed_artifact_path"),
+        "seed_target_family": seeding.get("seed_target_family"),
+        "seed_selected_family": seeding.get("seed_selected_family"),
+        "seed_rank": seeding.get("seed_rank"),
+        "seed_selected_rank": seeding.get("seed_rank"),
+        "seed_overlap_policy": seeding.get("seed_overlap_policy"),
+        "seed_representative_genome_id": seeding.get("representative_genome_id"),
+        "seed_representative_architecture_summary": seeding.get("representative_architecture_summary"),
     }
     write_json(output_dir / "summary.json", summary)

@@ -71,6 +71,18 @@ uv run evonn-contenders run --config configs/official_lanes/tier1_core_eval1000.
 uv run evonn-contenders symbiosis export \
   --run-dir runs/official_tier1_core_eval1000_seed42 \
   --pack-path ../EvoNN-Compare/parity_packs/tier1_core.yaml
+
+# tier_b_core / eval256
+uv run evonn-contenders run --config configs/official_lanes/tier_b_core_eval256.yaml
+uv run evonn-contenders symbiosis export \
+  --run-dir runs/official_tier_b_core_eval256_seed42 \
+  --pack-path ../shared-benchmarks/suites/parity/tier_b_core.yaml
+
+# tier_b_core / eval1000
+uv run evonn-contenders run --config configs/official_lanes/tier_b_core_eval1000.yaml
+uv run evonn-contenders symbiosis export \
+  --run-dir runs/official_tier_b_core_eval1000_seed42 \
+  --pack-path ../shared-benchmarks/suites/parity/tier_b_core.yaml
 ```
 
 Policy note:

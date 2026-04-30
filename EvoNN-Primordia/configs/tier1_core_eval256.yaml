@@ -1,23 +1,23 @@
 seed: 42
-run_name: primordia_tier1_core_eval256
+run_name: official_tier1_core_eval256_seed42
 runtime:
   backend: auto
-benchmark_pack:
-  pack_name: tier1_core
-  benchmark_ids:
-    - iris
-    - wine
+benchmark_pool:
+  name: tier1_core_eval256
+  benchmarks:
+    - iris_classification
+    - wine_classification
     - breast_cancer
-    - digits
-    - moons
-    - circles
+    - moons_classification
+    - digits_image
     - diabetes
     - friedman1
+    - credit_g
 search:
   mode: budget_matched
   target_evaluation_count: 256
 training:
-  epochs_per_candidate: 2
+  epochs_per_candidate: 20
 primitive_pool:
   tabular: [mlp, sparse_mlp, moe_mlp]
   synthetic: [mlp, sparse_mlp]

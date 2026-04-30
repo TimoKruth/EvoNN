@@ -429,6 +429,8 @@ def test_official_lane_configs_encode_exact_budget_targets(repo_root) -> None:
         "tier1_core_eval64.yaml": 64,
         "tier1_core_eval256.yaml": 256,
         "tier1_core_eval1000.yaml": 1000,
+        "tier_b_core_eval256.yaml": 256,
+        "tier_b_core_eval1000.yaml": 1000,
     }
 
     for filename, expected in expected_counts.items():

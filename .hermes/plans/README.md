@@ -3,8 +3,33 @@
 This directory is the active branch-oriented planning surface for package-level
 advancement work that is broader than the current quarter execution scope.
 
+If a package README or older plan points somewhere else, this directory wins for
+active branch execution planning.
+
 Use these files when the goal is to push one package or subsystem forward on a
 dedicated branch and merge the work back in slices.
+
+## Execution Guardrails For Remaining Engine Advancement
+
+Use the engine plans for package-local advancement only.
+
+Belongs in `EvoNN-Shared` / `EvoNN-Compare` instead of engine branches:
+- canonical fairness metadata normalization
+- canonical cross-engine `summary.json` field assembly
+- parity-pack native-id fallback ordering shared across packages
+- fair-matrix, trend, dashboard, and repo-wide budget/accounting semantics
+
+Belongs in the engine branch plans:
+- package-local backend portability and runtime boundaries
+- official-lane benchmark completeness fixes for that engine
+- search-policy, training, scoring, and candidate-selection improvements
+- checkpoint/resume/inspect/report surfaces that stay package-local
+- engine-specific artifact extensions built on top of shared contracts
+
+Merge rule:
+- each engine merge-back should target one named slice from its plan and should
+  not include a new shared-helper extraction unless the change is explicitly
+  handed off to the Shared or Compare branch plans
 
 ## Current Branch Plans
 

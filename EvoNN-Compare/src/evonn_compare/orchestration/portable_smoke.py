@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import platform
 import shutil
@@ -28,7 +29,14 @@ from evonn_shared.contracts import (
     RunManifest,
     SearchTelemetry,
 )
-from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
+from evonn_shared.manifests import (
+    benchmark_signature,
+    fairness_manifest,
+    legacy_topograph_primordia_seeding_manifest,
+    seeding_manifest,
+    summary_core_from_results,
+    write_json,
+)
 
 TaskKind = Literal["classification", "regression", "language_modeling"]
 
@@ -76,12 +84,14 @@ def ensure_topograph_portable_smoke_export(
     run_dir: Path,
     output_dir: Path | None = None,
     log_dir: Path | None = None,
+    seeding_ladder: Literal["direct", "staged"] | None = None,
 ) -> PortableArtifacts:
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     population_size = int(payload.get("evolution", {}).get("population_size", 2))
     generations = int(payload.get("evolution", {}).get("num_generations", 1))
     seed = int(payload.get("seed", 42))
     epochs = int(payload.get("training", {}).get("epochs", 1))
+    seeding = _portable_topograph_seeding(payload, seeding_ladder=seeding_ladder)
     return _portable_export(
         system="topograph",
         config_path=config_path,
@@ -91,9 +101,10 @@ def ensure_topograph_portable_smoke_export(
         log_dir=log_dir,
         seed=seed,
         epochs=epochs,
-        candidate_specs=_topograph_candidates(limit=max(1, population_size * generations)),
+        candidate_specs=_topograph_candidates(limit=max(1, population_size * generations), seeding=seeding),
         generations=generations,
         population_size=population_size,
+        seeding=seeding,
     )
 
 
@@ -110,6 +121,7 @@ def _portable_export(
     candidate_specs: list[dict[str, Any]],
     generations: int,
     population_size: int,
+    seeding: dict[str, Any] | None = None,
 ) -> PortableArtifacts:
     run_dir = run_dir.resolve()
     resolved_output_dir = run_dir if output_dir is None else output_dir.resolve()
@@ -193,6 +205,7 @@ def _portable_export(
 
     pack_name = pack.name
     evaluation_count = int(pack.budget_policy.evaluation_count)
+    failed_evaluations = sum(1 for row in results if row["status"] != "ok")
     wall_clock = round(time.perf_counter() - started, 4)
     manifest = RunManifest(
         schema_version="1.0",
@@ -211,6 +224,15 @@ def _portable_export(
             generations=generations,
             population_size=population_size,
             budget_policy_name="prototype_equal_budget",
+            actual_evaluations=evaluation_count,
+            cached_evaluations=0,
+            failed_evaluations=failed_evaluations,
+            invalid_evaluations=0,
+            partial_run=failed_evaluations > 0,
+            evaluation_semantics=(
+                "one portable candidate-benchmark trial counts as one evaluation; "
+                "failed trials still count and no cached evaluations are emitted in portable smoke mode"
+            ),
         ),
         device=DeviceInfo(
             device_name=platform.machine(),
@@ -226,6 +248,15 @@ def _portable_export(
         search_telemetry=SearchTelemetry(
             qd_enabled=False,
             effective_training_epochs=epochs,
+        ),
+        seeding=(
+            _portable_topograph_seeding_manifest(seeding)
+            if system == "topograph" and seeding is not None
+            else (
+                legacy_topograph_primordia_seeding_manifest(seeding)
+                if seeding is not None
+                else seeding_manifest(seeding_enabled=False, seeding_ladder="none")
+            )
         ),
         fairness=fairness_manifest(
             pack_name=pack_name,
@@ -409,7 +440,7 @@ def _prism_candidates(allowed_families: list[str], *, limit: int) -> list[dict[s
     return candidates
 
 
-def _topograph_candidates(*, limit: int) -> list[dict[str, Any]]:
+def _topograph_candidates(*, limit: int, seeding: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     templates = [(16,), (32,), (16, 16), (32, 16), (64,)]
     candidates: list[dict[str, Any]] = []
     while len(candidates) < limit:
@@ -419,7 +450,85 @@ def _topograph_candidates(*, limit: int) -> list[dict[str, Any]]:
             "hidden_layers": hidden,
             "summary": f"layers={len(hidden)} widths={'x'.join(map(str, hidden))}",
         })
+    if seeding is not None:
+        seeded_hidden = _seeded_hidden_layers(seeding)
+        family = str(seeding.get("selected_family") or "mlp")
+        summary = str(seeding.get("representative_architecture_summary") or f"{family}[{'x'.join(map(str, seeded_hidden))}]")
+        for index in range(min(4, len(candidates))):
+            candidates[index] = {
+                "id": f"seeded-{family}-{index+1}",
+                "hidden_layers": seeded_hidden,
+                "summary": summary,
+            }
     return candidates
+
+
+def _portable_topograph_seeding(
+    payload: dict[str, Any],
+    *,
+    seeding_ladder: Literal["direct", "staged"] | None = None,
+) -> dict[str, Any] | None:
+    pool_payload = payload.get("benchmark_pool") or {}
+    seed_path_raw = pool_payload.get("primordia_seed_candidates_path")
+    if not seed_path_raw:
+        return None
+    seed_path = Path(str(seed_path_raw))
+    if not seed_path.exists():
+        return None
+    seed_payload = json.loads(seed_path.read_text(encoding="utf-8"))
+    ranked = list(seed_payload.get("seed_candidates") or [])
+    if not ranked:
+        return None
+    selected = ranked[0]
+    groups = list(selected.get("benchmark_groups") or [])
+    target_family = "mixed" if len(groups) != 1 else str(groups[0])
+    return {
+        "seed_source_system": str(seed_payload.get("system") or "primordia"),
+        "seed_source_run_id": seed_payload.get("run_id"),
+        "seeding_ladder": seeding_ladder or "direct",
+        "seed_path": str(seed_path),
+        "target_family": target_family,
+        "selected_family": str(selected.get("family") or "mlp"),
+        "selected_rank": int(selected.get("seed_rank", 1)),
+        "seed_overlap_policy": str(selected.get("seed_overlap_policy") or "family-overlapping"),
+        "representative_genome_id": selected.get("representative_genome_id"),
+        "representative_architecture_summary": selected.get("representative_architecture_summary"),
+    }
+
+
+def _portable_topograph_seeding_manifest(seeding: dict[str, Any]) -> dict[str, Any]:
+    return seeding_manifest(
+        seeding_enabled=True,
+        seeding_ladder=str(seeding.get("seeding_ladder") or "direct"),
+        seed_source_system=str(seeding.get("seed_source_system") or "primordia"),
+        seed_source_run_id=None if seeding.get("seed_source_run_id") is None else str(seeding.get("seed_source_run_id")),
+        seed_artifact_path=str(seeding.get("seed_path")),
+        seed_target_family=None if seeding.get("target_family") is None else str(seeding.get("target_family")),
+        seed_selected_family=None if seeding.get("selected_family") is None else str(seeding.get("selected_family")),
+        seed_rank=int(seeding.get("selected_rank", 1)),
+        seed_overlap_policy=None if seeding.get("seed_overlap_policy") is None else str(seeding.get("seed_overlap_policy")),
+        representative_genome_id=None if seeding.get("representative_genome_id") is None else str(seeding.get("representative_genome_id")),
+        representative_architecture_summary=(
+            None
+            if seeding.get("representative_architecture_summary") is None
+            else str(seeding.get("representative_architecture_summary"))
+        ),
+    )
+
+
+def _seeded_hidden_layers(seeding: dict[str, Any]) -> tuple[int, ...]:
+    summary = str(seeding.get("representative_architecture_summary") or "")
+    if "[" in summary and "]" in summary:
+        inner = summary.split("[", 1)[1].split("]", 1)[0].strip()
+        if inner:
+            parts = []
+            for token in inner.split("x"):
+                token = token.strip()
+                if token.isdigit():
+                    parts.append(int(token))
+            if parts:
+                return tuple(parts)
+    return (64, 64)
 
 
 def _load_shared_benchmark(entry: Any) -> Any:

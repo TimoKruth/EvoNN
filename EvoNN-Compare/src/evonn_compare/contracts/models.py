@@ -17,6 +17,7 @@ from evonn_shared.contracts import (
     ResultRecord,
     RunManifest,
     SearchTelemetry,
+    SeedingEnvelope,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "ResultRecord",
     "RunManifest",
     "SearchTelemetry",
+    "SeedingEnvelope",
 ]
