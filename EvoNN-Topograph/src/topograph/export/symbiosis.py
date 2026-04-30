@@ -289,6 +289,9 @@ def _budget_manifest(
                 len(resolve_benchmark_pool_names(config.benchmark_pool)),
             )
         evaluation_count = int(population_size * generations * benchmark_count)
+    trained_evaluations = int(budget_meta.get("cache_trained_count", evaluation_count))
+    cached_evaluations = int(budget_meta.get("cache_reused_count", 0))
+    covered_evaluations = trained_evaluations + cached_evaluations
     return {
         "evaluation_count": int(evaluation_count),
         "epochs_per_candidate": config.training.epochs,
@@ -299,14 +302,11 @@ def _budget_manifest(
             budget_meta.get("population_size", config.evolution.population_size)
         ),
         "budget_policy_name": "prototype_equal_budget",
-        "actual_evaluations": int(budget_meta.get("cache_trained_count", evaluation_count))
-        + int(budget_meta.get("cache_reused_count", 0)),
-        "cached_evaluations": int(budget_meta.get("cache_reused_count", 0)),
+        "actual_evaluations": trained_evaluations,
+        "cached_evaluations": cached_evaluations,
         "failed_evaluations": int(budget_meta.get("cache_failed_count", 0)),
         "invalid_evaluations": 0,
-        "partial_run": int(budget_meta.get("cache_trained_count", evaluation_count))
-        + int(budget_meta.get("cache_reused_count", 0))
-        < int(evaluation_count),
+        "partial_run": covered_evaluations < int(evaluation_count),
         "evaluation_semantics": (
             "one scheduled candidate-benchmark slot counted for each genome evaluated on each benchmark; "
             "evaluation_count = population_size * generations * benchmark_count"
