@@ -42,16 +42,18 @@ comparison against the rest of the umbrella.
 
 Current deliverables:
 - self-contained Primordia-local runtime boundary with MLX as the reference backend
-- sklearn-backed `numpy-fallback` execution path for non-MLX local parity lanes
+- Linux-capable `numpy-fallback` runtime for smoke / compare-grade validation on non-MLX hosts
 - Primordia-local benchmark and parity loaders
 - MLX-backed primitive candidate search
 - runtime metadata carried through run/export artifacts
 - primitive usage, benchmark-group coverage, and failure telemetry carried through reports/exports
 - primitive bank summary artifact emitted alongside run artifacts and compare exports for later seeding-style analysis
 - benchmark-conditioned seed candidate artifact emitted for downstream family/topology/hierarchy seeding experiments
-- richer markdown reports that include primitive-bank winners and representative genomes
-- richer CLI inspection that summarizes runtime, usage, wins, and best benchmark outcomes from run artifacts
+- richer markdown reports that include primitive-bank winners, benchmark leaders, family leaders, and representative genomes
+- richer CLI inspection that summarizes runtime, usage, wins, benchmark leaders, family leaders, and best benchmark outcomes from run artifacts
 - budget-matched per-benchmark evaluation scheduling
+- bounded elite/archive search with lineage-aware offspring mutation from archived parents
+- per-benchmark and family-level leader tracking emitted as `search_leaders.json`
 - per-benchmark best primitive selection
 - compare-ready manifest/results export
 - markdown + JSON run artifacts
@@ -67,28 +69,28 @@ From monorepo root:
 
 ```bash
 uv run --package evonn-primordia primordia --help
-uv run --package evonn-primordia primordia run --config path/to/config.yaml
+uv run --package evonn-primordia primordia run --config EvoNN-Primordia/configs/smoke.yaml
+uv run --package evonn-primordia primordia run --config EvoNN-Primordia/configs/tier1_core_eval64.yaml
 uv run --package evonn-primordia primordia inspect --run-dir path/to/run
 uv run --package evonn-primordia primordia report --run-dir path/to/run
 uv run --package evonn-primordia primordia seed export --run-dir path/to/run
 uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/run --pack-path path/to/pack.yaml
 ```
 
-Checked-in official lane configs now live under `configs/`:
+Canonical named configs now live under `EvoNN-Primordia/configs/`:
+- `smoke.yaml`
+- `tier1_core_eval64.yaml`
+- `tier1_core_eval256.yaml`
+- `tier1_core_eval1000.yaml`
 
-```bash
-uv run --package evonn-primordia primordia run --config EvoNN-Primordia/configs/smoke.yaml
-uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/run --pack-path EvoNN-Compare/parity_packs/tier1_core_smoke.yaml
+Phase-2 baseline results now live in `BASELINE_MATRIX.md`, which records the
+current smoke / tier1 lane runs, benchmark-completeness status, artifact paths,
+and the remaining language-modeling caveat for later comparison.
 
-uv run --package evonn-primordia primordia run --config EvoNN-Primordia/configs/tier1_core_eval64.yaml
-uv run --package evonn-primordia primordia symbiosis export --run-dir path/to/run --pack-path EvoNN-Compare/parity_packs/tier1_core.yaml
-```
-
-The package-level official lane set is:
-- `configs/smoke.yaml` for the `tier1_core_smoke` compare lane at 16 evaluations
-- `configs/tier1_core_eval64.yaml` for the default local `tier1_core` lane
-- `configs/tier1_core_eval256.yaml` for the overnight `tier1_core` lane
-- `configs/tier1_core_eval1000.yaml` for the weekend `tier1_core` lane
+The `tier1_core` configs include both the classification/synthetic/image tasks and
+the current regression pair (`diabetes`, `friedman1`) so Primordia's named tier-1
+lane stays closer to the compare/parity-pack coverage instead of silently dropping
+regression from the official branch baseline.
 
 `primordia report` now refreshes `report.md` from the current run artifacts when
 `summary.json` is present, so stale markdown snapshots can be rebuilt after
@@ -107,22 +109,17 @@ Primordia currently acts as a primitive-first search system with MLX as its
 reference execution runtime and an explicitly budget-matched evaluation count.
 The package now also installs cleanly on non-Darwin hosts by treating MLX as a
 platform-specific dependency, while run/export artifacts still record the actual
-runtime backend used. On hosts where MLX is unavailable, `primordia run` now
-falls back to a clearly labeled `numpy-fallback` runtime for local
-classification, regression, and image parity lanes such as
-`tier1_core_eval64`/`tier1_core_eval256`.
-
-That fallback keeps the compare/export contract intact for local fair-matrix
-reruns without pretending to be the native MLX family compiler. MLX remains the
-reference backend for native Primordia family execution, and it is still
-required for text/language-modeling validation or any run where architectural
-fidelity to the MLX families matters.
+runtime backend used. A Linux-capable `numpy-fallback` backend is available for
+smoke, regression, and compare-grade validation so portability is operational
+rather than merely rhetorical. That makes it possible to include Primordia in
+fair EvoNN-Compare matrix runs alongside Prism, Topograph, Stratograph, and the
+Contenders baseline.
 
 ## Core Docs
 
 - `VISION.md`
-- `IMPLEMENTATION_PLAN.md` (archived bootstrap record only)
-- `../EVONN_90_DAY_PLAN.md`
-- `../.hermes/plans/README.md`
+- `IMPLEMENTATION_PLAN.md`
 - `ARCHITECTURE_RULES.md`
+- `BASELINE_MATRIX.md`
 - `CHANGELOG.md`
+- `docs/QUALITY_SCORECARD.md`

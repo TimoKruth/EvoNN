@@ -4,6 +4,27 @@ from __future__ import annotations
 
 from evonn_compare.contracts.parity import ParityBenchmark
 
+_PREFERRED_NATIVE_IDS: dict[str, dict[str, str]] = {
+    "primordia": {
+        "iris_classification": "iris",
+        "wine_classification": "wine",
+        "moons_classification": "moons",
+        "digits_image": "digits",
+        "credit_g_classification": "credit_g",
+        "diabetes_regression": "diabetes",
+        "friedman1_regression": "friedman1",
+    },
+    "contenders": {
+        "iris_classification": "iris",
+        "wine_classification": "wine",
+        "moons_classification": "moons",
+        "digits_image": "digits",
+        "credit_g_classification": "credit_g",
+        "diabetes_regression": "diabetes",
+        "friedman1_regression": "friedman1",
+    },
+}
+
 
 def canonical_slot(system: str) -> str:
     """Map runtime system names to legacy parity-pack slots."""
@@ -62,8 +83,10 @@ def fallback_native_id(benchmark: ParityBenchmark, system: str) -> str:
             or benchmark.benchmark_id
         )
     if system == "primordia":
+        preferred = _PREFERRED_NATIVE_IDS["primordia"].get(benchmark.benchmark_id)
         return (
             native_ids.get("primordia")
+            or preferred
             or native_ids.get("contenders")
             or native_ids.get("stratograph")
             or native_ids.get("prism")
@@ -71,4 +94,7 @@ def fallback_native_id(benchmark: ParityBenchmark, system: str) -> str:
             or native_ids.get("hybrid")
             or benchmark.benchmark_id
         )
+    if system == "contenders":
+        preferred = _PREFERRED_NATIVE_IDS["contenders"].get(benchmark.benchmark_id)
+        return native_ids.get("contenders") or preferred or benchmark.benchmark_id
     return native_ids.get(system) or benchmark.benchmark_id

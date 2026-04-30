@@ -37,6 +37,14 @@ class SearchConfig(BaseModel):
 
     mode: Literal["budget_matched", "fixed_pool"] = "budget_matched"
     target_evaluation_count: int | None = None
+    population_size: int | None = None
+    elite_fraction: float = 0.34
+    mutation_rounds_per_parent: int = 1
+    family_exploration_floor: int = 1
+    novelty_weight: float = 0.05
+    complexity_penalty_weight: float = 0.02
+    max_candidates_per_benchmark: int | None = None
+    selection_mode: Literal["metric_only", "composite"] = "composite"
     seed_hidden_width: int = 64
     seed_hidden_layers: int = 2
     max_hidden_width: int = 256
@@ -71,6 +79,15 @@ class TrainingConfig(BaseModel):
     weight_decay: float = 0.0
 
 
+class RuntimeConfig(BaseModel):
+    """Backend/runtime selection policy for Primordia execution."""
+
+    model_config = ConfigDict(frozen=True)
+
+    backend: Literal["auto", "mlx", "numpy-fallback"] = "auto"
+    allow_fallback: bool = True
+
+
 class RunConfig(BaseModel):
     """Top-level Primordia run config."""
 
@@ -82,6 +99,7 @@ class RunConfig(BaseModel):
     primitive_pool: PrimitivePoolConfig = Field(default_factory=PrimitivePoolConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
 
 
 def load_config(path: str | Path) -> RunConfig:

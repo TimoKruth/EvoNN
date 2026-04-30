@@ -11,7 +11,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from evonn_contenders.benchmarks import get_benchmark
-from evonn_contenders.benchmarks.parity import load_parity_pack, native_id_candidates
+from evonn_contenders.benchmarks.parity import get_native_id, load_parity_pack
 
 
 class BenchmarkPoolConfig(BaseModel):
@@ -163,11 +163,26 @@ def load_config(path: str | Path) -> RunConfig:
 
 
 def _resolve_native_benchmark_id(entry: object) -> str:
-    benchmark_id = str(getattr(entry, "benchmark_id"))
-    for candidate in native_id_candidates(entry, system="contenders") or [benchmark_id]:
+    native_ids = getattr(entry, "native_ids", {}) or {}
+    candidates = [
+        native_ids.get("contenders"),
+        get_native_id(getattr(entry, "benchmark_id")),
+        native_ids.get("evonn2"),
+        native_ids.get("hybrid"),
+        native_ids.get("stratograph"),
+        native_ids.get("prism"),
+        native_ids.get("topograph"),
+        native_ids.get("evonn"),
+        getattr(entry, "benchmark_id"),
+    ]
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
         try:
             get_benchmark(candidate)
             return candidate
         except Exception:
             continue
-    return benchmark_id
+    return str(getattr(entry, "benchmark_id"))

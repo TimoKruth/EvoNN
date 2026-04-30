@@ -112,8 +112,8 @@ def export_symbiosis_contract(
     _write_summary_json(output_dir / "seed_candidates.json", seed_candidates)
 
     evaluation_count = int(summary.get("evaluation_count", len(trial_records)))
-    failure_count = int(summary.get("failure_count", 0))
-    partial_run = failure_count > 0 or any(record["status"] != "ok" for record in result_records)
+    declared_evaluation_count = int(summary.get("target_evaluation_count", evaluation_count))
+    partial_run = _is_partial_run(summary=summary, declared_evaluation_count=declared_evaluation_count)
     compare_summary = _build_compare_summary(summary=summary, results=result_records, evaluation_count=evaluation_count)
     _write_summary_json(output_dir / "compare_summary.json", compare_summary)
     _write_summary_json(output_dir / "summary.json", compare_summary)
@@ -129,7 +129,7 @@ def export_symbiosis_contract(
         "seed": config.seed,
         "benchmarks": manifest_benchmarks,
         "budget": {
-            "evaluation_count": evaluation_count,
+            "evaluation_count": declared_evaluation_count,
             "epochs_per_candidate": config.training.epochs_per_candidate,
             "effective_training_epochs": config.training.epochs_per_candidate,
             "wall_clock_seconds": summary.get("wall_clock_seconds"),
@@ -138,8 +138,8 @@ def export_symbiosis_contract(
             "budget_policy_name": BUDGET_POLICY_NAME,
             "actual_evaluations": evaluation_count,
             "cached_evaluations": 0,
-            "failed_evaluations": failure_count,
-            "invalid_evaluations": 0,
+            "failed_evaluations": int(summary.get("failed_evaluations", 0)),
+            "invalid_evaluations": int(summary.get("skipped_evaluations", 0)),
             "partial_run": partial_run,
             "evaluation_semantics": (
                 "one primitive family-benchmark trial counts as one evaluation; "
@@ -166,13 +166,17 @@ def export_symbiosis_contract(
             "effective_training_epochs": config.training.epochs_per_candidate,
             "primitive_usage": summary.get("primitive_usage", {}),
             "group_counts": summary.get("group_counts", {}),
-            "failure_count": failure_count,
+            "failure_count": int(summary.get("failure_count", 0)),
+            "selection_mode": summary.get("selection_mode", "metric_only"),
+            "attempted_evaluations": int(summary.get("attempted_evaluations", evaluation_count)),
+            "successful_evaluations": int(summary.get("successful_evaluations", 0)),
+            "failed_evaluations": int(summary.get("failed_evaluations", 0)),
             "wall_clock_seconds": summary.get("wall_clock_seconds"),
         },
         "fairness": fairness_manifest(
             pack_name=pack.name,
             seed=config.seed,
-            evaluation_count=evaluation_count,
+            evaluation_count=declared_evaluation_count,
             budget_policy_name=BUDGET_POLICY_NAME,
             benchmark_entries=manifest_benchmarks,
             data_signature=benchmark_signature(pack.name, manifest_benchmarks),
@@ -213,6 +217,13 @@ def _write_summary_json(path: Path, payload: Any) -> None:
     write_json(path, payload)
 
 
+def _is_partial_run(*, summary: dict[str, Any], declared_evaluation_count: int) -> bool:
+    completed = len(summary.get("completed_benchmarks") or [])
+    benchmark_total = int(summary.get("benchmark_count", completed))
+    actual_evaluations = int(summary.get("evaluation_count", 0))
+    return completed < benchmark_total or actual_evaluations < declared_evaluation_count
+
+
 def _build_compare_summary(
     *,
     summary: dict[str, Any],
@@ -233,16 +244,22 @@ def _build_compare_summary(
         "run_id": summary["run_id"],
         "status": summary.get("status", "complete"),
         "total_evaluations": evaluation_count,
+        "attempted_evaluations": int(summary.get("attempted_evaluations", evaluation_count)),
+        "successful_evaluations": int(summary.get("successful_evaluations", 0)),
+        "failed_evaluations": int(summary.get("failed_evaluations", 0)),
+        "skipped_evaluations": int(summary.get("skipped_evaluations", 0)),
         "generations_completed": 1,
         "epochs_per_candidate": int(summary.get("epochs_per_candidate", 0)),
         "population_size": evaluation_count,
         "runtime_backend": summary.get("runtime", "unknown"),
         "runtime_version": summary.get("runtime_version") or "unknown",
         "precision_mode": summary.get("precision_mode", "unknown"),
+        "selection_mode": summary.get("selection_mode", "metric_only"),
         **core,
         "wall_clock_seconds": summary.get("wall_clock_seconds"),
         "primitive_usage": summary.get("primitive_usage", {}),
         "group_counts": summary.get("group_counts", {}),
+        "completed_benchmarks": summary.get("completed_benchmarks", []),
     }
 
 

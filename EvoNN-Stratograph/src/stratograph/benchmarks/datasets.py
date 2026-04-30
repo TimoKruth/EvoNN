@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 import os
 from pathlib import Path
 
@@ -206,9 +207,11 @@ def _catalog_search_dirs() -> list[Path]:
     return unique
 
 
-def _catalog_specs() -> dict[str, BenchmarkSpec]:
+@lru_cache(maxsize=None)
+def _catalog_specs_for_roots(root_strings: tuple[str, ...]) -> dict[str, BenchmarkSpec]:
     specs: dict[str, BenchmarkSpec] = {}
-    for root in _catalog_search_dirs():
+    for root_string in root_strings:
+        root = Path(root_string)
         if not root.exists():
             continue
         for path in sorted(root.glob("*.yaml")):
@@ -218,6 +221,10 @@ def _catalog_specs() -> dict[str, BenchmarkSpec]:
                 continue
             specs.setdefault(spec.name, spec)
     return specs
+
+
+def _catalog_specs() -> dict[str, BenchmarkSpec]:
+    return _catalog_specs_for_roots(tuple(str(path) for path in _catalog_search_dirs()))
 
 
 def list_benchmarks() -> list[BenchmarkSpec]:

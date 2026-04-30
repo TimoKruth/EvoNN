@@ -76,4 +76,4 @@ uv run evonn-contenders symbiosis export \
 Policy note:
 
 - official lanes use `benchmark_pack.pack_name` resolution rather than hard-coded benchmark lists
-- missing optional boosted/torch contenders do not block benchmark-complete status under the ratified steady-state contender-floor policy, and exports record that rationale so Compare can surface it in lane trust summaries
+- missing optional boosted/torch contenders do not block benchmark-complete status by policy, but exports now record those skips so Compare can surface them in lane trust summaries

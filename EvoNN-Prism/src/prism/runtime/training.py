@@ -63,7 +63,7 @@ def _loss_fn(model, task: str, x, y):
         logits_flat = logits.reshape(-1, logits.shape[-1])
         targets_flat = y.reshape(-1)
         return nn.losses.cross_entropy(logits_flat, targets_flat, reduction="mean")
-    return nn.losses.mse_loss(logits, y, reduction="mean")
+    return nn.losses.mse_loss(logits.reshape(-1), y.reshape(-1), reduction="mean")
 
 
 def _compute_metric(task: str, y_true: np.ndarray, y_pred: np.ndarray) -> tuple[str, float, float]:

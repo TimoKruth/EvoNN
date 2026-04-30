@@ -40,16 +40,35 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Seed: `{run['seed']}`",
         f"- Benchmarks: `{len(results)}`",
         f"- Contender evals: `{evaluation_count}`",
+        f"- Optional contenders skipped: `{budget_meta.get('optional_missing_count', 0)}`",
         f"- Successful benchmarks: `{ok}`",
         f"- Failed benchmarks: `{len(failed_records)}`",
         f"- Executed evals: `{executed_evaluation_count}`",
         f"- Cached evals: `{cached_evaluation_count}`",
         "",
-        "## Best Per Benchmark",
-        "",
-        "| Benchmark | Contender | Metric | Value | Status |",
-        "|---|---|---|---:|---|",
     ]
+    optional_missing = budget_meta.get("optional_missing_by_group") or {}
+    if optional_missing:
+        lines.extend(
+            [
+                "## Optional Contenders Skipped",
+                "",
+                "| Group | Contenders |",
+                "|---|---|",
+            ]
+        )
+        for group, names in sorted(optional_missing.items()):
+            lines.append(f"| {group} | {', '.join(sorted(names))} |")
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Best Per Benchmark",
+            "",
+            "| Benchmark | Contender | Metric | Value | Status |",
+            "|---|---|---|---:|---|",
+        ]
+    )
     for record in results:
         value = record["metric_value"]
         display = "---" if value is None else f"{value:.6f}"
@@ -57,7 +76,7 @@ def write_report(run_dir: str | Path) -> Path:
             f"| {record['benchmark_name']} | {record['contender_name']} | {record['metric_name']} | {display} | {record['status']} |"
         )
 
-    if baseline_coverage.optional_dependency_skips:
+    if baseline_coverage.policy_stage == "steady_state" or baseline_coverage.optional_dependency_skips:
         lines.extend(
             [
                 "",

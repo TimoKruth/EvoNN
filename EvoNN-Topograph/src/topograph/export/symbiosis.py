@@ -29,14 +29,7 @@ except importlib.metadata.PackageNotFoundError:
         _MLX_VERSION = None
 
 import topograph
-from evonn_shared.manifests import (
-    benchmark_signature,
-    fairness_manifest,
-    legacy_topograph_primordia_seeding_manifest,
-    seeding_manifest,
-    summary_core_from_results,
-    write_json,
-)
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
 from topograph.benchmarks.parity import (
     get_canonical_id,
     load_parity_pack,
@@ -171,10 +164,7 @@ def export_symbiosis_contract(
     pack_name = Path(pack_path).stem
     runtime_meta = _runtime_metadata_from_budget(budget_meta)
 
-    budget_manifest = _budget_manifest(config, budget_meta, latest_gen, len(population), results=results)
-    seeding_payload = legacy_topograph_primordia_seeding_manifest(budget_meta.get("primordia_seeding"))
-    if seeding_payload is None:
-        seeding_payload = seeding_manifest(seeding_enabled=False, seeding_ladder="none")
+    budget_manifest = _budget_manifest(config, budget_meta, latest_gen, len(population))
     manifest = {
         "schema_version": "1.0",
         "system": "topograph",
@@ -197,7 +187,6 @@ def export_symbiosis_contract(
             representative, benchmark_names, config, pack_name, run_dir,
         ),
         "search_telemetry": _search_telemetry(config, budget_meta),
-        "seeding": seeding_payload,
         "fairness": fairness_manifest(
             pack_name=pack_name,
             seed=config.seed,
@@ -280,8 +269,6 @@ def _budget_manifest(
     budget_meta: dict[str, Any],
     latest_gen: int,
     population_size: int,
-    *,
-    results: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Budget section of the manifest."""
     generations = latest_gen + 1
@@ -294,11 +281,6 @@ def _budget_manifest(
                 len(resolve_benchmark_pool_names(config.benchmark_pool)),
             )
         evaluation_count = int(population_size * generations * benchmark_count)
-    failed_evaluations = int(budget_meta.get("cache_failed_count", 0) or 0)
-    non_ok_results = [
-        row for row in (results or [])
-        if row.get("status") not in {None, "ok"}
-    ]
     return {
         "evaluation_count": int(evaluation_count),
         "epochs_per_candidate": config.training.epochs,
@@ -309,14 +291,17 @@ def _budget_manifest(
             budget_meta.get("population_size", config.evolution.population_size)
         ),
         "budget_policy_name": "prototype_equal_budget",
-        "actual_evaluations": int(evaluation_count),
-        "cached_evaluations": 0,
-        "failed_evaluations": max(failed_evaluations, len(non_ok_results)),
+        "actual_evaluations": int(budget_meta.get("cache_trained_count", evaluation_count))
+        + int(budget_meta.get("cache_reused_count", 0)),
+        "cached_evaluations": int(budget_meta.get("cache_reused_count", 0)),
+        "failed_evaluations": int(budget_meta.get("cache_failed_count", 0)),
         "invalid_evaluations": 0,
-        "partial_run": bool(non_ok_results),
+        "partial_run": int(budget_meta.get("cache_trained_count", evaluation_count))
+        + int(budget_meta.get("cache_reused_count", 0))
+        < int(evaluation_count),
         "evaluation_semantics": (
-            "one scheduled candidate-benchmark slot counts as one evaluation; "
-            "weight or archive reuse is not treated as a cached evaluation"
+            "one topology evaluation counted for each genome evaluated on each benchmark; "
+            "evaluation_count = population_size * generations * benchmark_count"
         ),
     }
 
@@ -626,7 +611,6 @@ def _write_summary_json(
     budget = manifest.get("budget", {})
     device = manifest.get("device", {})
     seeding = budget.get("primordia_seeding") if isinstance(budget.get("primordia_seeding"), dict) else None
-    seeding_payload = legacy_topograph_primordia_seeding_manifest(seeding)
     summary = {
         "system": "topograph",
         "run_id": manifest["run_id"],
@@ -640,17 +624,11 @@ def _write_summary_json(
         "runtime_backend": device.get("framework", "unknown"),
         "runtime_version": device.get("framework_version", "unknown"),
         "precision_mode": device.get("precision_mode", "unknown"),
-        "seeding_enabled": bool(seeding_payload["seeding_enabled"]) if seeding_payload is not None else False,
-        "seeding_ladder": seeding_payload["seeding_ladder"] if seeding_payload is not None else "none",
-        "seed_source_system": seeding_payload.get("seed_source_system") if seeding_payload is not None else None,
-        "seed_source_run_id": seeding_payload.get("seed_source_run_id") if seeding_payload is not None else None,
-        "seed_artifact_path": seeding_payload.get("seed_artifact_path") if seeding_payload is not None else None,
+        "seed_source_system": "primordia" if seeding else None,
         "seed_source_path": seeding.get("seed_path") if seeding else None,
         "seed_target_family": seeding.get("target_family") if seeding else None,
         "seed_selected_family": seeding.get("selected_family") if seeding else None,
-        "seed_rank": seeding_payload.get("seed_rank") if seeding_payload is not None else None,
         "seed_selected_rank": seeding.get("selected_rank") if seeding else None,
-        "seed_overlap_policy": seeding_payload.get("seed_overlap_policy") if seeding_payload is not None else None,
         "seed_representative_genome_id": seeding.get("representative_genome_id") if seeding else None,
         "seed_representative_architecture_summary": (
             seeding.get("representative_architecture_summary") if seeding else None

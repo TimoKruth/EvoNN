@@ -24,6 +24,41 @@ OFFICIAL_BENCHMARKS = [
 ]
 
 
+def test_named_configs_exist_and_load() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    config_dir = repo_root / "EvoNN-Primordia" / "configs"
+
+    smoke = load_config(config_dir / "smoke.yaml")
+    tier1_64 = load_config(config_dir / "tier1_core_eval64.yaml")
+    tier1_256 = load_config(config_dir / "tier1_core_eval256.yaml")
+    tier1_1000 = load_config(config_dir / "tier1_core_eval1000.yaml")
+
+    assert smoke.run_name == "official_tier1_core_smoke_eval16_seed42"
+    assert smoke.runtime.backend == "auto"
+    assert smoke.benchmark_pool.name == "tier1_core_smoke_eval16"
+    assert smoke.benchmark_pool.benchmarks == OFFICIAL_BENCHMARKS
+
+    assert tier1_64.search.target_evaluation_count == 64
+    assert tier1_256.search.target_evaluation_count == 256
+    assert tier1_1000.search.target_evaluation_count == 1000
+    assert tier1_64.run_name == "official_tier1_core_eval64_seed42"
+    assert tier1_64.benchmark_pool.name == "tier1_core_eval64"
+    assert tier1_64.benchmark_pool.benchmarks == OFFICIAL_BENCHMARKS
+    assert tier1_64.benchmark_pool.benchmarks == tier1_256.benchmark_pool.benchmarks == tier1_1000.benchmark_pool.benchmarks
+
+
+def test_phase2_baseline_matrix_exists_and_references_official_lanes() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    baseline = (repo_root / "EvoNN-Primordia" / "BASELINE_MATRIX.md").read_text(encoding="utf-8")
+
+    assert "Primordia Phase-2 Baseline Matrix" in baseline
+    assert "smoke.yaml" in baseline
+    assert "tier1_core_eval64.yaml" in baseline
+    assert "tier1_core_eval256.yaml" in baseline
+    assert "tier1_core_eval1000.yaml" in baseline
+    assert "language-modeling caveat" in baseline
+
+
 def test_inspect_renders_compact_run_summary(tmp_path: Path) -> None:
     run_dir = tmp_path / "sample_run"
     run_dir.mkdir()

@@ -6,12 +6,15 @@ import json
 
 import pytest
 
+from evonn_compare.contracts.validation import validate_contract
 from evonn_primordia.benchmarks import get_benchmark
+from evonn_primordia.benchmarks.parity import load_parity_pack
 from evonn_primordia.config import load_config
 from evonn_primordia.export.report import enrich_best_results, write_report
 from evonn_primordia.export.seeding import write_seed_candidates
 from evonn_primordia.export.symbiosis import export_symbiosis_contract
 from evonn_primordia.pipeline import run_search
+from evonn_shared.contracts import ResultRecord, RunManifest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -182,7 +185,7 @@ class FakeRuntimeBindings:
 @pytest.fixture
 def fake_runtime(monkeypatch):
     runtime = FakeRuntimeBindings()
-    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda: runtime)
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
     return runtime
 
 
@@ -262,6 +265,13 @@ seed_policy:
     assert manifest["device"]["framework_version"] == summary["runtime_version"]
     assert manifest["device"]["precision_mode"] == summary["precision_mode"]
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
+    assert manifest["budget"]["evaluation_count"] == summary["target_evaluation_count"]
+    assert manifest["budget"]["actual_evaluations"] == summary["evaluation_count"]
+    assert manifest["budget"]["failed_evaluations"] == summary["failed_evaluations"]
+    assert manifest["budget"]["cached_evaluations"] == 0
+    assert manifest["budget"]["invalid_evaluations"] == summary["skipped_evaluations"]
+    assert manifest["budget"]["partial_run"] is False
+    assert manifest["budget"]["evaluation_semantics"]
     assert manifest["budget"]["wall_clock_seconds"] == summary["wall_clock_seconds"]
     assert manifest["budget"]["actual_evaluations"] == summary["evaluation_count"]
     assert manifest["budget"]["cached_evaluations"] == 0
@@ -290,7 +300,11 @@ seed_policy:
     assert primitive_bank["precision_mode"] == summary["precision_mode"]
     assert seed_candidates["system"] == "primordia"
     assert seed_candidates["run_id"] == summary["run_id"]
-    assert seed_candidates["seed_candidates"][0]["family"] == "attention"
+    assert {entry["family"] for entry in seed_candidates["seed_candidates"]} == {"attention", "sparse_mlp"}
+    top_seed = seed_candidates["seed_candidates"][0]
+    assert "supporting_benchmarks" in top_seed
+    assert "repeat_support_count" in top_seed
+    assert "median_quality_by_group" in top_seed
     assert seed_candidates["benchmark_seeds"][0]["benchmark_group"] == "tabular"
     assert {entry["family"] for entry in primitive_bank["primitive_families"]} == {"attention", "embedding", "mlp", "sparse_mlp"}
     sparse = next(entry for entry in primitive_bank["primitive_families"] if entry["family"] == "sparse_mlp")
@@ -301,6 +315,281 @@ seed_policy:
     assert sparse["best_metric_value"] == 0.81
     assert {record["benchmark_id"] for record in results} == {"iris_classification", "tiny_lm_synthetic"}
 
+    validation_report = validate_contract(
+        RunManifest.model_validate(manifest),
+        [ResultRecord.model_validate(row) for row in results],
+        load_parity_pack(pack_path),
+        run_dir,
+    )
+    validation_codes = {issue.code for issue in validation_report.issues}
+    assert "budget_actual_evaluations_missing" not in validation_codes
+    assert "budget_semantics_missing" not in validation_codes
+    assert validation_report.ok
+
+
+def test_named_lane_config_can_complete_regression_and_classification_surface(tmp_path: Path, monkeypatch) -> None:
+    class Phase2Runtime(FakeRuntimeBindings):
+        def __init__(self) -> None:
+            super().__init__(runtime_backend="numpy-fallback", runtime_version="phase2-fake")
+            self.benchmarks.update(
+                {
+                    "diabetes": FakeBenchmarkSpec("diabetes", "regression", "mse", "min", 10, 1),
+                    "friedman1": FakeBenchmarkSpec("friedman1", "regression", "mse", "min", 10, 1),
+                }
+            )
+            self.family_scores.update({"mlp": 0.91, "sparse_mlp": 0.89, "moe_mlp": 0.87})
+            self.regression_scores = {"mlp": 12.0, "sparse_mlp": 10.5, "moe_mlp": 9.25}
+
+        def train_and_evaluate(
+            self,
+            model: object,
+            x_train,
+            y_train,
+            x_val,
+            y_val,
+            *,
+            task: str,
+            epochs: int,
+            lr: float,
+            batch_size: int,
+            parameter_count: int,
+        ) -> FakeEvalResult:
+            if task == "regression":
+                del x_train, y_train, x_val, y_val, epochs, lr, batch_size
+                family = model["genome"].split("-")[0]
+                metric_value = self.regression_scores[family]
+                return FakeEvalResult(
+                    metric_name="mse",
+                    metric_value=metric_value,
+                    quality=-metric_value,
+                    parameter_count=parameter_count,
+                    train_seconds=0.01,
+                )
+            return super().train_and_evaluate(
+                model,
+                x_train,
+                y_train,
+                x_val,
+                y_val,
+                task=task,
+                epochs=epochs,
+                lr=lr,
+                batch_size=batch_size,
+                parameter_count=parameter_count,
+            )
+
+    runtime = Phase2Runtime()
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
+    config_path = tmp_path / "phase2.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: phase2_lane
+runtime:
+  backend: numpy-fallback
+benchmark_pool:
+  name: phase2_lane
+  benchmarks: [iris, diabetes, friedman1]
+search:
+  mode: budget_matched
+  target_evaluation_count: 6
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp, sparse_mlp, moe_mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "phase2_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert summary["failure_count"] == 0
+    assert summary["completed_benchmarks"] == ["iris", "diabetes", "friedman1"]
+    assert {row["benchmark_name"] for row in summary["best_results"]} == {"iris", "diabetes", "friedman1"}
+    assert {row["metric_name"] for row in summary["best_results"]} == {"accuracy", "mse"}
+
+
+def test_search_policy_is_surfaced_and_max_candidates_cap_is_enforced(tmp_path: Path, monkeypatch) -> None:
+    runtime = FakeRuntimeBindings(runtime_backend="numpy-fallback", runtime_version="phase3-fake")
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
+    config_path = tmp_path / "phase3.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: phase3_cap
+runtime:
+  backend: numpy-fallback
+benchmark_pool:
+  name: phase3_cap
+  benchmarks: [iris]
+search:
+  mode: budget_matched
+  target_evaluation_count: 5
+  population_size: 4
+  elite_fraction: 0.5
+  mutation_rounds_per_parent: 2
+  family_exploration_floor: 1
+  max_candidates_per_benchmark: 2
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp, sparse_mlp, moe_mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "phase3_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert summary["evaluation_count"] == 2
+    assert summary["search_policy"]["max_candidates_per_benchmark"] == 2
+    assert summary["search_policy"]["mutation_rounds_per_parent"] == 2
+    assert summary["benchmark_slot_plan"][0]["raw_slots"] == 5
+    assert summary["benchmark_slot_plan"][0]["effective_slots"] == 2
+    assert "## Search Policy" in report
+    assert "## Benchmark Slot Plan" in report
+
+
+def test_search_leader_surfaces_capture_benchmark_and_family_bests(tmp_path: Path, fake_runtime) -> None:
+    config_path = tmp_path / "leaders.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: phase3_leaders
+benchmark_pool:
+  name: phase3_leaders
+  benchmarks: [iris, tiny_lm_synthetic]
+search:
+  mode: budget_matched
+  target_evaluation_count: 4
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp, sparse_mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding, attention]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "leaders_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    leaders = json.loads((run_dir / "search_leaders.json").read_text(encoding="utf-8"))
+    primitive_bank = json.loads((run_dir / "primitive_bank_summary.json").read_text(encoding="utf-8"))
+
+    assert {row["benchmark_name"] for row in summary["benchmark_leaders"]} == {"iris", "tiny_lm_synthetic"}
+    assert any(row["leader_family"] == "sparse_mlp" and row["benchmark_name"] == "iris" for row in summary["benchmark_leaders"])
+    assert any(row["family"] == "attention" and row["benchmark_wins"] == 1 for row in summary["family_leaders"])
+    assert leaders == {
+        "benchmark_leaders": summary["benchmark_leaders"],
+        "family_leaders": summary["family_leaders"],
+    }
+    sparse_family = next(row for row in primitive_bank["primitive_families"] if row["family"] == "sparse_mlp")
+    assert sparse_family["best_generation"] == 0
+    assert sparse_family["best_search_score"] is not None
+    assert sparse_family["supporting_benchmarks"] == ["iris"]
+    assert "## Benchmark Leaders" in report
+    assert "## Family Leaders" in report
+
+
+def test_offspring_mutation_reuses_parent_genome_payload(tmp_path: Path, monkeypatch) -> None:
+    class InheritanceRuntime(FakeRuntimeBindings):
+        def mutate_genome(self, genome, slot_index: int, allowed_families: list[str], config):
+            del slot_index, allowed_families, config
+            width = genome.hidden_layers[0] + 1
+            return FakeGenome(
+                family=genome.family,
+                hidden_layers=[width] * len(genome.hidden_layers),
+                learning_rate=getattr(genome, "learning_rate", 1e-3),
+                weight_decay=getattr(genome, "weight_decay", 0.0),
+                norm_type=getattr(genome, "norm_type", "none"),
+            ), "width+1"
+
+        def train_and_evaluate(
+            self,
+            model: object,
+            x_train,
+            y_train,
+            x_val,
+            y_val,
+            *,
+            task: str,
+            epochs: int,
+            lr: float,
+            batch_size: int,
+            parameter_count: int,
+        ) -> FakeEvalResult:
+            del x_train, y_train, x_val, y_val, task, epochs, lr, batch_size
+            width = int(model["genome"].split("-")[1].split("x")[0])
+            metric_value = width / 100.0
+            return FakeEvalResult(
+                metric_name="accuracy",
+                metric_value=metric_value,
+                quality=metric_value,
+                parameter_count=parameter_count,
+                train_seconds=0.01,
+            )
+
+    runtime = InheritanceRuntime(runtime_backend="numpy-fallback", runtime_version="phase3-inheritance")
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
+    config_path = tmp_path / "inheritance.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: phase3_inheritance
+runtime:
+  backend: numpy-fallback
+benchmark_pool:
+  name: phase3_inheritance
+  benchmarks: [iris]
+search:
+  mode: budget_matched
+  target_evaluation_count: 3
+  population_size: 1
+  mutation_rounds_per_parent: 1
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "inheritance_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+    trials = json.loads((run_dir / "trial_records.json").read_text(encoding="utf-8"))
+
+    widths = [row["genome_payload"]["hidden_layers"][0] for row in trials]
+    generations = [row["generation"] for row in trials]
+
+    assert generations == [0, 1, 2]
+    assert widths == [64, 65, 66]
+    assert trials[1]["parent_genome_id"] == trials[0]["genome_id"]
+    assert trials[2]["parent_genome_id"] == trials[1]["genome_id"]
+    assert trials[1]["mutation_operator"] == "width+1"
+    assert trials[2]["mutation_operator"] == "width+1"
 
 def test_checked_in_official_smoke_config_runs_and_exports(tmp_path: Path, fake_runtime) -> None:
     config_path = REPO_ROOT / "EvoNN-Primordia" / "configs" / "smoke.yaml"
@@ -733,7 +1022,7 @@ seed_policy:
 
 def test_runtime_metadata_propagates_to_trials_summary_and_report(tmp_path: Path, monkeypatch) -> None:
     runtime = FakeRuntimeBindings(runtime_backend="numpy-fallback", runtime_version="fallback-0.9")
-    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda: runtime)
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         """
@@ -782,6 +1071,45 @@ primitive_pool:
     assert "- Failure Count: `0`" in report
     assert "## Failure Patterns" in report
     assert "| none | 0 |" in report
+
+
+def test_search_loop_persists_lineage_and_scoring_fields(tmp_path: Path, monkeypatch) -> None:
+    runtime = FakeRuntimeBindings(runtime_backend="numpy-fallback", runtime_version="fallback-1.0")
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: lineage_fields
+benchmark_pool:
+  name: lineage_fields
+  benchmarks: [iris]
+search:
+  mode: budget_matched
+  target_evaluation_count: 5
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp, sparse_mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "lineage_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    trials = json.loads((run_dir / "trial_records.json").read_text(encoding="utf-8"))
+
+    assert len(trials) == 5
+    assert any(record["generation"] > 0 for record in trials)
+    assert any(record["parent_genome_id"] for record in trials if record["generation"] > 0)
+    assert all("search_score" in record for record in trials)
+    assert all("novelty_score" in record for record in trials)
+    assert all("complexity_penalty" in record for record in trials)
 
 
 def test_report_includes_grouped_failure_patterns_with_status_fallback(tmp_path: Path) -> None:
@@ -1101,8 +1429,12 @@ primitive_pool:
             "evaluation_count": 1,
             "benchmark_wins": 1,
             "benchmarks_won": ["iris"],
+            "supporting_benchmarks": ["iris"],
+            "benchmark_groups": ["tabular"],
             "best_metric_name": "accuracy",
             "best_metric_value": 0.78,
+            "best_search_score": primitive_bank_summary["primitive_families"][0]["best_search_score"],
+            "best_generation": 0,
             "representative_genome_id": "mlp-64x64",
             "representative_architecture_summary": "mlp[64x64]",
         }
@@ -1115,6 +1447,8 @@ primitive_pool:
     assert "## Primitive Bank Summary" in regenerated
     assert "| Family | Evaluations | Benchmark Wins | Won Benchmarks | Best Metric | Best Value | Representative Genome | Representative Architecture |" in regenerated
     assert "| mlp | 1 | 1 | iris | accuracy | 0.780000 | mlp-64x64 | mlp[64x64] |" in regenerated
+    assert "## Benchmark Leaders" in regenerated
+    assert "## Family Leaders" in regenerated
     assert "## Benchmark Group Coverage" in regenerated
     assert "| tabular | 1 |" in regenerated
     assert "## Failure Summary" in regenerated
@@ -1189,7 +1523,7 @@ def test_language_modeling_output_dim_expands_to_fit_max_token_id(tmp_path: Path
         return base_compile(genome, input_shape, output_dim, modality, task)
 
     runtime.compile_genome = compile_and_capture
-    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda: runtime)
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
 
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
@@ -1224,7 +1558,7 @@ primitive_pool:
 
 
 def test_run_search_requires_runtime_bindings(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda: (_ for _ in ()).throw(RuntimeError("mlx unavailable")))
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: (_ for _ in ()).throw(RuntimeError("mlx unavailable")))
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         """

@@ -399,14 +399,21 @@ selection:
     store = RunStore(run_dir / "metrics.duckdb")
     contenders = store.load_contenders("run")
     results = store.load_results("run")
+    meta = store.load_budget_metadata("run")
     store.close()
 
     contender_names = {record["contender_name"] for record in contenders}
     assert "xgb_small" not in contender_names
     assert "lgbm_small" not in contender_names
     assert "catboost_small" not in contender_names
+    assert meta["optional_missing_count"] == 3
+    assert meta["optional_missing_by_group"] == {"tabular": ["xgb_small", "lgbm_small", "catboost_small"]}
     assert all(record["status"] == "ok" for record in contenders)
     assert results[0]["status"] == "ok"
+
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Optional contenders skipped" in report
+    assert "catboost_small, lgbm_small, xgb_small" in report
 
 
 def test_export_records_optional_skip_policy_metadata(tmp_path: Path, monkeypatch) -> None:
@@ -463,13 +470,26 @@ seed_policy:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     assert manifest["baseline_coverage"]["benchmark_complete_policy"] == "required_only_optional_skips_allowed"
-    assert manifest["baseline_coverage"]["policy_stage"] == "steady_state"
-    assert "sklearn-backed contender pool" in manifest["baseline_coverage"]["policy_reason"]
     assert manifest["baseline_coverage"]["optional_dependency_skips"]["tabular"] == [
         "catboost_small",
         "lgbm_small",
         "xgb_small",
     ]
+
+
+def test_official_lane_config_resolves_benchmark_pack_names() -> None:
+    config_path = (
+        Path(__file__).resolve().parents[1]
+        / "configs"
+        / "official_lanes"
+        / "tier1_core_eval64.yaml"
+    )
+    config = load_config(config_path)
+
+    assert config.benchmark_pool.name == "tier1_core"
+    assert "iris" in config.benchmark_pool.benchmarks
+    assert "diabetes" in config.benchmark_pool.benchmarks
+    assert config.baseline.target_evaluation_count == 64
 
 
 def test_export_optional_skip_metadata_respects_selection_cap(tmp_path: Path, monkeypatch) -> None:
@@ -640,21 +660,6 @@ selection:
     assert "## Failure Summary" in report
     assert "dataset loader exploded" in report
     assert "| iris | failed | dataset loader exploded |" in report
-
-
-def test_official_lane_config_resolves_benchmark_pack_names() -> None:
-    config_path = (
-        Path(__file__).resolve().parents[1]
-        / "configs"
-        / "official_lanes"
-        / "tier1_core_eval64.yaml"
-    )
-    config = load_config(config_path)
-
-    assert config.benchmark_pool.name == "tier1_core"
-    assert "iris" in config.benchmark_pool.benchmarks
-    assert "diabetes" in config.benchmark_pool.benchmarks
-    assert config.baseline.target_evaluation_count == 64
 
 
 def test_official_lane_pack_prefers_contender_resolvable_aliases() -> None:

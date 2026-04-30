@@ -11,7 +11,7 @@ import time
 from collections import Counter
 
 from stratograph.benchmarks import get_benchmark
-from stratograph.config import BenchmarkPoolConfig, EvolutionConfig, RunConfig, TrainingConfig
+from stratograph.config import BenchmarkPoolConfig, EvolutionConfig, RunConfig, RuntimeConfig, TrainingConfig
 from stratograph.export.report import write_report
 from stratograph.genome import HierarchicalGenome, genome_to_dict
 from stratograph.genome.models import (
@@ -25,11 +25,10 @@ from stratograph.genome.models import (
 )
 from stratograph.pipeline.evaluator import (
     EvaluationRecord,
-    RUNTIME_BACKEND,
-    RUNTIME_VERSION,
     TrainingArtifact,
     evaluate_candidate_with_state,
 )
+from stratograph.runtime.backends import resolve_runtime_backend_with_policy
 from stratograph.search import crossover_genomes, descriptor, mutate_genome, niche_key, novelty_score
 from stratograph.search.operators import MOTIF_LIBRARY
 from stratograph.storage import RunStore
@@ -61,6 +60,10 @@ def run_evolution(
     run_id = run_dir.name
     created_at = datetime.now(timezone.utc).isoformat()
     architecture_mode = variant or config.evolution.architecture_mode
+    runtime_selection = resolve_runtime_backend_with_policy(
+        config.runtime.backend,
+        allow_fallback=config.runtime.allow_fallback,
+    )
     variant_policy = _variant_policy(architecture_mode)
     completed_benchmarks: set[str] = set()
     if resume and checkpoint_path.exists():
@@ -166,6 +169,7 @@ def run_evolution(
                         epochs=config.training.epochs,
                         batch_size=config.training.batch_size,
                         learning_rate=config.training.learning_rate,
+                        runtime_backend=runtime_selection.resolved_backend,
                     )
                     result = outcome.record
                     trained_states[genome.genome_id] = outcome.training_artifact
@@ -262,11 +266,22 @@ def run_evolution(
             "configured_evaluation_slots": (
                 config.evolution.population_size * config.evolution.generations * len(benchmark_names)
             ),
+            "actual_evaluations": scheduled_evaluation_slots,
+            "cached_evaluations": 0,
+            "failed_evaluations": 0,
+            "invalid_evaluations": 0,
+            "partial_run": False,
+            "evaluation_semantics": (
+                "one candidate evaluation counted for each genome evaluated on each benchmark; "
+                "evaluation_count = population_size * generations * benchmark_count"
+            ),
             "effective_training_epochs": config.training.epochs,
             "wall_clock_seconds": wall_clock_seconds,
             "created_at": created_at,
-            "runtime_backend": RUNTIME_BACKEND,
-            "runtime_version": RUNTIME_VERSION,
+            "runtime_backend_requested": runtime_selection.requested_backend,
+            "runtime_backend": runtime_selection.resolved_backend,
+            "runtime_version": runtime_selection.runtime_version,
+            "runtime_backend_limitations": runtime_selection.backend_limitations,
             "precision_mode": PRECISION_MODE,
             "architecture_mode": architecture_mode,
             "benchmark_load_failures": benchmark_load_failures,
@@ -486,16 +501,20 @@ def _artifact_compatible(genome: HierarchicalGenome, artifact: TrainingArtifact 
 
 def _normalize_config(config: RunConfig) -> RunConfig:
     benchmark_pool = config.benchmark_pool
+    runtime = config.runtime
     evolution = config.evolution
     training = config.training
     if not isinstance(benchmark_pool, BenchmarkPoolConfig):
         benchmark_pool = BenchmarkPoolConfig.model_validate(benchmark_pool)
+    if not isinstance(runtime, RuntimeConfig):
+        runtime = RuntimeConfig.model_validate(runtime)
     if not isinstance(evolution, EvolutionConfig):
         evolution = EvolutionConfig.model_validate(evolution)
     if not isinstance(training, TrainingConfig):
         training = TrainingConfig.model_validate(training)
     if (
         benchmark_pool is config.benchmark_pool
+        and runtime is config.runtime
         and evolution is config.evolution
         and training is config.training
     ):
@@ -504,6 +523,7 @@ def _normalize_config(config: RunConfig) -> RunConfig:
         seed=config.seed,
         run_name=config.run_name,
         benchmark_pool=benchmark_pool,
+        runtime=runtime,
         training=training,
         evolution=evolution,
     )

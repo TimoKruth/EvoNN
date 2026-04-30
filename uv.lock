@@ -562,6 +562,8 @@ name = "evonn-primordia"
 version = "0.1.0"
 source = { editable = "EvoNN-Primordia" }
 dependencies = [
+    { name = "evonn-compare" },
+    { name = "evonn-shared" },
     { name = "mlx", marker = "sys_platform == 'darwin'" },
     { name = "numpy" },
     { name = "openml" },
@@ -582,6 +584,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "evonn-compare", editable = "EvoNN-Compare" },
+    { name = "evonn-shared", editable = "EvoNN-Shared" },
     { name = "mlx", marker = "sys_platform == 'darwin'", specifier = ">=0.31.0" },
     { name = "numpy", specifier = ">=2.2.0" },
     { name = "openml", specifier = ">=0.14.2" },
@@ -1853,6 +1857,7 @@ version = "0.1.0"
 source = { editable = "EvoNN-Stratograph" }
 dependencies = [
     { name = "duckdb" },
+    { name = "evonn-shared" },
     { name = "mlx", marker = "sys_platform == 'darwin'" },
     { name = "numpy" },
     { name = "pydantic" },
@@ -1893,6 +1898,7 @@ viz = [
 [package.metadata]
 requires-dist = [
     { name = "duckdb", specifier = ">=1.1.3" },
+    { name = "evonn-shared", editable = "EvoNN-Shared" },
     { name = "lightgbm", marker = "extra == 'baselines'", specifier = ">=4.0" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.9" },
     { name = "mlx", marker = "sys_platform == 'darwin'", specifier = ">=0.31.0" },

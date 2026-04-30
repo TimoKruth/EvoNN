@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from evonn_contenders.benchmarks import get_benchmark
-from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_pack, native_id_candidates
+from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_pack
 from evonn_contenders.config import load_config
 from evonn_contenders.export.baseline_coverage import build_baseline_coverage
 from evonn_contenders.export.report import write_report
@@ -169,15 +169,24 @@ def export_symbiosis_contract(
     results_path = output_dir / "results.json"
     manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     write_json(results_path, [record.model_dump(mode="json") for record in result_records])
-    write_json(output_dir / "summary.json", _build_contract_summary(run=run, manifest=manifest, results=result_records))
+    write_json(
+        output_dir / "summary.json",
+        _build_contract_summary(run=run, manifest=manifest, results=result_records, budget_meta=budget_meta),
+    )
     return manifest_path, results_path
 
 
 def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]]) -> str:
-    candidates = native_id_candidates(entry, system="contenders")
-    fallback = fallback_native_id(entry)
-    if fallback not in candidates:
-        candidates.insert(0, fallback)
+    native_ids = entry.native_ids or {}
+    candidates: list[str] = []
+    for candidate in [
+        native_ids.get("contenders"),
+        fallback_native_id(entry),
+        *native_ids.values(),
+        entry.benchmark_id,
+    ]:
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
     for candidate in candidates:
         if candidate in available_results:
             return candidate
@@ -190,7 +199,9 @@ def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]])
     return candidates[0]
 
 
-def _build_contract_summary(*, run: dict[str, Any], manifest: RunManifest, results: list[ResultRecord]) -> dict[str, Any]:
+def _build_contract_summary(
+    *, run: dict[str, Any], manifest: RunManifest, results: list[ResultRecord], budget_meta: dict[str, Any]
+) -> dict[str, Any]:
     successful = [record for record in results if record.status == "ok"]
     metric_values = [float(record.metric_value) for record in successful if record.metric_value is not None]
     parameter_counts = [int(record.parameter_count) for record in successful if record.parameter_count is not None]
@@ -223,6 +234,8 @@ def _build_contract_summary(*, run: dict[str, Any], manifest: RunManifest, resul
         "failure_count": len(failed),
         "failure_patterns": failure_patterns,
         "benchmarks_evaluated": len(results),
+        "optional_missing_by_group": budget_meta.get("optional_missing_by_group") or {},
+        "optional_missing_count": int(budget_meta.get("optional_missing_count", 0)),
         "baseline_coverage": (
             manifest.baseline_coverage.model_dump(mode="json")
             if manifest.baseline_coverage is not None
@@ -263,7 +276,6 @@ def _export_epochs_per_candidate(*, pack_epochs_per_candidate: int, budget_polic
     if budget_policy_name == "prototype_equal_budget":
         return int(pack_epochs_per_candidate)
     return 1
-
 
 def _code_version() -> str | None:
     try:
