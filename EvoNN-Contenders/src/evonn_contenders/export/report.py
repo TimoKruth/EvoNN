@@ -33,6 +33,14 @@ def write_report(run_dir: str | Path) -> Path:
     evaluation_count = int(budget_meta.get("evaluation_count", len(contenders)))
     executed_evaluation_count = int(budget_meta.get("executed_evaluation_count", len(contenders)))
     cached_evaluation_count = max(evaluation_count - executed_evaluation_count, 0)
+    failed_evaluation_count = int(
+        budget_meta.get(
+            "failed_evaluation_count",
+            sum(1 for record in contenders if record["status"] != "ok"),
+        )
+    )
+    requested_workers = int(budget_meta.get("parallel_trial_workers_requested", 1))
+    effective_workers = int(budget_meta.get("parallel_trial_workers_effective", 0))
     lines = [
         f"# Contender Report: {run['run_name']}",
         "",
@@ -45,6 +53,8 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Failed benchmarks: `{len(failed_records)}`",
         f"- Executed evals: `{executed_evaluation_count}`",
         f"- Cached evals: `{cached_evaluation_count}`",
+        f"- Failed contender evals: `{failed_evaluation_count}`",
+        f"- Parallel trial workers: requested `{requested_workers}`, effective `{effective_workers}`",
         "",
     ]
     optional_missing = budget_meta.get("optional_missing_by_group") or {}

@@ -256,6 +256,103 @@ Current comparison semantics:
 - compatibility assumptions and integrity findings are written into the baseline
   manifest and surfaced in imported summary artifacts
 
+### Performance baseline planning workflow
+
+`performance-baseline` creates the canonical artifact tree for performance work
+before optimization branches start. It can now do two distinct jobs:
+
+- initialize the baseline workspace, planned matrix rows, and static dashboard
+- import measured fair-matrix workspaces into canonical `perf_rows.jsonl` rows
+  and `raw_runs/` links
+
+Use it from the repo root:
+
+```bash
+uv run --package evonn-compare evonn-compare performance-baseline \
+  --output-root EvoNN-Compare/performance_baselines/2026-04-30-initial \
+  --packs tier1_core,tier_b_core \
+  --budgets 64,256,1000 \
+  --seeds 42,43,44
+```
+
+To materialize measured rows from completed fair-matrix workspaces:
+
+```bash
+uv run --package evonn-compare evonn-compare performance-baseline \
+  --output-root EvoNN-Compare/performance_baselines/2026-04-30-mlx-baseline \
+  --packs tier1_core,tier_b_core \
+  --budgets 64,256,1000 \
+  --seeds 42,43,44 \
+  --cache-modes cold \
+  --matrix-workspace .tmp/fair-matrix-tier1-mlx \
+  --matrix-workspace .tmp/fair-matrix-tier-b-mlx
+```
+
+### First MLX baseline runbook
+
+The first acceptance-grade baseline must be executed on an Apple-Silicon/macOS
+workspace. Linux hosts can still materialize Compare artifacts, but Prism and
+Topograph fall back to portable exports there and do not satisfy the MLX truth
+path required by the baseline issue.
+
+1. Run the Tier 1 matrix on the macOS workspace:
+
+```bash
+uv run --package evonn-compare evonn-compare fair-matrix \
+  --workspace .tmp/fair-matrix-tier1-mlx \
+  --pack tier1_core \
+  --budgets 64,256,1000 \
+  --seeds 42,43,44
+```
+
+2. Run the Tier B matrix on the same macOS workspace:
+
+```bash
+uv run --package evonn-compare evonn-compare fair-matrix \
+  --workspace .tmp/fair-matrix-tier-b-mlx \
+  --pack tier_b_core \
+  --budgets 64,256,1000 \
+  --seeds 42,43,44
+```
+
+3. Materialize the canonical baseline artifact set from those completed
+   workspaces:
+
+```bash
+uv run --package evonn-compare evonn-compare performance-baseline \
+  --output-root EvoNN-Compare/performance_baselines/2026-04-30-mlx-baseline \
+  --packs tier1_core,tier_b_core \
+  --budgets 64,256,1000 \
+  --seeds 42,43,44 \
+  --cache-modes cold \
+  --matrix-workspace .tmp/fair-matrix-tier1-mlx \
+  --matrix-workspace .tmp/fair-matrix-tier-b-mlx
+```
+
+The resulting `baseline_manifest.json`, `baseline_summary.md`,
+`perf_rows.jsonl`, `perf_dashboard.html`, and `raw_runs/` tree are the
+canonical baseline artifacts that optimization branches must cite.
+
+Key outputs:
+
+- `baseline_manifest.json`
+- `baseline_summary.md`
+- `raw_runs/`
+- `perf_rows.jsonl`
+- `perf_dashboard.html`
+- `perf_dashboard.json`
+
+Canonical review policy:
+
+- `PERFORMANCE_OPTIMIZATION_WORKFLOW.md`
+- `.github/pull_request_template.md`
+
+Use those with the compare history flow before approving optimization work:
+
+- load the baseline and after-change artifacts into a workspace with `historical-baseline`
+- refresh the canonical workspace review surface with `workspace-report`
+- record the outcome as `accepted`, `rejected-for-revision`, or `scrapped`
+
 ### Trend reporting CLI
 
 Use `trend-report` to merge and query one or more trend datasets:

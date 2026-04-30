@@ -45,6 +45,7 @@ class SearchConfig(BaseModel):
     complexity_penalty_weight: float = 0.02
     max_candidates_per_benchmark: int | None = None
     selection_mode: Literal["metric_only", "composite"] = "composite"
+    candidate_deduplication: Literal["off", "exact_genome_id"] = "off"
     seed_hidden_width: int = 64
     seed_hidden_layers: int = 2
     max_hidden_width: int = 256

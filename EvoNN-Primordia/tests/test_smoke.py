@@ -13,6 +13,7 @@ from evonn_primordia.config import load_config
 from evonn_primordia.export.report import enrich_best_results, write_report
 from evonn_primordia.export.seeding import write_seed_candidates
 from evonn_primordia.export.symbiosis import export_symbiosis_contract
+from evonn_primordia.genome import ModelGenome
 from evonn_primordia.pipeline import run_search
 from evonn_shared.contracts import ResultRecord, RunManifest
 
@@ -269,6 +270,8 @@ seed_policy:
     assert manifest["budget"]["actual_evaluations"] == summary["evaluation_count"]
     assert manifest["budget"]["failed_evaluations"] == summary["failed_evaluations"]
     assert manifest["budget"]["cached_evaluations"] == 0
+    assert manifest["budget"]["deduplicated_evaluations"] == 0
+    assert manifest["budget"]["accounting_tags"] == ["full_budget"]
     assert manifest["budget"]["invalid_evaluations"] == summary["skipped_evaluations"]
     assert manifest["budget"]["partial_run"] is False
     assert manifest["budget"]["evaluation_semantics"]
@@ -279,6 +282,7 @@ seed_policy:
     assert manifest["budget"]["invalid_evaluations"] == 0
     assert manifest["budget"]["partial_run"] is False
     assert "primitive family-benchmark trial" in manifest["budget"]["evaluation_semantics"]
+    assert manifest["search_telemetry"]["candidate_deduplication"] == "off"
     assert manifest["artifacts"]["model_summary_json"] == "compare_summary.json"
     assert manifest["artifacts"]["primitive_bank_summary_json"] == "primitive_bank_summary.json"
     assert manifest["artifacts"]["seed_candidates_json"] == "seed_candidates.json"
@@ -293,6 +297,7 @@ seed_policy:
     assert compare_summary["benchmarks_evaluated"] == 2
     assert compare_summary["failure_patterns"] == {}
     assert compare_summary["wall_clock_seconds"] == summary["wall_clock_seconds"]
+    assert compare_summary["deduplicated_evaluations"] == 0
     assert compare_summary["primitive_usage"] == summary["primitive_usage"]
     assert primitive_bank["system"] == "primordia"
     assert primitive_bank["run_id"] == summary["run_id"]
@@ -457,10 +462,99 @@ primitive_pool:
     assert summary["evaluation_count"] == 2
     assert summary["search_policy"]["max_candidates_per_benchmark"] == 2
     assert summary["search_policy"]["mutation_rounds_per_parent"] == 2
+    assert summary["search_policy"]["candidate_deduplication"] == "off"
     assert summary["benchmark_slot_plan"][0]["raw_slots"] == 5
     assert summary["benchmark_slot_plan"][0]["effective_slots"] == 2
     assert "## Search Policy" in report
     assert "## Benchmark Slot Plan" in report
+
+
+def test_exact_candidate_deduplication_is_exported_as_reduced_calculation(tmp_path: Path, monkeypatch) -> None:
+    class DuplicateRuntime(FakeRuntimeBindings):
+        def create_seed_genome(self, family: str, width: int, depth: int) -> ModelGenome:
+            return ModelGenome(family=family, hidden_layers=[width] * depth)
+
+        def mutate_genome(self, genome: FakeGenome, slot_index: int, allowed_families: list[str], config) -> FakeGenome:
+            del slot_index, allowed_families, config
+            return genome
+
+    runtime = DuplicateRuntime(runtime_backend="numpy-fallback", runtime_version="dedup-fake")
+    monkeypatch.setattr("evonn_primordia.pipeline._load_runtime_bindings", lambda _config: runtime)
+    config_path = tmp_path / "dedup.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: dedup_exact
+runtime:
+  backend: numpy-fallback
+benchmark_pool:
+  name: dedup_exact
+  benchmarks: [iris]
+search:
+  mode: budget_matched
+  target_evaluation_count: 5
+  population_size: 2
+  candidate_deduplication: exact_genome_id
+training:
+  epochs_per_candidate: 1
+primitive_pool:
+  tabular: [mlp]
+  synthetic: [mlp]
+  image: [mlp]
+  language_modeling: [embedding]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    run_dir = tmp_path / "dedup_run"
+    run_search(config, run_dir=run_dir, config_path=config_path)
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert summary["evaluation_count"] == 1
+    assert summary["scheduled_evaluation_count"] == 5
+    assert summary["deduplicated_evaluations"] == 4
+    assert summary["search_policy"]["candidate_deduplication"] == "exact_genome_id"
+    assert "Deduplicated Slots: `4`" in report
+    assert "| candidate_deduplication | exact_genome_id |" in report
+
+    pack_path = tmp_path / "dedup_pack.yaml"
+    pack_path.write_text(
+        """
+name: dedup_exact
+tier: 1
+description: Exact-dedup smoke pack
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      primordia: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+budget_policy:
+  evaluation_count: 5
+  epochs_per_candidate: 1
+seed_policy:
+  mode: campaign
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest_path, _results_path = export_symbiosis_contract(run_dir, pack_path, run_dir)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    compare_summary = json.loads((run_dir / "compare_summary.json").read_text(encoding="utf-8"))
+
+    assert manifest["budget"]["evaluation_count"] == 5
+    assert manifest["budget"]["actual_evaluations"] == 1
+    assert manifest["budget"]["deduplicated_evaluations"] == 4
+    assert manifest["budget"]["accounting_tags"] == ["candidate_deduplicated"]
+    assert manifest["budget"]["partial_run"] is False
+    assert "deduplicated_evaluations counts exact duplicate genome-id slots" in manifest["budget"]["evaluation_semantics"]
+    assert manifest["search_telemetry"]["candidate_deduplication"] == "exact_genome_id"
+    assert compare_summary["deduplicated_evaluations"] == 4
+    assert compare_summary["candidate_deduplication"] == "exact_genome_id"
 
 
 def test_search_leader_surfaces_capture_benchmark_and_family_bests(tmp_path: Path, fake_runtime) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from math import log1p
 from random import Random
@@ -9,6 +10,7 @@ from random import Random
 import numpy as np
 
 from prism.genome import ModelGenome
+from prism.runtime.benchmark_data_cache import BenchmarkDataCache
 from prism.storage import RunStore
 from prism.runtime.cache import WeightCache
 from prism.runtime.training import EvaluationResult, train_and_evaluate
@@ -33,6 +35,27 @@ class GenerationState:
     lineage_ops: dict[str, str] = field(default_factory=dict)
     operator_stats: dict[str, dict[str, float]] = field(default_factory=dict)
     family_stats: dict[str, dict[str, float]] = field(default_factory=dict)
+    parallelism_mode: str = "serial"
+    parallelism_reason: str = "serial_requested"
+    parallelism_requested_workers: int = 1
+    parallelism_effective_workers: int = 1
+    parallelism_cache_policy: str = "live"
+
+
+@dataclass(frozen=True)
+class _PendingEvaluation:
+    order: int
+    genome: ModelGenome
+    benchmark_id: str
+    spec: object
+    parent_ids: list[str]
+    epoch_scale: float
+
+
+@dataclass
+class _EvaluationArtifacts:
+    result: EvaluationResult
+    trained_model: object | None = None
 
 
 def evaluate(
@@ -40,6 +63,7 @@ def evaluate(
     config,
     benchmark_specs: list,
     cache: WeightCache | None = None,
+    data_cache: BenchmarkDataCache | None = None,
     store: RunStore | None = None,
     run_id: str | None = None,
 ) -> GenerationState:
@@ -76,6 +100,8 @@ def evaluate(
 
     priority_scores = _benchmark_priority_scores(state, benchmark_specs)
     genome_profiles = _genome_profiles(state)
+    pending: list[_PendingEvaluation] = []
+    order = 0
 
     for genome in state.population:
         genome_results = state.results.get(genome.genome_id, {})
@@ -104,28 +130,58 @@ def evaluate(
                 training.efficiency_epoch_min_scale,
                 training.efficiency_epoch_max_scale,
             )
-
-            result = _evaluate_single(
-                genome=genome,
-                spec=spec,
-                training=training,
-                epoch_scale=epoch_scale * benchmark_scale * genome_scale,
-                cache=cache,
-                parent_ids=parent_ids,
+            pending.append(
+                _PendingEvaluation(
+                    order=order,
+                    genome=genome,
+                    benchmark_id=benchmark_id,
+                    spec=spec,
+                    parent_ids=list(parent_ids),
+                    epoch_scale=epoch_scale * benchmark_scale * genome_scale,
+                )
             )
+            order += 1
 
-            genome_results[benchmark_id] = result
+        state.results[genome.genome_id] = genome_results
+
+    parallelism = _resolve_parallelism(
+        requested_workers=training.parallel_evaluation_workers,
+        pending_evaluations=len(pending),
+    )
+    state.parallelism_mode = str(parallelism["mode"])
+    state.parallelism_reason = str(parallelism["reason"])
+    state.parallelism_requested_workers = int(parallelism["requested_workers"])
+    state.parallelism_effective_workers = int(parallelism["effective_workers"])
+    state.parallelism_cache_policy = str(parallelism["cache_policy"])
+
+    if not pending:
+        return state
+
+    prepared_datasets = _prepare_benchmark_data(pending, data_cache=data_cache)
+
+    if state.parallelism_effective_workers <= 1:
+        for task in pending:
+            result = _evaluate_single(
+                genome=task.genome,
+                spec=task.spec,
+                training=training,
+                epoch_scale=task.epoch_scale,
+                cache=cache,
+                parent_ids=task.parent_ids,
+                dataset=prepared_datasets[task.benchmark_id],
+            )
+            genome_results = state.results.setdefault(task.genome.genome_id, {})
+            genome_results[task.benchmark_id] = result
             if result.failure_reason == "unsupported_benchmark":
                 continue
             state.total_evaluations += 1
-            _record_benchmark_result(state, benchmark_id, result)
-
+            _record_benchmark_result(state, task.benchmark_id, result)
             if store is not None and run_id is not None:
                 store.save_evaluation(
                     run_id,
-                    genome.genome_id,
+                    task.genome.genome_id,
                     state.generation,
-                    benchmark_id,
+                    task.benchmark_id,
                     result.metric_name,
                     result.metric_value,
                     result.quality,
@@ -134,8 +190,33 @@ def evaluate(
                     result.failure_reason,
                     result.inherited_from,
                 )
+        return state
 
-        state.results[genome.genome_id] = genome_results
+    cache_view = cache.snapshot() if cache is not None else None
+    futures = {}
+    with ThreadPoolExecutor(max_workers=state.parallelism_effective_workers) as executor:
+        for task in pending:
+            futures[task.order] = executor.submit(
+                _evaluate_single_artifacts,
+                genome=task.genome,
+                spec=task.spec,
+                training=training,
+                epoch_scale=task.epoch_scale,
+                cache=cache_view,
+                parent_ids=task.parent_ids,
+                cache_writeback=False,
+                dataset=prepared_datasets[task.benchmark_id],
+            )
+        for task in pending:
+            artifacts = futures[task.order].result()
+            _record_evaluation_artifacts(
+                state,
+                task,
+                artifacts,
+                store=store,
+                run_id=run_id,
+                live_cache=cache,
+            )
 
     return state
 
@@ -177,7 +258,31 @@ def _evaluate_single(
     epoch_scale: float,
     cache: WeightCache | None,
     parent_ids: list[str] | None = None,
+    dataset: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> EvaluationResult:
+    return _evaluate_single_artifacts(
+        genome=genome,
+        spec=spec,
+        training=training,
+        epoch_scale=epoch_scale,
+        cache=cache,
+        parent_ids=parent_ids,
+        cache_writeback=True,
+        dataset=dataset,
+    ).result
+
+
+def _evaluate_single_artifacts(
+    genome: ModelGenome,
+    spec,
+    training,
+    epoch_scale: float,
+    cache: WeightCache | None,
+    parent_ids: list[str] | None = None,
+    *,
+    cache_writeback: bool,
+    dataset: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None,
+) -> _EvaluationArtifacts:
     """Compile, optionally inherit weights, train, cache, return result."""
     from prism.families.compiler import compile_genome
 
@@ -186,28 +291,34 @@ def _evaluate_single(
     task = spec.task if hasattr(spec, "task") else "classification"
     input_shape = spec.input_shape if hasattr(spec, "input_shape") else None
     if not is_genome_compatible(genome, modality, task):
-        return EvaluationResult(
-            metric_name=_default_metric_name(task),
-            metric_value=float("nan"),
-            quality=float("-inf"),
-            parameter_count=0,
-            train_seconds=0.0,
-            failure_reason="unsupported_benchmark",
+        return _EvaluationArtifacts(
+            result=EvaluationResult(
+                metric_name=_default_metric_name(task),
+                metric_value=float("nan"),
+                quality=float("-inf"),
+                parameter_count=0,
+                train_seconds=0.0,
+                failure_reason="unsupported_benchmark",
+            ),
         )
     # Load data before compile so LM output_dim can expand to observed token range.
-    X_train, y_train, X_val, y_val = _load_data(spec, seed=42)
+    if dataset is None:
+        dataset = _load_data(spec, seed=42)
+    X_train, y_train, X_val, y_val = dataset
     output_dim = _resolve_output_dim(spec, X_train, y_train)
 
     try:
         compiled = compile_genome(genome, input_shape, output_dim, modality, task=task)
     except Exception as exc:
-        return EvaluationResult(
-            metric_name="accuracy" if task == "classification" else "mse",
-            metric_value=float("nan"),
-            quality=float("-inf"),
-            parameter_count=0,
-            train_seconds=0.0,
-            failure_reason=f"compile_error:{type(exc).__name__}",
+        return _EvaluationArtifacts(
+            result=EvaluationResult(
+                metric_name="accuracy" if task == "classification" else "mse",
+                metric_value=float("nan"),
+                quality=float("-inf"),
+                parameter_count=0,
+                train_seconds=0.0,
+                failure_reason=f"compile_error:{type(exc).__name__}",
+            ),
         )
 
     model = compiled.model
@@ -250,11 +361,100 @@ def _evaluate_single(
     )
 
     # Cache weights on success
+    trained_model = None
     if cache is not None and result.failure_reason is None:
-        cache.store(genome.genome_id, model, family=genome.family)
+        if cache_writeback:
+            cache.store(genome.genome_id, model, family=genome.family)
+        else:
+            trained_model = model
     result.inherited_from = inherited_from
 
-    return result
+    return _EvaluationArtifacts(result=result, trained_model=trained_model)
+
+
+def _resolve_parallelism(
+    *,
+    requested_workers: int,
+    pending_evaluations: int,
+) -> dict[str, object]:
+    requested = max(1, int(requested_workers))
+    if requested <= 1:
+        return {
+            "mode": "serial",
+            "reason": "serial_requested",
+            "requested_workers": requested,
+            "effective_workers": 1,
+            "cache_policy": "live",
+        }
+    if pending_evaluations <= 1:
+        return {
+            "mode": "serial",
+            "reason": "single_pending_evaluation",
+            "requested_workers": requested,
+            "effective_workers": 1,
+            "cache_policy": "live",
+        }
+    effective = min(requested, pending_evaluations)
+    return {
+        "mode": "genome_benchmark_thread",
+        "reason": "generation_snapshot_cache",
+        "requested_workers": requested,
+        "effective_workers": effective,
+        "cache_policy": "generation_snapshot",
+    }
+
+
+def _record_evaluation_artifacts(
+    state: GenerationState,
+    task: _PendingEvaluation,
+    artifacts: _EvaluationArtifacts,
+    *,
+    store: RunStore | None,
+    run_id: str | None,
+    live_cache: WeightCache | None,
+) -> None:
+    genome_results = state.results.setdefault(task.genome.genome_id, {})
+    result = artifacts.result
+    genome_results[task.benchmark_id] = result
+    if result.failure_reason == "unsupported_benchmark":
+        return
+    state.total_evaluations += 1
+    _record_benchmark_result(state, task.benchmark_id, result)
+
+    if (
+        live_cache is not None
+        and artifacts.trained_model is not None
+        and result.failure_reason is None
+    ):
+        live_cache.store(task.genome.genome_id, artifacts.trained_model, family=task.genome.family)
+
+    if store is not None and run_id is not None:
+        store.save_evaluation(
+            run_id,
+            task.genome.genome_id,
+            state.generation,
+            task.benchmark_id,
+            result.metric_name,
+            result.metric_value,
+            result.quality,
+            result.parameter_count,
+            result.train_seconds,
+            result.failure_reason,
+            result.inherited_from,
+        )
+
+
+def _prepare_benchmark_data(
+    pending: list[_PendingEvaluation],
+    *,
+    data_cache: BenchmarkDataCache | None,
+) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+    prepared: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
+    for task in pending:
+        if task.benchmark_id in prepared:
+            continue
+        prepared[task.benchmark_id] = _load_data(task.spec, seed=42, data_cache=data_cache)
+    return prepared
 
 
 def _resolve_output_dim(spec, X_train: np.ndarray, y_train: np.ndarray) -> int:
@@ -294,11 +494,18 @@ def _multi_fidelity_scale(
     return schedule[bucket]
 
 
-def _load_data(spec, seed: int = 42):
+def _load_data(
+    spec,
+    seed: int = 42,
+    *,
+    data_cache: BenchmarkDataCache | None = None,
+):
     """Load train/val data from a benchmark spec.
 
     Supports specs with load_data() method or x_train/y_train attributes.
     """
+    if data_cache is not None:
+        return data_cache.resolve(spec, seed=seed)
     if hasattr(spec, "load_data"):
         return spec.load_data(seed=seed)
 

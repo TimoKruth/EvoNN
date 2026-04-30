@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
 import json
+from multiprocessing import get_context
 from pathlib import Path
 import random
 import shutil
 import time
 from collections import Counter
+from typing import Any
 
 from stratograph.benchmarks import get_benchmark
 from stratograph.config import BenchmarkPoolConfig, EvolutionConfig, RunConfig, RuntimeConfig, TrainingConfig
@@ -79,11 +82,20 @@ def run_evolution(
     )
 
     benchmark_names = config.benchmark_pool.benchmarks
+    pending_benchmarks = [name for name in benchmark_names if name not in completed_benchmarks]
     novelty_scores: list[float] = []
     occupied_niches: set[tuple[int, int, int, int]] = set()
     prior_budget_meta = store.load_budget_metadata(run_id) if resume else {}
     scheduled_evaluation_slots = int(prior_budget_meta.get("evaluation_count", 0) or 0)
     benchmark_load_failures = int(prior_budget_meta.get("benchmark_load_failures", 0) or 0)
+    configured_evaluation_slots = (
+        config.evolution.population_size * config.evolution.generations * len(benchmark_names)
+    )
+    parallelism = _resolve_parallelism(
+        requested_workers=config.evolution.benchmark_parallel_workers,
+        benchmark_count=len(pending_benchmarks),
+        runtime_backend=runtime_selection.resolved_backend,
+    )
     _write_status(
         status_path,
         run_id=run_id,
@@ -92,156 +104,28 @@ def run_evolution(
         completed_benchmarks=sorted(completed_benchmarks),
         state="running",
     )
-    for benchmark_name in benchmark_names:
-        if benchmark_name in completed_benchmarks:
-            continue
-        spec = get_benchmark(benchmark_name)
-        best_genome: HierarchicalGenome | None = None
-        best_result: EvaluationRecord | None = None
-        try:
-            data = spec.load_data(seed=config.seed)
-        except Exception as exc:
-            benchmark_load_failures += 1
-            failed_genome = _make_candidate(
-                benchmark_name=benchmark_name,
-                task=spec.task,
-                input_dim=spec.model_input_dim,
-                output_dim=spec.model_output_dim,
-                seed=config.seed,
-                candidate_index=0,
-                architecture_mode=architecture_mode,
-            )
-            failed_genome = _enforce_architecture_mode(failed_genome, architecture_mode)
-            store.record_genome(
-                run_id=run_id,
-                generation=0,
-                genome_id=failed_genome.genome_id,
-                benchmark_name=benchmark_name,
-                payload=genome_to_dict(failed_genome),
-                architecture_summary="load_failed",
-                parameter_count=0,
-            )
-            store.record_result(
-                run_id=run_id,
-                benchmark_name=benchmark_name,
-                record={
-                    "metric_name": spec.metric_name,
-                    "metric_direction": spec.metric_direction,
-                    "metric_value": None,
-                    "quality": None,
-                    "parameter_count": 0,
-                    "train_seconds": 0.0,
-                    "architecture_summary": "load_failed",
-                    "genome_id": failed_genome.genome_id,
-                    "status": "failed",
-                    "failure_reason": str(exc),
-                },
-            )
-            continue
-        benchmark_archive: list[tuple[float, float, float, float]] = []
-        population = [
-            _enforce_architecture_mode(
-                _make_candidate(
-                    benchmark_name=benchmark_name,
-                    task=spec.task,
-                    input_dim=spec.model_input_dim,
-                    output_dim=spec.model_output_dim,
-                    seed=config.seed,
-                    candidate_index=index,
-                    architecture_mode=architecture_mode,
-                ),
-                architecture_mode,
-            )
-            for index in range(config.evolution.population_size)
-        ]
-        inherited_states: dict[str, TrainingArtifact | None] = {genome.genome_id: None for genome in population}
-        for generation in range(config.evolution.generations):
-            evaluated: list[tuple[HierarchicalGenome, EvaluationRecord, float]] = []
-            trained_states: dict[str, TrainingArtifact | None] = {}
-            for genome in population:
-                scheduled_evaluation_slots += 1
-                try:
-                    outcome = evaluate_candidate_with_state(
-                        genome,
-                        spec,
-                        data=data,
-                        inherited_state=inherited_states.get(genome.genome_id),
-                        epochs=config.training.epochs,
-                        batch_size=config.training.batch_size,
-                        learning_rate=config.training.learning_rate,
-                        runtime_backend=runtime_selection.resolved_backend,
-                    )
-                    result = outcome.record
-                    trained_states[genome.genome_id] = outcome.training_artifact
-                except Exception as exc:
-                    result = EvaluationRecord(
-                        metric_value=float("nan"),
-                        quality=float("-inf") if spec.metric_direction == "max" else float("inf"),
-                        parameter_count=0,
-                        train_seconds=0.0,
-                        architecture_summary="",
-                        genome_id=genome.genome_id,
-                        status="failed",
-                        failure_reason=str(exc),
-                    )
-                    trained_states[genome.genome_id] = None
-                desc = descriptor(genome)
-                score = novelty_score(desc, benchmark_archive)
-                benchmark_archive.append(desc)
-                novelty_scores.append(score)
-                occupied_niches.add(niche_key(desc))
-                evaluated.append((genome, result, score))
-                if _is_better(spec.metric_direction, result, best_result):
-                    best_genome = genome
-                    best_result = result
-
-            if best_genome is not None and best_result is not None:
-                store.record_genome(
-                    run_id=run_id,
-                    generation=generation,
-                    genome_id=best_genome.genome_id,
-                    benchmark_name=benchmark_name,
-                    payload=genome_to_dict(best_genome),
-                    architecture_summary=best_result.architecture_summary,
-                    parameter_count=best_result.parameter_count,
-                )
-            if generation == config.evolution.generations - 1:
-                continue
-            population, inherited_states = _next_population(
-                evaluated=evaluated,
-                benchmark_name=benchmark_name,
-                task=spec.task,
-                input_dim=spec.model_input_dim,
-                output_dim=spec.model_output_dim,
-                seed=config.seed,
-                generation=generation,
-                population_size=config.evolution.population_size,
-                architecture_mode=architecture_mode,
-                allow_clone_mutation=bool(variant_policy["allow_clone_mutation"]),
-                motif_bias=bool(variant_policy["motif_bias"]),
-                trained_states=trained_states,
-            )
-
-        if best_genome is None or best_result is None:
-            continue
-        store.record_result(
+    config_payload = config.model_dump(mode="python")
+    for outcome in _yield_benchmark_outcomes(
+        config_payload=config_payload,
+        pending_benchmarks=pending_benchmarks,
+        architecture_mode=architecture_mode,
+        runtime_backend=runtime_selection.resolved_backend,
+        parallelism=parallelism,
+    ):
+        scheduled_evaluation_slots += int(outcome["evaluation_count"])
+        benchmark_load_failures += int(outcome["benchmark_load_failures"])
+        novelty_scores.extend(float(score) for score in outcome["novelty_scores"])
+        occupied_niches.update(tuple(niche) for niche in outcome["occupied_niches"])
+        _persist_benchmark_outcome(
+            store=store,
             run_id=run_id,
-            benchmark_name=benchmark_name,
-            record={
-                "metric_name": spec.metric_name,
-                "metric_direction": spec.metric_direction,
-                "metric_value": None if best_result.status != "ok" else best_result.metric_value,
-                "quality": None if best_result.status != "ok" else best_result.quality,
-                "parameter_count": best_result.parameter_count,
-                "train_seconds": best_result.train_seconds,
-                "architecture_summary": best_result.architecture_summary,
-                "genome_id": best_result.genome_id,
-                "status": best_result.status,
-                "failure_reason": best_result.failure_reason,
-            },
+            run_dir=run_dir,
+            architecture_mode=architecture_mode,
+            outcome=outcome,
         )
-        _write_best_genome(run_dir, benchmark_name, best_genome, best_result, architecture_mode)
-        completed_benchmarks.add(benchmark_name)
+        if not outcome["completed"]:
+            continue
+        completed_benchmarks.add(str(outcome["benchmark_name"]))
         _write_checkpoint(
             checkpoint_path,
             run_id=run_id,
@@ -258,19 +142,20 @@ def run_evolution(
             state="running",
         )
 
+    latest_results = store.load_latest_results(run_id)
+    failed_evaluations = sum(1 for record in latest_results if record["status"] != "ok")
+    partial_run = scheduled_evaluation_slots < configured_evaluation_slots
     wall_clock_seconds = time.perf_counter() - started
     store.save_budget_metadata(
         run_id=run_id,
         payload={
             "evaluation_count": scheduled_evaluation_slots,
-            "configured_evaluation_slots": (
-                config.evolution.population_size * config.evolution.generations * len(benchmark_names)
-            ),
+            "configured_evaluation_slots": configured_evaluation_slots,
             "actual_evaluations": scheduled_evaluation_slots,
             "cached_evaluations": 0,
-            "failed_evaluations": 0,
+            "failed_evaluations": failed_evaluations,
             "invalid_evaluations": 0,
-            "partial_run": False,
+            "partial_run": partial_run,
             "evaluation_semantics": (
                 "one candidate evaluation counted for each genome evaluated on each benchmark; "
                 "evaluation_count = population_size * generations * benchmark_count"
@@ -283,6 +168,10 @@ def run_evolution(
             "runtime_version": runtime_selection.runtime_version,
             "runtime_backend_limitations": runtime_selection.backend_limitations,
             "precision_mode": PRECISION_MODE,
+            "parallelism_mode": parallelism["mode"],
+            "benchmark_parallel_workers_requested": parallelism["requested_workers"],
+            "benchmark_parallel_workers_effective": parallelism["effective_workers"],
+            "parallelism_reason": parallelism["reason"],
             "architecture_mode": architecture_mode,
             "benchmark_load_failures": benchmark_load_failures,
             "completed_benchmark_count": len(completed_benchmarks),
@@ -308,6 +197,364 @@ def run_evolution(
         state="completed",
     )
     return run_dir
+
+
+def _yield_benchmark_outcomes(
+    *,
+    config_payload: dict[str, Any],
+    pending_benchmarks: list[str],
+    architecture_mode: str,
+    runtime_backend: str,
+    parallelism: dict[str, Any],
+):
+    if parallelism["effective_workers"] > 1:
+        with ProcessPoolExecutor(
+            max_workers=int(parallelism["effective_workers"]),
+            mp_context=get_context("spawn"),
+        ) as executor:
+            futures = {
+                executor.submit(
+                    _run_benchmark,
+                    config_payload,
+                    benchmark_name,
+                    architecture_mode,
+                    runtime_backend,
+                ): benchmark_name
+                for benchmark_name in pending_benchmarks
+            }
+            for future in as_completed(futures):
+                benchmark_name = futures[future]
+                try:
+                    yield future.result()
+                except Exception as exc:
+                    yield _make_benchmark_worker_failure_outcome(
+                        config_payload=config_payload,
+                        benchmark_name=benchmark_name,
+                        architecture_mode=architecture_mode,
+                        failure_reason=str(exc),
+                    )
+        return
+
+    for benchmark_name in pending_benchmarks:
+        yield _run_benchmark(
+            config_payload,
+            benchmark_name,
+            architecture_mode,
+            runtime_backend,
+        )
+
+
+def _resolve_parallelism(*, requested_workers: int, benchmark_count: int, runtime_backend: str) -> dict[str, Any]:
+    requested = max(1, int(requested_workers))
+    if requested <= 1:
+        return {
+            "mode": "serial",
+            "reason": "serial_requested",
+            "requested_workers": requested,
+            "effective_workers": 1,
+        }
+    if benchmark_count <= 1:
+        return {
+            "mode": "serial",
+            "reason": "single_benchmark",
+            "requested_workers": requested,
+            "effective_workers": 1,
+        }
+    if runtime_backend != "numpy-fallback":
+        return {
+            "mode": "serial",
+            "reason": "non_fallback_runtime_forced_serial",
+            "requested_workers": requested,
+            "effective_workers": 1,
+        }
+    effective = min(requested, benchmark_count)
+    return {
+        "mode": "benchmark-process" if effective > 1 else "serial",
+        "reason": "benchmark_process_parallelism" if effective > 1 else "single_benchmark",
+        "requested_workers": requested,
+        "effective_workers": effective,
+    }
+
+
+def _make_benchmark_worker_failure_outcome(
+    *,
+    config_payload: dict[str, Any],
+    benchmark_name: str,
+    architecture_mode: str,
+    failure_reason: str,
+) -> dict[str, Any]:
+    config = _normalize_config(RunConfig.model_validate(config_payload))
+    spec = get_benchmark(benchmark_name)
+    failed_genome = _enforce_architecture_mode(
+        _make_candidate(
+            benchmark_name=benchmark_name,
+            task=spec.task,
+            input_dim=spec.model_input_dim,
+            output_dim=spec.model_output_dim,
+            seed=config.seed,
+            candidate_index=0,
+            architecture_mode=architecture_mode,
+        ),
+        architecture_mode,
+    )
+    return {
+        "benchmark_name": benchmark_name,
+        "completed": False,
+        "evaluation_count": 0,
+        "benchmark_load_failures": 0,
+        "novelty_scores": [],
+        "occupied_niches": [],
+        "genome_records": [
+            {
+                "generation": 0,
+                "genome_id": failed_genome.genome_id,
+                "benchmark_name": benchmark_name,
+                "payload": genome_to_dict(failed_genome),
+                "architecture_summary": "worker_failed",
+                "parameter_count": 0,
+            }
+        ],
+        "result_record": {
+            "metric_name": spec.metric_name,
+            "metric_direction": spec.metric_direction,
+            "metric_value": None,
+            "quality": None,
+            "parameter_count": 0,
+            "train_seconds": 0.0,
+            "architecture_summary": "worker_failed",
+            "genome_id": failed_genome.genome_id,
+            "status": "failed",
+            "failure_reason": failure_reason,
+        },
+        "best_genome_payload": None,
+        "best_result_record": None,
+    }
+
+
+def _run_benchmark(
+    config_payload: dict[str, Any],
+    benchmark_name: str,
+    architecture_mode: str,
+    runtime_backend: str,
+) -> dict[str, Any]:
+    config = _normalize_config(RunConfig.model_validate(config_payload))
+    spec = get_benchmark(benchmark_name)
+    best_genome: HierarchicalGenome | None = None
+    best_result: EvaluationRecord | None = None
+
+    try:
+        data = spec.load_data(seed=config.seed)
+    except Exception as exc:
+        failed_genome = _enforce_architecture_mode(
+            _make_candidate(
+                benchmark_name=benchmark_name,
+                task=spec.task,
+                input_dim=spec.model_input_dim,
+                output_dim=spec.model_output_dim,
+                seed=config.seed,
+                candidate_index=0,
+                architecture_mode=architecture_mode,
+            ),
+            architecture_mode,
+        )
+        return {
+            "benchmark_name": benchmark_name,
+            "completed": False,
+            "evaluation_count": 0,
+            "benchmark_load_failures": 1,
+            "novelty_scores": [],
+            "occupied_niches": [],
+            "genome_records": [
+                {
+                    "generation": 0,
+                    "genome_id": failed_genome.genome_id,
+                    "benchmark_name": benchmark_name,
+                    "payload": genome_to_dict(failed_genome),
+                    "architecture_summary": "load_failed",
+                    "parameter_count": 0,
+                }
+            ],
+            "result_record": {
+                "metric_name": spec.metric_name,
+                "metric_direction": spec.metric_direction,
+                "metric_value": None,
+                "quality": None,
+                "parameter_count": 0,
+                "train_seconds": 0.0,
+                "architecture_summary": "load_failed",
+                "genome_id": failed_genome.genome_id,
+                "status": "failed",
+                "failure_reason": str(exc),
+            },
+            "best_genome_payload": None,
+            "best_result_record": None,
+        }
+
+    variant_policy = _variant_policy(architecture_mode)
+    benchmark_archive: list[tuple[float, float, float, float]] = []
+    novelty_scores: list[float] = []
+    occupied_niches: set[tuple[int, int, int, int]] = set()
+    evaluation_count = 0
+    genome_records: list[dict[str, Any]] = []
+    population = [
+        _enforce_architecture_mode(
+            _make_candidate(
+                benchmark_name=benchmark_name,
+                task=spec.task,
+                input_dim=spec.model_input_dim,
+                output_dim=spec.model_output_dim,
+                seed=config.seed,
+                candidate_index=index,
+                architecture_mode=architecture_mode,
+            ),
+            architecture_mode,
+        )
+        for index in range(config.evolution.population_size)
+    ]
+    inherited_states: dict[str, TrainingArtifact | None] = {genome.genome_id: None for genome in population}
+
+    for generation in range(config.evolution.generations):
+        evaluated: list[tuple[HierarchicalGenome, EvaluationRecord, float]] = []
+        trained_states: dict[str, TrainingArtifact | None] = {}
+        for genome in population:
+            evaluation_count += 1
+            try:
+                outcome = evaluate_candidate_with_state(
+                    genome,
+                    spec,
+                    data=data,
+                    inherited_state=inherited_states.get(genome.genome_id),
+                    epochs=config.training.epochs,
+                    batch_size=config.training.batch_size,
+                    learning_rate=config.training.learning_rate,
+                    runtime_backend=runtime_backend,
+                )
+                result = outcome.record
+                trained_states[genome.genome_id] = outcome.training_artifact
+            except Exception as exc:
+                result = EvaluationRecord(
+                    metric_value=float("nan"),
+                    quality=float("-inf") if spec.metric_direction == "max" else float("inf"),
+                    parameter_count=0,
+                    train_seconds=0.0,
+                    architecture_summary="",
+                    genome_id=genome.genome_id,
+                    status="failed",
+                    failure_reason=str(exc),
+                )
+                trained_states[genome.genome_id] = None
+            desc = descriptor(genome)
+            score = novelty_score(desc, benchmark_archive)
+            benchmark_archive.append(desc)
+            novelty_scores.append(score)
+            occupied_niches.add(niche_key(desc))
+            evaluated.append((genome, result, score))
+            if _is_better(spec.metric_direction, result, best_result):
+                best_genome = genome
+                best_result = result
+
+        if best_genome is not None and best_result is not None:
+            genome_records.append(
+                {
+                    "generation": generation,
+                    "genome_id": best_genome.genome_id,
+                    "benchmark_name": benchmark_name,
+                    "payload": genome_to_dict(best_genome),
+                    "architecture_summary": best_result.architecture_summary,
+                    "parameter_count": best_result.parameter_count,
+                }
+            )
+        if generation == config.evolution.generations - 1:
+            continue
+        population, inherited_states = _next_population(
+            evaluated=evaluated,
+            benchmark_name=benchmark_name,
+            task=spec.task,
+            input_dim=spec.model_input_dim,
+            output_dim=spec.model_output_dim,
+            seed=config.seed,
+            generation=generation,
+            population_size=config.evolution.population_size,
+            architecture_mode=architecture_mode,
+            allow_clone_mutation=bool(variant_policy["allow_clone_mutation"]),
+            motif_bias=bool(variant_policy["motif_bias"]),
+            trained_states=trained_states,
+        )
+
+    if best_genome is None or best_result is None:
+        return {
+            "benchmark_name": benchmark_name,
+            "completed": False,
+            "evaluation_count": evaluation_count,
+            "benchmark_load_failures": 0,
+            "novelty_scores": novelty_scores,
+            "occupied_niches": [list(niche) for niche in sorted(occupied_niches)],
+            "genome_records": genome_records,
+            "result_record": None,
+            "best_genome_payload": None,
+            "best_result_record": None,
+        }
+
+    best_result_record = {
+        "metric_name": spec.metric_name,
+        "metric_direction": spec.metric_direction,
+        "metric_value": None if best_result.status != "ok" else best_result.metric_value,
+        "quality": None if best_result.status != "ok" else best_result.quality,
+        "parameter_count": best_result.parameter_count,
+        "train_seconds": best_result.train_seconds,
+        "architecture_summary": best_result.architecture_summary,
+        "genome_id": best_result.genome_id,
+        "status": best_result.status,
+        "failure_reason": best_result.failure_reason,
+    }
+    return {
+        "benchmark_name": benchmark_name,
+        "completed": True,
+        "evaluation_count": evaluation_count,
+        "benchmark_load_failures": 0,
+        "novelty_scores": novelty_scores,
+        "occupied_niches": [list(niche) for niche in sorted(occupied_niches)],
+        "genome_records": genome_records,
+        "result_record": best_result_record,
+        "best_genome_payload": genome_to_dict(best_genome),
+        "best_result_record": best_result_record,
+    }
+
+
+def _persist_benchmark_outcome(
+    *,
+    store: RunStore,
+    run_id: str,
+    run_dir: Path,
+    architecture_mode: str,
+    outcome: dict[str, Any],
+) -> None:
+    benchmark_name = str(outcome["benchmark_name"])
+    for record in outcome["genome_records"]:
+        store.record_genome(
+            run_id=run_id,
+            generation=int(record["generation"]),
+            genome_id=str(record["genome_id"]),
+            benchmark_name=benchmark_name,
+            payload=record["payload"],
+            architecture_summary=str(record["architecture_summary"]),
+            parameter_count=int(record["parameter_count"]),
+        )
+    result_record = outcome.get("result_record")
+    if result_record is not None:
+        store.record_result(
+            run_id=run_id,
+            benchmark_name=benchmark_name,
+            record=result_record,
+        )
+    if outcome.get("completed") and outcome.get("best_genome_payload") and outcome.get("best_result_record"):
+        _write_best_genome_payload(
+            run_dir,
+            benchmark_name,
+            outcome["best_genome_payload"],
+            outcome["best_result_record"],
+            architecture_mode,
+        )
 
 
 def _make_candidate(
@@ -673,6 +920,26 @@ def _write_best_genome(
     result: EvaluationRecord,
     architecture_mode: str,
 ) -> None:
+    _write_best_genome_payload(
+        run_dir,
+        benchmark_name,
+        genome_to_dict(genome),
+        {
+            "metric_value": result.metric_value,
+            "quality": result.quality,
+            "architecture_summary": result.architecture_summary,
+        },
+        architecture_mode,
+    )
+
+
+def _write_best_genome_payload(
+    run_dir: Path,
+    benchmark_name: str,
+    genome_payload: dict[str, Any],
+    result_payload: dict[str, Any],
+    architecture_mode: str,
+) -> None:
     target_dir = run_dir / "best_genomes"
     target_dir.mkdir(parents=True, exist_ok=True)
     (target_dir / f"{benchmark_name}.json").write_text(
@@ -680,10 +947,10 @@ def _write_best_genome(
             {
                 "benchmark_name": benchmark_name,
                 "architecture_mode": architecture_mode,
-                "metric_value": result.metric_value,
-                "quality": result.quality,
-                "architecture_summary": result.architecture_summary,
-                "genome": genome_to_dict(genome),
+                "metric_value": result_payload.get("metric_value"),
+                "quality": result_payload.get("quality"),
+                "architecture_summary": result_payload.get("architecture_summary"),
+                "genome": genome_payload,
             },
             indent=2,
         ),

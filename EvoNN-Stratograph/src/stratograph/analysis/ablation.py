@@ -148,7 +148,7 @@ def run_ablation_matrix(
 def _load_ablation_run(run_dir: Path) -> AblationRun:
     store = RunStore(run_dir / "metrics.duckdb")
     runs = store.load_runs()
-    results = store.load_results(runs[0]["run_id"])
+    results = store.load_latest_results(runs[0]["run_id"])
     genomes = {row["genome_id"]: row for row in store.load_genomes(runs[0]["run_id"])}
     store.close()
     variant = run_dir.name.split("__")[-1]

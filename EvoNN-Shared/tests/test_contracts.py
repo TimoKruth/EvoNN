@@ -79,6 +79,29 @@ def test_budget_envelope_accounted_evaluations_include_cached_reruns() -> None:
     assert budget.accounted_evaluations() == 64
 
 
+def test_budget_envelope_covered_evaluations_include_explicit_reduction_modes() -> None:
+    budget = BudgetEnvelope(
+        evaluation_count=64,
+        epochs_per_candidate=20,
+        actual_evaluations=48,
+        deduplicated_evaluations=16,
+        accounting_tags=("candidate_deduplicated",),
+    )
+
+    assert budget.covered_evaluations() == 64
+    assert budget.resolved_accounting_tags() == ("candidate_deduplicated",)
+
+
+def test_budget_envelope_rejects_full_budget_tag_when_combined_with_reduction() -> None:
+    with pytest.raises(ValueError, match="full_budget"):
+        BudgetEnvelope(
+            evaluation_count=64,
+            epochs_per_candidate=20,
+            actual_evaluations=64,
+            accounting_tags=("full_budget", "candidate_deduplicated"),
+        )
+
+
 def test_run_manifest_accepts_baseline_coverage_policy() -> None:
     manifest = RunManifest(
         schema_version="1.0",

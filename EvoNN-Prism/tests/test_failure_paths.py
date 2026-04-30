@@ -39,8 +39,14 @@ training_mod = pytest.importorskip(
     reason=_MLX_SKIP_REASON,
     exc_type=ImportError,
 )
+benchmark_data_cache_mod = pytest.importorskip(
+    "prism.runtime.benchmark_data_cache",
+    reason=_MLX_SKIP_REASON,
+    exc_type=ImportError,
+)
 
 GenerationState = evaluate_mod.GenerationState
+BenchmarkDataCache = benchmark_data_cache_mod.BenchmarkDataCache
 _benchmark_epoch_multiplier = evaluate_mod._benchmark_epoch_multiplier
 _benchmark_priority_scores = evaluate_mod._benchmark_priority_scores
 _evaluate_single = evaluate_mod._evaluate_single
@@ -186,6 +192,164 @@ def test_evaluate_updates_history_for_multiple_genomes(monkeypatch):
     assert updated.benchmark_history["moons"] == [0.8]
     assert updated.benchmark_failures["moons"] == 1
     assert updated.benchmark_evaluations["moons"] == 2
+
+
+def test_evaluate_parallel_uses_snapshot_cache_and_serial_writeback(monkeypatch):
+    genomes = [_sample_genome("mlp"), _sample_genome("attention")]
+    state = GenerationState(
+        generation=0,
+        population=genomes,
+        parent_ids={genome.genome_id: [] for genome in genomes},
+    )
+    config = RunConfig.model_validate({"training": {"parallel_evaluation_workers": 4}})
+    events: list[tuple[str, str]] = []
+
+    class FakeSnapshotCache:
+        pass
+
+    class FakeCache:
+        def snapshot(self):
+            events.append(("snapshot", "cache"))
+            return FakeSnapshotCache()
+
+        def store(self, genome_id, child_model, family=None):
+            del family
+            events.append(("store", f"{genome_id}:{child_model}"))
+
+    def fake_artifacts(*, genome, spec, training, epoch_scale, cache, parent_ids, cache_writeback, dataset):
+        del spec, training, epoch_scale, parent_ids
+        assert isinstance(cache, FakeSnapshotCache)
+        assert cache_writeback is False
+        assert dataset is not None
+        return evaluate_mod._EvaluationArtifacts(
+            result=EvaluationResult(
+                metric_name="accuracy",
+                metric_value=0.8,
+                quality=0.8,
+                parameter_count=12,
+                train_seconds=0.1,
+            ),
+            trained_model=f"trained-{genome.genome_id}",
+        )
+
+    monkeypatch.setattr(evaluate_mod, "_evaluate_single_artifacts", fake_artifacts)
+
+    updated = evaluate_mod.evaluate(
+        state,
+        config,
+        [SimpleNamespace(id="moons")],
+        cache=FakeCache(),
+    )
+
+    assert updated.parallelism_mode == "genome_benchmark_thread"
+    assert updated.parallelism_reason == "generation_snapshot_cache"
+    assert updated.parallelism_requested_workers == 4
+    assert updated.parallelism_effective_workers == 2
+    assert updated.parallelism_cache_policy == "generation_snapshot"
+    assert updated.total_evaluations == 2
+    assert updated.benchmark_history["moons"] == [0.8, 0.8]
+    assert events == [
+        ("snapshot", "cache"),
+        ("store", f"{genomes[0].genome_id}:trained-{genomes[0].genome_id}"),
+        ("store", f"{genomes[1].genome_id}:trained-{genomes[1].genome_id}"),
+    ]
+
+
+def test_evaluate_parallel_falls_back_to_serial_for_single_pending_eval(monkeypatch):
+    genome = _sample_genome()
+    state = GenerationState(
+        generation=0,
+        population=[genome],
+        parent_ids={genome.genome_id: []},
+    )
+    config = RunConfig.model_validate({"training": {"parallel_evaluation_workers": 3}})
+    calls: list[object | None] = []
+
+    class FakeCache:
+        def store(self, genome_id, child_model, family=None):
+            del genome_id, child_model, family
+
+    fake_cache = FakeCache()
+
+    def fake_single(*, genome, spec, training, epoch_scale, cache, parent_ids, dataset):
+        del genome, spec, training, epoch_scale, parent_ids
+        calls.append(cache)
+        assert dataset is not None
+        return EvaluationResult(
+            metric_name="accuracy",
+            metric_value=0.9,
+            quality=0.9,
+            parameter_count=7,
+            train_seconds=0.05,
+        )
+
+    monkeypatch.setattr(evaluate_mod, "_evaluate_single", fake_single)
+
+    updated = evaluate_mod.evaluate(
+        state,
+        config,
+        [SimpleNamespace(id="moons")],
+        cache=fake_cache,
+    )
+
+    assert updated.parallelism_mode == "serial"
+    assert updated.parallelism_reason == "single_pending_evaluation"
+    assert updated.parallelism_effective_workers == 1
+    assert updated.parallelism_cache_policy == "live"
+    assert calls == [fake_cache]
+
+
+def test_evaluate_reuses_benchmark_data_across_passes(monkeypatch):
+    genomes = [_sample_genome("mlp"), _sample_genome("attention")]
+    state = GenerationState(
+        generation=0,
+        population=genomes,
+        parent_ids={genome.genome_id: [] for genome in genomes},
+    )
+    later_genome = _sample_genome("conv2d")
+    later_state = GenerationState(
+        generation=1,
+        population=[later_genome],
+        parent_ids={later_genome.genome_id: []},
+    )
+    config = RunConfig()
+    load_calls: list[int] = []
+    seen_datasets: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
+
+    spec = SimpleNamespace(
+        id="cached-moons",
+        load_data=lambda seed=42: (
+            load_calls.append(seed) or np.zeros((4, 2), dtype=np.float32),
+            np.zeros(4, dtype=np.int64),
+            np.zeros((2, 2), dtype=np.float32),
+            np.zeros(2, dtype=np.int64),
+        ),
+    )
+
+    def fake_single(*, genome, spec, training, epoch_scale, cache, parent_ids, dataset):
+        del genome, spec, training, epoch_scale, cache, parent_ids
+        assert dataset is not None
+        seen_datasets.append(dataset)
+        return EvaluationResult(
+            metric_name="accuracy",
+            metric_value=0.9,
+            quality=0.9,
+            parameter_count=7,
+            train_seconds=0.05,
+        )
+
+    monkeypatch.setattr(evaluate_mod, "_evaluate_single", fake_single)
+    data_cache = BenchmarkDataCache()
+
+    first = evaluate_mod.evaluate(state, config, [spec], data_cache=data_cache)
+    second = evaluate_mod.evaluate(later_state, config, [spec], data_cache=data_cache)
+
+    assert first.total_evaluations == 2
+    assert second.total_evaluations == 1
+    assert load_calls == [42]
+    assert len(seen_datasets) == 3
+    assert all(dataset is seen_datasets[0] for dataset in seen_datasets)
+    assert len(data_cache) == 1
 
 
 def test_evaluate_skips_unsupported_pairs_without_counting(monkeypatch):

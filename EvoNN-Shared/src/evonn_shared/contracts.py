@@ -26,6 +26,14 @@ SystemName = Literal[
     "contenders",
 ]
 TaskKind = Literal["classification", "regression", "language_modeling"]
+BudgetAccountingTag = Literal[
+    "full_budget",
+    "cached",
+    "resumed",
+    "proxy_screened",
+    "reduced_fidelity",
+    "candidate_deduplicated",
+]
 SeedingLadder = Literal["none", "direct", "staged"]
 SeedOverlapPolicy = Literal[
     "benchmark-disjoint",
@@ -65,6 +73,10 @@ class BudgetEnvelope(BaseModel):
     invalid_evaluations: int | None = None
     resumed_from_run_id: str | None = None
     resumed_evaluations: int | None = None
+    screened_evaluations: int | None = None
+    deduplicated_evaluations: int | None = None
+    reduced_fidelity_evaluations: int | None = None
+    accounting_tags: tuple[BudgetAccountingTag, ...] = ()
     partial_run: bool = False
     evaluation_semantics: str | None = None
 
@@ -78,12 +90,19 @@ class BudgetEnvelope(BaseModel):
             "failed_evaluations",
             "invalid_evaluations",
             "resumed_evaluations",
+            "screened_evaluations",
+            "deduplicated_evaluations",
+            "reduced_fidelity_evaluations",
         ):
             value = getattr(self, field_name)
             if value is not None and value < 0:
                 raise ValueError(f"{field_name} must be >= 0")
         if self.resumed_evaluations is not None and self.resumed_from_run_id is None:
             raise ValueError("resumed_from_run_id is required when resumed_evaluations is set")
+        if len(set(self.accounting_tags)) != len(self.accounting_tags):
+            raise ValueError("accounting_tags must not contain duplicates")
+        if "full_budget" in self.accounting_tags and len(self.accounting_tags) > 1:
+            raise ValueError("full_budget accounting_tags must not be combined with reduced-calculation tags")
         return self
 
     def accounted_evaluations(self) -> int | None:
@@ -92,6 +111,36 @@ class BudgetEnvelope(BaseModel):
         if self.actual_evaluations is None:
             return None
         return self.actual_evaluations + (self.cached_evaluations or 0)
+
+    def covered_evaluations(self) -> int | None:
+        """Return scheduled-slot coverage including explicit reduced-calculation skips."""
+
+        accounted = self.accounted_evaluations()
+        if accounted is None:
+            return None
+        return accounted + (self.screened_evaluations or 0) + (self.deduplicated_evaluations or 0) + (
+            self.reduced_fidelity_evaluations or 0
+        )
+
+    def resolved_accounting_tags(self) -> tuple[BudgetAccountingTag, ...]:
+        """Resolve explicit or implied accounting tags for review/report surfaces."""
+
+        if self.accounting_tags:
+            return self.accounting_tags
+        tags: list[BudgetAccountingTag] = []
+        if (self.cached_evaluations or 0) > 0:
+            tags.append("cached")
+        if (self.resumed_evaluations or 0) > 0:
+            tags.append("resumed")
+        if (self.screened_evaluations or 0) > 0:
+            tags.append("proxy_screened")
+        if (self.deduplicated_evaluations or 0) > 0:
+            tags.append("candidate_deduplicated")
+        if (self.reduced_fidelity_evaluations or 0) > 0:
+            tags.append("reduced_fidelity")
+        if not tags:
+            tags.append("full_budget")
+        return tuple(tags)
 
 
 class DeviceInfo(BaseModel):

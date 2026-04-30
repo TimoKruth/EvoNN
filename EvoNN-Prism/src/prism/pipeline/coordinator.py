@@ -21,6 +21,7 @@ from prism.pipeline.archive import (
 )
 from prism.pipeline.evaluate import GenerationState, evaluate, select_benchmarks, update_search_memory
 from prism.pipeline.reproduce import reproduce
+from prism.runtime.benchmark_data_cache import BenchmarkDataCache
 from prism.runtime.cache import WeightCache
 from prism.storage import RunStore
 
@@ -66,6 +67,7 @@ def run_evolution(
 
     # Weight cache
     cache = WeightCache() if training.weight_inheritance else None
+    benchmark_data_cache = BenchmarkDataCache()
 
     # Monitor
     monitor = TerminalMonitor()
@@ -108,6 +110,7 @@ def run_evolution(
                 config,
                 gen_benchmarks,
                 cache,
+                data_cache=benchmark_data_cache,
                 store=store,
                 run_id=run_id,
             )
@@ -286,6 +289,11 @@ def _checkpoint(run_dir: str, generation: int, state: GenerationState) -> None:
         "lineage_ops": state.lineage_ops,
         "operator_stats": state.operator_stats,
         "family_stats": state.family_stats,
+        "parallelism_mode": state.parallelism_mode,
+        "parallelism_reason": state.parallelism_reason,
+        "parallelism_requested_workers": state.parallelism_requested_workers,
+        "parallelism_effective_workers": state.parallelism_effective_workers,
+        "parallelism_cache_policy": state.parallelism_cache_policy,
     }
     path = os.path.join(run_dir, "checkpoints", f"gen_{generation:04d}.json")
     Path(path).write_text(json.dumps(checkpoint, indent=2), encoding="utf-8")
@@ -350,6 +358,11 @@ def _try_resume(run_dir: str) -> tuple[GenerationState | None, int]:
             genome_id: list(parent_ids)
             for genome_id, parent_ids in data.get("parent_ids", {}).items()
         },
+        parallelism_mode=str(data.get("parallelism_mode", "serial")),
+        parallelism_reason=str(data.get("parallelism_reason", "serial_requested")),
+        parallelism_requested_workers=int(data.get("parallelism_requested_workers", 1)),
+        parallelism_effective_workers=int(data.get("parallelism_effective_workers", 1)),
+        parallelism_cache_policy=str(data.get("parallelism_cache_policy", "live")),
     )
 
     return state, data["generation"] + 1
@@ -388,6 +401,11 @@ def _write_summary(run_dir: str, state: GenerationState, elapsed: float) -> None
         "runtime_backend": runtime_backend,
         "runtime_version": runtime_version,
         "precision_mode": precision_mode,
+        "parallelism_mode": state.parallelism_mode,
+        "parallelism_reason": state.parallelism_reason,
+        "parallelism_requested_workers": state.parallelism_requested_workers,
+        "parallelism_effective_workers": state.parallelism_effective_workers,
+        "parallelism_cache_policy": state.parallelism_cache_policy,
     }
 
     path = os.path.join(run_dir, "summary.json")

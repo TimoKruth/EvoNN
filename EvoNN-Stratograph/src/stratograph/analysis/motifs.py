@@ -19,7 +19,7 @@ def analyze_run_motifs(run_dir: str | Path) -> Path:
         store.close()
         raise ValueError(f"No runs found in {run_dir}")
     run_id = runs[0]["run_id"]
-    results = [record for record in store.load_results(run_id) if record["status"] == "ok"]
+    results = [record for record in store.load_latest_results(run_id) if record["status"] == "ok"]
     genomes = {record["genome_id"]: record for record in store.load_genomes(run_id) if record["genome_id"]}
     store.close()
 

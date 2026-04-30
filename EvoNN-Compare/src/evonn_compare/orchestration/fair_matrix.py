@@ -854,11 +854,14 @@ def _budget_accounting_issues(manifest: Any) -> list[str]:
         issues.append("missing actual_evaluations")
     elif budget.partial_run:
         issues.append("partial_run=true")
-    elif budget.accounted_evaluations() != budget.evaluation_count:
+    elif budget.covered_evaluations() != budget.evaluation_count:
+        accounting_tags = ",".join(budget.resolved_accounting_tags())
         issues.append(
-            "accounted evaluations "
-            f"{budget.accounted_evaluations()} != declared {budget.evaluation_count} "
-            f"(actual={budget.actual_evaluations}, cached={budget.cached_evaluations or 0})"
+            "covered evaluations "
+            f"{budget.covered_evaluations()} != declared {budget.evaluation_count} "
+            f"(actual={budget.actual_evaluations}, cached={budget.cached_evaluations or 0}, "
+            f"screened={budget.screened_evaluations or 0}, deduplicated={budget.deduplicated_evaluations or 0}, "
+            f"reduced_fidelity={budget.reduced_fidelity_evaluations or 0}, tags={accounting_tags})"
         )
     if not budget.evaluation_semantics:
         issues.append("missing evaluation_semantics")

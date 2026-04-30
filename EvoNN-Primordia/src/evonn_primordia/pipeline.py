@@ -11,6 +11,7 @@ from time import perf_counter
 from typing import Any
 
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 
 from evonn_primordia.config import RunConfig
 from evonn_primordia.export.report import build_primitive_bank_summary, write_report
@@ -58,6 +59,7 @@ def run_search(
     primitive_usage: dict[str, int] = {}
     benchmark_slot_plan: list[dict[str, Any]] = []
     group_counts = {"tabular": 0, "synthetic": 0, "image": 0, "language_modeling": 0}
+    deduplicated_evaluations = 0
     started_at = datetime.now(timezone.utc).isoformat()
     started_clock = perf_counter()
     checkpoint = load_checkpoint(run_dir)
@@ -146,7 +148,7 @@ def run_search(
             _emit_progress(f"[{benchmark_index}/{benchmark_total}] load-failed benchmark={benchmark_name} reason={exc}")
             continue
 
-        benchmark_records = _run_benchmark_search(
+        benchmark_outcome = _run_benchmark_search(
             runtime=runtime,
             config=config,
             spec=spec,
@@ -161,10 +163,20 @@ def run_search(
             y_train_np=y_train_np,
             x_val_np=x_val_np,
             y_val_np=y_val_np,
+            prepared_inputs=_prepare_candidate_arrays_for_runtime(
+                runtime_backend=runtime_backend,
+                benchmark_group=group,
+                x_train_np=x_train_np,
+                y_train_np=y_train_np,
+                x_val_np=x_val_np,
+                y_val_np=y_val_np,
+            ),
             runtime_backend=runtime_backend,
             runtime_version=runtime_version,
             precision_mode=precision_mode,
         )
+        benchmark_records = benchmark_outcome["records"]
+        deduplicated_evaluations += int(benchmark_outcome["deduplicated_evaluations"])
         executed_records.extend(benchmark_records)
         for record in benchmark_records:
             family = str(record.get("primitive_family") or "unknown")
@@ -208,6 +220,7 @@ def run_search(
         "runtime": runtime_backend,
         "runtime_version": runtime_version,
         "precision_mode": precision_mode,
+        "runtime_optimizations": _runtime_optimizations_for_backend(runtime_backend),
         "run_id": run_id,
         "run_name": run_name,
         "status": "complete",
@@ -216,10 +229,12 @@ def run_search(
         "benchmark_count": benchmark_total,
         "completed_benchmarks": completed_benchmark_names,
         "evaluation_count": len(executed_records),
+        "scheduled_evaluation_count": target_evals,
         "attempted_evaluations": len(executed_records),
         "successful_evaluations": success_count,
         "failed_evaluations": failure_count,
         "skipped_evaluations": 0,
+        "deduplicated_evaluations": deduplicated_evaluations,
         "resumed": resumed,
         "resumed_benchmark_count": len(completed_benchmark_names) if resumed else 0,
         "target_evaluation_count": target_evals,
@@ -234,6 +249,7 @@ def run_search(
             "novelty_weight": config.search.novelty_weight,
             "complexity_penalty_weight": config.search.complexity_penalty_weight,
             "max_candidates_per_benchmark": config.search.max_candidates_per_benchmark,
+            "candidate_deduplication": config.search.candidate_deduplication,
         },
         "benchmark_slot_plan": benchmark_slot_plan,
         "benchmark_leaders": benchmark_leaders,
@@ -309,17 +325,21 @@ def _run_benchmark_search(
     y_train_np: np.ndarray,
     x_val_np: np.ndarray,
     y_val_np: np.ndarray,
+    prepared_inputs: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     runtime_backend: str,
     runtime_version: str | None,
     precision_mode: str,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     population_size = config.search.population_size or len(allowed_families)
     population_size = max(1, min(population_size, slots))
     rng = Random(config.seed + benchmark_index * 1009)
     archive = EliteArchive(config.search.elite_fraction)
     benchmark_records: list[dict[str, Any]] = []
     seen_signatures: set[str] = set()
+    seen_genome_ids: set[str] = set()
+    deduplicated_evaluations = 0
     generation = 0
+    scheduled_slots_consumed = 0
     pending: list[CandidateSeed] = _spawn_initial_candidates(
         runtime=runtime,
         config=config,
@@ -327,10 +347,18 @@ def _run_benchmark_search(
         count=population_size,
     )
 
-    while len(benchmark_records) < slots and pending:
-        current_batch = pending[: max(1, min(population_size, slots - len(benchmark_records)))]
+    while scheduled_slots_consumed < slots and pending:
+        current_batch = pending[: max(1, min(population_size, slots - scheduled_slots_consumed))]
         pending = []
-        for local_index, seed in enumerate(current_batch):
+        for seed in current_batch:
+            slot_index = scheduled_slots_consumed
+            scheduled_slots_consumed += 1
+            dedup_key = _candidate_dedup_key(seed.genome) if config.search.candidate_deduplication == "exact_genome_id" else None
+            if dedup_key is not None and dedup_key in seen_genome_ids:
+                deduplicated_evaluations += 1
+                if scheduled_slots_consumed >= slots:
+                    break
+                continue
             record = _evaluate_candidate(
                 runtime=runtime,
                 config=config,
@@ -343,6 +371,7 @@ def _run_benchmark_search(
                 y_train_np=y_train_np,
                 x_val_np=x_val_np,
                 y_val_np=y_val_np,
+                prepared_inputs=prepared_inputs,
                 runtime_backend=runtime_backend,
                 runtime_version=runtime_version,
                 precision_mode=precision_mode,
@@ -350,8 +379,8 @@ def _run_benchmark_search(
                 generation=seed.generation,
                 parent_genome_id=seed.parent_genome_id,
                 mutation_operator=seed.mutation_operator,
-                slot_index=len(benchmark_records),
-                seed_value=config.seed + benchmark_index * 1009 + len(benchmark_records),
+                slot_index=slot_index,
+                seed_value=config.seed + benchmark_index * 1009 + slot_index,
                 seen_signatures=seen_signatures,
                 selection_mode=config.search.selection_mode,
                 novelty_weight=config.search.novelty_weight,
@@ -360,11 +389,13 @@ def _run_benchmark_search(
             benchmark_records.append(record)
             archive.update(record)
             seen_signatures.add(candidate_signature(record))
-            if len(benchmark_records) >= slots:
+            if dedup_key is not None:
+                seen_genome_ids.add(dedup_key)
+            if scheduled_slots_consumed >= slots:
                 break
 
         generation += 1
-        remaining = slots - len(benchmark_records)
+        remaining = slots - scheduled_slots_consumed
         if remaining <= 0:
             break
         parents = archive.sample_parent_records(
@@ -373,6 +404,8 @@ def _run_benchmark_search(
             rng=rng,
             family_exploration_floor=config.search.family_exploration_floor,
         )
+        if not parents:
+            break
         pending = _spawn_offspring(
             runtime=runtime,
             config=config,
@@ -382,7 +415,11 @@ def _run_benchmark_search(
             count=max(1, min(population_size, remaining)),
         )
 
-    return benchmark_records
+    return {
+        "records": benchmark_records,
+        "deduplicated_evaluations": deduplicated_evaluations,
+        "scheduled_evaluations": scheduled_slots_consumed,
+    }
 
 
 def _spawn_initial_candidates(
@@ -454,6 +491,7 @@ def _evaluate_candidate(
     y_train_np: np.ndarray,
     x_val_np: np.ndarray,
     y_val_np: np.ndarray,
+    prepared_inputs: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     runtime_backend: str,
     runtime_version: str | None,
     precision_mode: str,
@@ -470,6 +508,7 @@ def _evaluate_candidate(
 ) -> dict[str, Any]:
     family = str(getattr(genome, "family", "unknown"))
     primitive_label = family if generation == 0 else f"{family}@r{generation + 1}"
+    train_x, train_y, val_x, val_y = prepared_inputs
 
     try:
         compiled = runtime.compile_genome(
@@ -488,10 +527,10 @@ def _evaluate_candidate(
         try:
             result = runtime.train_and_evaluate(
                 compiled.model,
-                x_train_np,
-                y_train_np,
-                x_val_np,
-                y_val_np,
+                train_x,
+                train_y,
+                val_x,
+                val_y,
                 task=spec.task,
                 epochs=config.training.epochs_per_candidate,
                 lr=getattr(genome, "learning_rate", config.training.learning_rate),
@@ -504,10 +543,10 @@ def _evaluate_candidate(
                 raise
             result = runtime.train_and_evaluate(
                 compiled.model,
-                x_train_np,
-                y_train_np,
-                x_val_np,
-                y_val_np,
+                train_x,
+                train_y,
+                val_x,
+                val_y,
                 task=spec.task,
                 epochs=config.training.epochs_per_candidate,
                 lr=getattr(genome, "learning_rate", config.training.learning_rate),
@@ -605,6 +644,16 @@ def _serialize_genome_payload(genome: Any) -> dict[str, Any]:
         "moe_top_k": getattr(genome, "moe_top_k", 2),
     }
     return payload
+
+
+def _candidate_dedup_key(genome: Any) -> str:
+    genome_id = getattr(genome, "genome_id", None)
+    if genome_id is not None:
+        return str(genome_id)
+    payload = _serialize_genome_payload(genome)
+    family = str(payload.get("family") or "unknown")
+    hidden_layers = ",".join(str(width) for width in payload.get("hidden_layers", []))
+    return f"{family}:{hidden_layers}"
 
 
 def _rebuild_parent_genome(parent: dict[str, Any], *, fallback_family: str, config: RunConfig) -> ModelGenome:
@@ -770,6 +819,47 @@ def _prepare_arrays(
         x_val_np = x_val_np.astype(np.float32)
         y_val_np = y_val_np.astype(np.float32 if spec.task == "regression" else np.int32)
     return x_train_np, y_train_np, x_val_np, y_val_np
+
+
+def _prepare_candidate_arrays_for_runtime(
+    *,
+    runtime_backend: str,
+    benchmark_group: str,
+    x_train_np: np.ndarray,
+    y_train_np: np.ndarray,
+    x_val_np: np.ndarray,
+    y_val_np: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    if runtime_backend != "numpy-fallback" or benchmark_group == "language_modeling":
+        return x_train_np, y_train_np, x_val_np, y_val_np
+
+    scaler = StandardScaler()
+    x_train_flat = _flatten_candidate_inputs(x_train_np)
+    x_val_flat = _flatten_candidate_inputs(x_val_np)
+    return (
+        scaler.fit_transform(x_train_flat),
+        np.asarray(y_train_np),
+        scaler.transform(x_val_flat),
+        np.asarray(y_val_np),
+    )
+
+
+def _flatten_candidate_inputs(values: np.ndarray) -> np.ndarray:
+    if values.ndim <= 2:
+        return values.astype(np.float32)
+    return values.reshape(values.shape[0], -1).astype(np.float32)
+
+
+def _runtime_optimizations_for_backend(runtime_backend: str) -> dict[str, str]:
+    if runtime_backend == "numpy-fallback":
+        return {
+            "benchmark_preprocessing": "benchmark_cached_scaler",
+            "candidate_batch_execution": "disabled",
+        }
+    return {
+        "benchmark_preprocessing": "runtime_default",
+        "candidate_batch_execution": "runtime_default",
+    }
 
 
 def _target_evaluation_count(config: RunConfig) -> int:

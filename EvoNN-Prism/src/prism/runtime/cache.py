@@ -120,6 +120,90 @@ class WeightCache:
     def __len__(self) -> int:
         return len(self._cache)
 
+    def snapshot(self) -> "FrozenWeightCache":
+        """Return a read-only view frozen to the current cache contents/order."""
+        return FrozenWeightCache(
+            OrderedDict((genome_id, weights) for genome_id, weights in self._cache.items()),
+            {
+                genome_id: dict(meta)
+                for genome_id, meta in self._meta.items()
+            },
+        )
+
+
+class FrozenWeightCache:
+    """Read-only cache view used to keep parallel evaluation semantics stable."""
+
+    def __init__(
+        self,
+        cache: OrderedDict[str, dict[str, np.ndarray]],
+        meta: dict[str, dict[str, object]],
+    ) -> None:
+        self._cache = cache
+        self._meta = meta
+
+    def lookup(self, genome_id: str) -> dict[str, np.ndarray] | None:
+        entry = self._cache.get(genome_id)
+        if entry is None:
+            return None
+        return _copy_weights(entry)
+
+    def transfer_weights(self, parent_id: str, child_model) -> bool:
+        parent_weights = self.lookup(parent_id)
+        if parent_weights is None:
+            return False
+
+        child_params = _flatten_trainable_parameters(child_model)
+        return _apply_matching_weights(parent_weights, child_model, child_params) > 0
+
+    def transfer_best_available(
+        self,
+        child_model,
+        *,
+        family: str | None = None,
+        preferred_ids: list[str] | None = None,
+        exclude_ids: set[str] | None = None,
+    ) -> str | None:
+        child_params = _flatten_trainable_parameters(child_model)
+        exclude_ids = exclude_ids or set()
+
+        candidate_ids: list[str] = []
+        seen: set[str] = set()
+        for genome_id in preferred_ids or []:
+            if genome_id in self._cache and genome_id not in exclude_ids:
+                candidate_ids.append(genome_id)
+                seen.add(genome_id)
+        for genome_id in reversed(self._cache):
+            if genome_id in seen or genome_id in exclude_ids:
+                continue
+            meta = self._meta.get(genome_id, {})
+            if family is not None and meta.get("family") not in {None, family}:
+                continue
+            candidate_ids.append(genome_id)
+
+        best_id = None
+        best_score = 0.0
+        for genome_id in candidate_ids:
+            weights = self._cache.get(genome_id)
+            if weights is None:
+                continue
+            score = _compatibility_score(weights, child_params)
+            if score > best_score:
+                best_score = score
+                best_id = genome_id
+
+        if best_id is None or best_score <= 0.0:
+            return None
+
+        parent_weights = self.lookup(best_id)
+        if parent_weights is None:
+            return None
+        transferred = _apply_matching_weights(parent_weights, child_model, child_params)
+        return best_id if transferred > 0 else None
+
+    def __len__(self) -> int:
+        return len(self._cache)
+
 
 def _flatten_trainable_parameters(model) -> dict[str, np.ndarray]:
     import mlx.utils

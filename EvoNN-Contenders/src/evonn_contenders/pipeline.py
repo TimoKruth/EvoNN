@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import importlib.util
 from pathlib import Path
 import shutil
+from typing import Any
 
 from evonn_contenders.benchmarks import get_benchmark
 from evonn_contenders.config import RunConfig, baseline_signature, resolve_baseline_id
@@ -68,7 +70,9 @@ def run_contenders(
 
     evaluation_count = 0
     executed_evaluation_count = 0
+    failed_evaluation_count = 0
     cache_hits = 0
+    max_parallel_trial_workers = 0
     optional_missing_by_group: dict[str, list[str]] = {}
     group_counts = {"tabular": 0, "synthetic": 0, "image": 0, "language_modeling": 0}
     _emit_progress(
@@ -132,21 +136,22 @@ def run_contenders(
             continue
 
         records: list[dict[str, object]] = []
-        for trial in trials:
-            record = evaluate_contender(
-                spec,
-                trial.contender,
-                seed=trial.seed,
-                x_train=x_train,
-                y_train=y_train,
-                x_val=x_val,
-                y_val=y_val,
-                config=config,
-                contender_label=trial.contender_name,
-            )
+        worker_count = _effective_trial_worker_count(config, trial_count=len(trials))
+        max_parallel_trial_workers = max(max_parallel_trial_workers, worker_count)
+        for record in _evaluate_trials(
+            spec,
+            trials=trials,
+            x_train=x_train,
+            y_train=y_train,
+            x_val=x_val,
+            y_val=y_val,
+            config=config,
+            worker_count=worker_count,
+        ):
             run_store.record_contender(run_id=run_id, benchmark_name=benchmark_name, record=record)
             records.append(record)
         executed_evaluation_count += len(trials)
+        failed_evaluation_count += sum(1 for record in records if record["status"] != "ok")
 
         best = choose_best(spec.metric_direction, records)
         run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=best)
@@ -154,7 +159,8 @@ def run_contenders(
         baseline_store.replace_result(run_id=baseline_id, benchmark_name=benchmark_name, record=best)
         _emit_progress(
             f"[{benchmark_index}/{benchmark_total}] done benchmark={benchmark_name} "
-            f"best={best['contender_name']} status={best['status']} metric={best.get('metric_value')}"
+            f"best={best['contender_name']} status={best['status']} metric={best.get('metric_value')} "
+            f"workers={worker_count}"
         )
 
     run_store.save_budget_metadata(
@@ -162,6 +168,7 @@ def run_contenders(
         payload={
             "evaluation_count": evaluation_count,
             "executed_evaluation_count": executed_evaluation_count,
+            "failed_evaluation_count": failed_evaluation_count,
             "cache_hits": cache_hits,
             "optional_missing_by_group": optional_missing_by_group,
             "optional_missing_count": sum(len(names) for names in optional_missing_by_group.values()),
@@ -175,6 +182,8 @@ def run_contenders(
             "baseline_id": baseline_id,
             "baseline_signature": baseline_sig,
             "target_evaluation_count": config.baseline.target_evaluation_count,
+            "parallel_trial_workers_requested": config.execution.trial_workers,
+            "parallel_trial_workers_effective": max_parallel_trial_workers,
         },
     )
     _update_baseline_budget_metadata(baseline_store, baseline_id=baseline_id, created_at=created_at)
@@ -262,6 +271,7 @@ def materialize_baseline_run(
         payload={
             "evaluation_count": evaluation_count,
             "executed_evaluation_count": 0,
+            "failed_evaluation_count": 0,
             "cache_hits": len(config.benchmark_pool.benchmarks),
             "optional_missing_by_group": optional_missing_by_group,
             "optional_missing_count": sum(len(names) for names in optional_missing_by_group.values()),
@@ -275,6 +285,8 @@ def materialize_baseline_run(
             "baseline_id": baseline_id,
             "baseline_signature": baseline_sig,
             "target_evaluation_count": config.baseline.target_evaluation_count,
+            "parallel_trial_workers_requested": config.execution.trial_workers,
+            "parallel_trial_workers_effective": 0,
         },
     )
 
@@ -338,6 +350,7 @@ def _ensure_baseline_metadata(
         payload={
             "evaluation_count": 0,
             "executed_evaluation_count": 0,
+            "failed_evaluation_count": 0,
             "cache_hits": 0,
             "benchmark_count": 0,
             "tabular_benchmark_count": 0,
@@ -349,6 +362,8 @@ def _ensure_baseline_metadata(
             "baseline_signature": baseline_sig,
             "target_evaluation_count": config.baseline.target_evaluation_count,
             "created_at": created_at,
+            "parallel_trial_workers_requested": config.execution.trial_workers,
+            "parallel_trial_workers_effective": 0,
         },
     )
 
@@ -372,6 +387,7 @@ def _update_baseline_budget_metadata(
             **meta,
             "evaluation_count": len(contenders),
             "executed_evaluation_count": len(contenders),
+            "failed_evaluation_count": sum(1 for record in contenders if record["status"] != "ok"),
             "cache_hits": 0,
             "benchmark_count": len(results),
             "tabular_benchmark_count": group_counts["tabular"],
@@ -381,6 +397,104 @@ def _update_baseline_budget_metadata(
             "created_at": created_at,
         },
     )
+
+
+def _effective_trial_worker_count(config: RunConfig, *, trial_count: int) -> int:
+    return max(1, min(config.execution.trial_workers, trial_count))
+
+
+def _evaluate_trials(
+    spec: Any,
+    *,
+    trials: list[ContenderTrial],
+    x_train: Any,
+    y_train: Any,
+    x_val: Any,
+    y_val: Any,
+    config: RunConfig,
+    worker_count: int,
+) -> list[dict[str, Any]]:
+    if worker_count <= 1:
+        return [
+            _evaluate_trial(
+                spec,
+                trial=trial,
+                x_train=x_train,
+                y_train=y_train,
+                x_val=x_val,
+                y_val=y_val,
+                config=config,
+            )
+            for trial in trials
+        ]
+
+    records_by_index: dict[int, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="evonn-contenders") as executor:
+        future_to_index = {
+            executor.submit(
+                _evaluate_trial,
+                spec,
+                trial=trial,
+                x_train=x_train,
+                y_train=y_train,
+                x_val=x_val,
+                y_val=y_val,
+                config=config,
+            ): index
+            for index, trial in enumerate(trials)
+        }
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
+            trial = trials[index]
+            try:
+                records_by_index[index] = future.result()
+            except Exception as exc:
+                records_by_index[index] = _failed_trial_record(spec, trial=trial, failure_reason=str(exc))
+    return [records_by_index[index] for index in range(len(trials))]
+
+
+def _evaluate_trial(
+    spec: Any,
+    *,
+    trial: ContenderTrial,
+    x_train: Any,
+    y_train: Any,
+    x_val: Any,
+    y_val: Any,
+    config: RunConfig,
+) -> dict[str, Any]:
+    try:
+        return evaluate_contender(
+            spec,
+            trial.contender,
+            seed=trial.seed,
+            x_train=x_train,
+            y_train=y_train,
+            x_val=x_val,
+            y_val=y_val,
+            config=config,
+            contender_label=trial.contender_name,
+        )
+    except Exception as exc:
+        return _failed_trial_record(spec, trial=trial, failure_reason=str(exc))
+
+
+def _failed_trial_record(spec: Any, *, trial: ContenderTrial, failure_reason: str) -> dict[str, Any]:
+    metric_direction = getattr(spec, "metric_direction")
+    return {
+        "contender_name": trial.contender_name,
+        "family": getattr(trial.contender, "family", "unknown"),
+        "metric_name": getattr(spec, "metric_name"),
+        "metric_direction": metric_direction,
+        "metric_value": None,
+        "quality": float("-inf") if metric_direction == "max" else float("inf"),
+        "parameter_count": 0,
+        "train_seconds": 0.0,
+        "architecture_summary": getattr(trial.contender, "name", trial.contender_name),
+        "contender_id": f"{spec.name}:{trial.contender_name}:seed{trial.seed}",
+        "status": "failed",
+        "failure_reason": failure_reason,
+    }
 
 
 def _resolve_trials(

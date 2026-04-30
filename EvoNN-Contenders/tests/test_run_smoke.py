@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import json
+import threading
+import time
 from typer.testing import CliRunner
 
 from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_pack
@@ -198,6 +200,78 @@ selection:
     assert len(results) == 1
 
 
+def test_parallel_trial_workers_run_trials_concurrently_and_record_metadata(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: parallel_trials
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+contender_pool:
+  tabular: [logistic, hist_gb, extra_trees]
+  synthetic: [hist_gb]
+  image: [mlp]
+  language_modeling: [bigram_lm]
+selection:
+  max_contenders_per_benchmark: 3
+execution:
+  trial_workers: 2
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+
+    lock = threading.Lock()
+    inflight = 0
+    max_inflight = 0
+
+    def fake_evaluate(spec, contender, *, seed, contender_label=None, **kwargs):
+        nonlocal inflight, max_inflight
+        with lock:
+            inflight += 1
+            max_inflight = max(max_inflight, inflight)
+        time.sleep(0.05)
+        with lock:
+            inflight -= 1
+        name = contender_label or contender.name
+        return {
+            "contender_name": name,
+            "family": contender.family,
+            "metric_name": spec.metric_name,
+            "metric_direction": spec.metric_direction,
+            "metric_value": {"logistic": 0.80, "hist_gb": 0.91, "extra_trees": 0.87}[contender.name],
+            "quality": {"logistic": 0.80, "hist_gb": 0.91, "extra_trees": 0.87}[contender.name],
+            "parameter_count": 1,
+            "train_seconds": 0.05,
+            "architecture_summary": contender.name,
+            "contender_id": f"{spec.name}:{name}:seed{seed}",
+            "status": "ok",
+            "failure_reason": None,
+        }
+
+    monkeypatch.setattr("evonn_contenders.pipeline.evaluate_contender", fake_evaluate)
+
+    run_dir = tmp_path / "run"
+    run_contenders(config, run_dir=run_dir, config_path=config_path)
+
+    store = RunStore(run_dir / "metrics.duckdb")
+    contenders = store.load_contenders("run")
+    results = store.load_results("run")
+    meta = store.load_budget_metadata("run")
+    store.close()
+
+    assert max_inflight >= 2
+    assert [record["contender_name"] for record in contenders] == ["extra_trees", "hist_gb", "logistic"]
+    assert results[0]["contender_name"] == "hist_gb"
+    assert meta["parallel_trial_workers_requested"] == 2
+    assert meta["parallel_trial_workers_effective"] == 2
+    assert meta["failed_evaluation_count"] == 0
+
+
 def test_budget_matched_mode_hits_exact_target_evaluation_count(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
@@ -366,6 +440,90 @@ seed_policy:
     assert manifest["budget"]["evaluation_count"] == 2
     assert manifest["budget"]["actual_evaluations"] == 0
     assert manifest["budget"]["cached_evaluations"] == 2
+
+
+def test_export_counts_failed_contender_trials_even_when_benchmark_best_succeeds(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+seed: 42
+run_name: partial_contender_failures
+benchmark_pool:
+  name: smoke_pack
+  benchmarks:
+  - iris
+contender_pool:
+  tabular: [logistic, hist_gb]
+  synthetic: [hist_gb]
+  image: [mlp]
+  language_modeling: [bigram_lm]
+selection:
+  max_contenders_per_benchmark: 2
+execution:
+  trial_workers: 2
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    pack_path = tmp_path / "compare_pack.yaml"
+    pack_path.write_text(
+        """
+name: smoke_pack
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids:
+      contenders: iris
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+budget_policy:
+  evaluation_count: 2
+  epochs_per_candidate: 1
+seed_policy:
+  mode: shared
+  required: true
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+
+    def fake_evaluate(spec, contender, *, seed, contender_label=None, **kwargs):
+        name = contender_label or contender.name
+        if contender.name == "hist_gb":
+            raise RuntimeError("worker exploded")
+        return {
+            "contender_name": name,
+            "family": contender.family,
+            "metric_name": spec.metric_name,
+            "metric_direction": spec.metric_direction,
+            "metric_value": 0.75,
+            "quality": 0.75,
+            "parameter_count": 1,
+            "train_seconds": 0.01,
+            "architecture_summary": contender.name,
+            "contender_id": f"{spec.name}:{name}:seed{seed}",
+            "status": "ok",
+            "failure_reason": None,
+        }
+
+    monkeypatch.setattr("evonn_contenders.pipeline.evaluate_contender", fake_evaluate)
+
+    run_dir = tmp_path / "run"
+    run_contenders(config, run_dir=run_dir, config_path=config_path)
+    manifest_path, _ = export_symbiosis_contract(run_dir, pack_path, run_dir)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+
+    assert manifest["budget"]["actual_evaluations"] == 2
+    assert manifest["budget"]["failed_evaluations"] == 1
+    assert manifest["budget"]["partial_run"] is False
+    assert summary["status"] == "partial"
+    assert summary["failure_count"] == 1
+    assert summary["parallel_trial_workers_effective"] == 2
+    assert "Failed contender evals: `1`" in report
+    assert "Parallel trial workers: requested `2`, effective `2`" in report
 
 
 def test_optional_missing_contenders_are_skipped_by_default(tmp_path: Path, monkeypatch) -> None:

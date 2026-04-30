@@ -27,6 +27,7 @@ class TrainingConfig(BaseModel):
     efficiency_epoch_min_scale: float = 0.85
     efficiency_epoch_max_scale: float = 1.15
     operator_adaptation_rate: float = 0.35
+    parallel_evaluation_workers: int = 1
 
 
 class EvolutionConfig(BaseModel):

@@ -34,6 +34,8 @@ def _manifest(
     *,
     actual_evaluations: int | None = None,
     cached_evaluations: int | None = None,
+    deduplicated_evaluations: int | None = None,
+    accounting_tags: tuple[str, ...] = (),
     partial_run: bool = False,
     evaluation_semantics: str | None = None,
 ) -> RunManifest:
@@ -59,6 +61,8 @@ def _manifest(
             epochs_per_candidate=1,
             actual_evaluations=actual_evaluations,
             cached_evaluations=cached_evaluations,
+            deduplicated_evaluations=deduplicated_evaluations,
+            accounting_tags=accounting_tags,
             partial_run=partial_run,
             evaluation_semantics=evaluation_semantics,
         ),
@@ -117,6 +121,22 @@ def test_validate_contract_accepts_cached_budget_accounting_when_totals_match() 
             cached_evaluations=16,
             partial_run=False,
             evaluation_semantics="one contender fit/eval pass counted per contender in the configured pool",
+        ),
+        _results(),
+        _pack(),
+    )
+
+    assert all(issue.code != "budget_actual_lt_declared" for issue in report.issues)
+
+
+def test_validate_contract_accepts_deduplicated_budget_accounting_when_totals_match() -> None:
+    report = validate_contract(
+        _manifest(
+            actual_evaluations=12,
+            deduplicated_evaluations=4,
+            accounting_tags=("candidate_deduplicated",),
+            partial_run=False,
+            evaluation_semantics="one primitive family-benchmark trial is scheduled per slot; exact duplicate genome ids are counted via deduplicated_evaluations",
         ),
         _results(),
         _pack(),

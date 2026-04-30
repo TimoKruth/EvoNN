@@ -233,17 +233,33 @@ def write_report(run_dir: str | Path) -> Path:
             f"- Precision Mode: `{runtime_meta['precision_mode']}`",
             f"- Evaluations: `{summary.get('evaluation_count', 0)}`",
             f"- Target Evaluations: `{summary.get('target_evaluation_count', 'n/a')}`",
+            f"- Deduplicated Slots: `{summary.get('deduplicated_evaluations', 0)}`",
             f"- Benchmarks: `{summary.get('benchmark_count', 0)}`",
             f"- Completed Benchmarks: `{len(summary.get('completed_benchmarks') or [])}`",
             f"- Budget Policy: `{summary.get('budget_policy_name', 'unknown')}`",
             f"- Selection Mode: `{summary.get('selection_mode', 'metric_only')}`",
             f"- Wall Clock Seconds: `{float(summary.get('wall_clock_seconds', 0.0)):.3f}`",
             "",
+        ]
+        runtime_optimizations = summary.get("runtime_optimizations") or {}
+        if runtime_optimizations:
+            lines.extend([
+                "## Runtime Optimizations",
+                "",
+                "| Setting | Value |",
+                "|---|---|",
+            ])
+            for key in ["benchmark_preprocessing", "candidate_batch_execution"]:
+                lines.append(
+                    f"| {_render_markdown_cell(key)} | {_render_markdown_cell(runtime_optimizations.get(key), missing='default')} |"
+                )
+            lines.append("")
+        lines.extend([
             "## Search Policy",
             "",
             "| Setting | Value |",
             "|---|---|",
-        ]
+        ])
         search_policy = summary.get("search_policy") or {}
         for key in [
             "population_size",
@@ -253,6 +269,7 @@ def write_report(run_dir: str | Path) -> Path:
             "novelty_weight",
             "complexity_penalty_weight",
             "max_candidates_per_benchmark",
+            "candidate_deduplication",
         ]:
             lines.append(f"| {_render_markdown_cell(key)} | {_render_markdown_cell(search_policy.get(key), missing='default')} |")
         lines.extend([

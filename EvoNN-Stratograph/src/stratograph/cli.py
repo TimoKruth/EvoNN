@@ -74,12 +74,23 @@ def evolve(
         default=None,
         help="Override runtime.backend for this run: auto, mlx, or numpy-fallback.",
     ),
+    benchmark_workers: int | None = typer.Option(
+        default=None,
+        min=1,
+        help="Override evolution.benchmark_parallel_workers for benchmark-level process parallelism.",
+    ),
 ) -> None:
     """Run Stratograph evolution."""
     run_config = load_config(config)
-    if runtime_backend is not None:
+    if runtime_backend is not None or benchmark_workers is not None:
         payload = run_config.model_dump(mode="python")
-        payload["runtime"] = {**payload.get("runtime", {}), "backend": runtime_backend}
+        if runtime_backend is not None:
+            payload["runtime"] = {**payload.get("runtime", {}), "backend": runtime_backend}
+        if benchmark_workers is not None:
+            payload["evolution"] = {
+                **payload.get("evolution", {}),
+                "benchmark_parallel_workers": benchmark_workers,
+            }
         run_config = RunConfig.model_validate(payload)
     resolved_run_dir = run_dir or Path("runs") / (run_config.run_name or f"{config.stem}_seed{run_config.seed}")
     path = run_evolution(run_config, run_dir=resolved_run_dir, config_path=config, resume=resume)
@@ -126,6 +137,14 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_row("Precision Mode", runtime_meta["precision_mode"])
     if runtime_meta["runtime_backend_limitations"]:
         overview.add_row("Runtime Limitations", runtime_meta["runtime_backend_limitations"])
+    overview.add_row(
+        "Parallelism",
+        (
+            f"{budget_meta.get('parallelism_mode', 'serial')} "
+            f"(requested={budget_meta.get('benchmark_parallel_workers_requested', 1)}, "
+            f"effective={budget_meta.get('benchmark_parallel_workers_effective', 1)})"
+        ),
+    )
     overview.add_row("Architecture Mode", str(budget_meta.get("architecture_mode", "unknown")))
     overview.add_row("Evaluation Count", str(budget_meta.get("evaluation_count", 0)))
     overview.add_row("Effective Training Epochs", str(budget_meta.get("effective_training_epochs", "unknown")))

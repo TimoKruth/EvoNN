@@ -40,7 +40,7 @@ def export_symbiosis_contract(
         store.close()
         raise ValueError(f"No stored runs in {run_dir}")
     run = runs[0]
-    results = {record["benchmark_name"]: record for record in store.load_results(run["run_id"])}
+    results = {record["benchmark_name"]: record for record in store.load_latest_results(run["run_id"])}
     genomes = store.load_genomes(run["run_id"])
     budget_meta = store.load_budget_metadata(run["run_id"])
     store.close()
@@ -116,6 +116,9 @@ def export_symbiosis_contract(
             "wall_clock_seconds": budget_meta.get("wall_clock_seconds"),
             "generations": config.evolution.generations,
             "population_size": config.evolution.population_size,
+            "parallelism_mode": budget_meta.get("parallelism_mode", "serial"),
+            "benchmark_parallel_workers_requested": budget_meta.get("benchmark_parallel_workers_requested", 1),
+            "benchmark_parallel_workers_effective": budget_meta.get("benchmark_parallel_workers_effective", 1),
             "budget_policy_name": "prototype_equal_budget",
             "actual_evaluations": budget_meta.get("actual_evaluations"),
             "cached_evaluations": budget_meta.get("cached_evaluations"),
@@ -145,6 +148,7 @@ def export_symbiosis_contract(
             "novelty_score_mean": budget_meta.get("novelty_score_mean"),
             "novelty_score_max": budget_meta.get("novelty_score_max"),
             "novelty_archive_final_size": budget_meta.get("novelty_archive_final_size"),
+            "parallelism_reason": budget_meta.get("parallelism_reason"),
             "map_elites_enabled": bool(budget_meta.get("qd_enabled", False)),
             "map_elites_occupied_niches": budget_meta.get("map_elites_occupied_niches"),
             "map_elites_total_niches": budget_meta.get("map_elites_total_niches"),
@@ -239,6 +243,9 @@ def _write_contract_summary_json(
         "wall_clock_seconds": budget.get("wall_clock_seconds"),
         "architecture_mode": manifest.get("search_telemetry", {}).get("architecture_mode")
         or config.evolution.architecture_mode,
+        "parallelism_mode": budget.get("parallelism_mode", "serial"),
+        "benchmark_parallel_workers_requested": budget.get("benchmark_parallel_workers_requested", 1),
+        "benchmark_parallel_workers_effective": budget.get("benchmark_parallel_workers_effective", 1),
         "runtime_backend": device.get("framework", "unknown"),
         "requested_runtime_backend": runtime_meta["requested_runtime_backend"],
         "runtime_version": device.get("framework_version") or "unknown",

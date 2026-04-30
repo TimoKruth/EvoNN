@@ -224,8 +224,68 @@ class RunStore:
             ) in rows
         ]
 
+    def load_latest_results(self, run_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT benchmark_name, metric_name, metric_direction, metric_value, quality,
+                   parameter_count, train_seconds, architecture_summary, genome_id, status, failure_reason
+            FROM (
+                SELECT
+                    rowid,
+                    benchmark_name,
+                    metric_name,
+                    metric_direction,
+                    metric_value,
+                    quality,
+                    parameter_count,
+                    train_seconds,
+                    architecture_summary,
+                    genome_id,
+                    status,
+                    failure_reason,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY benchmark_name
+                        ORDER BY rowid DESC
+                    ) AS latest_rank
+                FROM benchmark_results
+                WHERE run_id = ?
+            )
+            WHERE latest_rank = 1
+            ORDER BY benchmark_name
+            """,
+            [run_id],
+        ).fetchall()
+        return [
+            {
+                "benchmark_name": benchmark_name,
+                "metric_name": metric_name,
+                "metric_direction": metric_direction,
+                "metric_value": metric_value,
+                "quality": quality,
+                "parameter_count": parameter_count,
+                "train_seconds": train_seconds,
+                "architecture_summary": architecture_summary,
+                "genome_id": genome_id,
+                "status": status,
+                "failure_reason": failure_reason,
+            }
+            for (
+                benchmark_name,
+                metric_name,
+                metric_direction,
+                metric_value,
+                quality,
+                parameter_count,
+                train_seconds,
+                architecture_summary,
+                genome_id,
+                status,
+                failure_reason,
+            ) in rows
+        ]
+
     def load_best_benchmark_results(self, run_id: str) -> list[dict[str, Any]]:
-        return self.load_results(run_id)
+        return self.load_latest_results(run_id)
 
     def load_budget_metadata(self, run_id: str) -> dict[str, Any]:
         rows = self.conn.execute(

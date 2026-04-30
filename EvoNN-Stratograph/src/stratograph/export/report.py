@@ -34,7 +34,7 @@ def load_report_context(run_dir: str | Path) -> dict[str, Any]:
             raise ValueError(f"No runs found in {run_dir}")
 
         run = runs[0]
-        results = store.load_results(run["run_id"])
+        results = store.load_latest_results(run["run_id"])
         genomes = store.load_genomes(run["run_id"])
         budget_meta = store.load_budget_metadata(run["run_id"])
 
@@ -172,6 +172,12 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Requested Runtime: `{runtime_meta['requested_runtime_backend']}`",
         f"- Runtime Version: `{runtime_meta['runtime_version']}`",
         f"- Precision Mode: `{runtime_meta['precision_mode']}`",
+        (
+            "- Parallelism: "
+            f"`{budget_meta.get('parallelism_mode', 'serial')}` "
+            f"(requested=`{budget_meta.get('benchmark_parallel_workers_requested', 1)}`, "
+            f"effective=`{budget_meta.get('benchmark_parallel_workers_effective', 1)}`)"
+        ),
         f"- Architecture Mode: `{budget_meta.get('architecture_mode', 'unknown')}`",
         f"- Benchmarks: `{len(results)}`",
         f"- Genomes Stored: `{len(genomes)}`",

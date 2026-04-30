@@ -113,6 +113,8 @@ def export_symbiosis_contract(
 
     evaluation_count = int(summary.get("evaluation_count", len(trial_records)))
     declared_evaluation_count = int(summary.get("target_evaluation_count", evaluation_count))
+    deduplicated_evaluations = int(summary.get("deduplicated_evaluations", 0))
+    accounting_tags = ("candidate_deduplicated",) if deduplicated_evaluations > 0 else ("full_budget",)
     partial_run = _is_partial_run(summary=summary, declared_evaluation_count=declared_evaluation_count)
     compare_summary = _build_compare_summary(summary=summary, results=result_records, evaluation_count=evaluation_count)
     _write_summary_json(output_dir / "compare_summary.json", compare_summary)
@@ -140,10 +142,13 @@ def export_symbiosis_contract(
             "cached_evaluations": 0,
             "failed_evaluations": int(summary.get("failed_evaluations", 0)),
             "invalid_evaluations": int(summary.get("skipped_evaluations", 0)),
+            "deduplicated_evaluations": deduplicated_evaluations,
+            "accounting_tags": accounting_tags,
             "partial_run": partial_run,
             "evaluation_semantics": (
-                "one primitive family-benchmark trial counts as one evaluation; "
-                "failed trials still count and no cached evaluations are exported separately"
+                "one primitive family-benchmark trial is scheduled per evaluation slot; "
+                "actual_evaluations counts executed training runs, deduplicated_evaluations counts exact duplicate genome-id slots skipped under the experimental mode, "
+                "failed trials still count, and no cached evaluations are exported separately"
             ),
         },
         "device": {
@@ -168,9 +173,11 @@ def export_symbiosis_contract(
             "group_counts": summary.get("group_counts", {}),
             "failure_count": int(summary.get("failure_count", 0)),
             "selection_mode": summary.get("selection_mode", "metric_only"),
+            "candidate_deduplication": summary.get("search_policy", {}).get("candidate_deduplication", "off"),
             "attempted_evaluations": int(summary.get("attempted_evaluations", evaluation_count)),
             "successful_evaluations": int(summary.get("successful_evaluations", 0)),
             "failed_evaluations": int(summary.get("failed_evaluations", 0)),
+            "deduplicated_evaluations": deduplicated_evaluations,
             "wall_clock_seconds": summary.get("wall_clock_seconds"),
         },
         "fairness": fairness_manifest(
@@ -220,8 +227,8 @@ def _write_summary_json(path: Path, payload: Any) -> None:
 def _is_partial_run(*, summary: dict[str, Any], declared_evaluation_count: int) -> bool:
     completed = len(summary.get("completed_benchmarks") or [])
     benchmark_total = int(summary.get("benchmark_count", completed))
-    actual_evaluations = int(summary.get("evaluation_count", 0))
-    return completed < benchmark_total or actual_evaluations < declared_evaluation_count
+    covered_evaluations = int(summary.get("evaluation_count", 0)) + int(summary.get("deduplicated_evaluations", 0))
+    return completed < benchmark_total or covered_evaluations < declared_evaluation_count
 
 
 def _build_compare_summary(
@@ -248,6 +255,7 @@ def _build_compare_summary(
         "successful_evaluations": int(summary.get("successful_evaluations", 0)),
         "failed_evaluations": int(summary.get("failed_evaluations", 0)),
         "skipped_evaluations": int(summary.get("skipped_evaluations", 0)),
+        "deduplicated_evaluations": int(summary.get("deduplicated_evaluations", 0)),
         "generations_completed": 1,
         "epochs_per_candidate": int(summary.get("epochs_per_candidate", 0)),
         "population_size": evaluation_count,
@@ -255,6 +263,7 @@ def _build_compare_summary(
         "runtime_version": summary.get("runtime_version") or "unknown",
         "precision_mode": summary.get("precision_mode", "unknown"),
         "selection_mode": summary.get("selection_mode", "metric_only"),
+        "candidate_deduplication": summary.get("search_policy", {}).get("candidate_deduplication", "off"),
         **core,
         "wall_clock_seconds": summary.get("wall_clock_seconds"),
         "primitive_usage": summary.get("primitive_usage", {}),

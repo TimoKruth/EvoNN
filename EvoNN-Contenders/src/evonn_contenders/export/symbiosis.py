@@ -55,6 +55,12 @@ def export_symbiosis_contract(
     evaluation_count = int(budget_meta.get("evaluation_count", len(contenders)))
     executed_evaluation_count = int(budget_meta.get("executed_evaluation_count", evaluation_count))
     cached_evaluation_count = max(evaluation_count - executed_evaluation_count, 0)
+    failed_evaluation_count = int(
+        budget_meta.get(
+            "failed_evaluation_count",
+            sum(1 for contender in contenders if contender.get("status") != "ok"),
+        )
+    )
     exported_epochs_per_candidate = _export_epochs_per_candidate(
         pack_epochs_per_candidate=pack.budget_policy.epochs_per_candidate,
         budget_policy_name=exported_budget_policy_name,
@@ -126,7 +132,7 @@ def export_symbiosis_contract(
             budget_policy_name=exported_budget_policy_name,
             actual_evaluations=executed_evaluation_count,
             cached_evaluations=cached_evaluation_count,
-            failed_evaluations=sum(1 for record in result_records if record.status == "failed"),
+            failed_evaluations=failed_evaluation_count,
             invalid_evaluations=0,
             partial_run=any(record.status != "ok" for record in result_records),
             evaluation_semantics=(
@@ -207,6 +213,7 @@ def _build_contract_summary(
     parameter_counts = [int(record.parameter_count) for record in successful if record.parameter_count is not None]
     qualities = [float(record.quality) for record in successful if record.quality is not None]
     failed = [record for record in results if record.status != "ok"]
+    failed_evaluation_count = int(budget_meta.get("failed_evaluation_count", manifest.budget.failed_evaluations or 0))
     failure_patterns: dict[str, int] = {}
     for record in failed:
         label = record.failure_reason or record.status or "unknown"
@@ -214,7 +221,7 @@ def _build_contract_summary(
     return {
         "system": "contenders",
         "run_id": manifest.run_id,
-        "status": "ok" if not failed else "partial",
+        "status": "ok" if failed_evaluation_count == 0 and not manifest.budget.partial_run else "partial",
         "total_evaluations": manifest.budget.evaluation_count,
         "actual_evaluations": manifest.budget.actual_evaluations,
         "cached_evaluations": manifest.budget.cached_evaluations,
@@ -231,11 +238,13 @@ def _build_contract_summary(
         "best_fitness": max(metric_values) if metric_values else None,
         "median_parameter_count": _median_int(parameter_counts),
         "median_benchmark_quality": _median_float(qualities),
-        "failure_count": len(failed),
+        "failure_count": failed_evaluation_count,
         "failure_patterns": failure_patterns,
         "benchmarks_evaluated": len(results),
         "optional_missing_by_group": budget_meta.get("optional_missing_by_group") or {},
         "optional_missing_count": int(budget_meta.get("optional_missing_count", 0)),
+        "parallel_trial_workers_requested": int(budget_meta.get("parallel_trial_workers_requested", 1)),
+        "parallel_trial_workers_effective": int(budget_meta.get("parallel_trial_workers_effective", 0)),
         "baseline_coverage": (
             manifest.baseline_coverage.model_dump(mode="json")
             if manifest.baseline_coverage is not None

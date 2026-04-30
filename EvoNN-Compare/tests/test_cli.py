@@ -2,6 +2,7 @@ import json
 import re
 from pathlib import Path
 
+import yaml
 from typer.testing import CliRunner
 
 from evonn_compare.cli import fair_matrix as fair_matrix_cli
@@ -10,6 +11,7 @@ from evonn_compare.cli import transfer_regimes as transfer_regimes_cli
 from evonn_compare.cli.main import app
 from evonn_compare.comparison.fair_matrix import build_matrix_trend_rows
 from evonn_compare.comparison.engine import ComparisonEngine
+from evonn_compare.contracts.performance import PerformanceBaselineManifest, PerformanceRow
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.ingest.loader import SystemIngestor
 from evonn_compare.orchestration.lane_presets import resolve_lane_preset
@@ -112,6 +114,26 @@ def test_historical_baseline_help() -> None:
     assert "--no-open" in text
 
 
+def test_performance_baseline_help() -> None:
+    result = _invoke_help("performance-baseline")
+    assert result.exit_code == 0
+    text = _normalized_cli_output(result.stdout)
+    assert "--output-root" in text
+    assert "--packs" in text
+    assert "--cache-modes" in text
+    assert "--systems" in text
+    assert "--matrix-workspace" in text
+
+
+def test_performance_report_help() -> None:
+    result = _invoke_help("performance-report")
+    assert result.exit_code == 0
+    text = _normalized_cli_output(result.stdout)
+    assert "--candidate" in text
+    assert "--compare-label" in text
+    assert "--output-root" in text
+
+
 def test_seeded_compare_help() -> None:
     result = _invoke_help("seeded-compare")
     assert result.exit_code == 0
@@ -176,6 +198,240 @@ def test_fair_matrix_preset_smoke_dry_run(tmp_path) -> None:
     assert "trend-dataset\t" in result.stdout
     assert "fair_matrix_trends.jsonl" in result.stdout
     assert (tmp_path / "state.json").exists()
+
+
+def test_performance_baseline_initializes_artifacts(tmp_path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "performance-baseline",
+            "--output-root",
+            str(tmp_path),
+            "--packs",
+            "tier1_core",
+            "--budgets",
+            "64",
+            "--seeds",
+            "42",
+            "--cache-modes",
+            "cold",
+            "--systems",
+            "prism,contenders",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "mode\tplan" in result.stdout
+    assert f"baseline_manifest\t{tmp_path / 'baseline_manifest.json'}" in result.stdout
+    assert f"perf_rows\t{tmp_path / 'perf_rows.jsonl'}" in result.stdout
+    assert f"perf_dashboard\t{tmp_path / 'perf_dashboard.html'}" in result.stdout
+    assert "planned_case_count\t2" in result.stdout
+
+    manifest = json.loads((tmp_path / "baseline_manifest.json").read_text(encoding="utf-8"))
+    validated_manifest = PerformanceBaselineManifest.model_validate(manifest)
+    assert manifest["planned_case_count"] == 2
+    assert manifest["budgets"] == [64]
+    assert manifest["seeds"] == [42]
+    assert manifest["cache_modes"] == ["cold"]
+    assert [entry["system"] for entry in manifest["system_counts"]] == ["contenders", "prism"]
+    assert manifest["review_references"]["workflow_doc"] == "PERFORMANCE_OPTIMIZATION_WORKFLOW.md"
+    assert manifest["review_references"]["pull_request_template"] == ".github/pull_request_template.md"
+    assert validated_manifest.planned_case_count == 2
+
+    perf_rows = (tmp_path / "perf_rows.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(perf_rows) == 2
+    row_payloads = [json.loads(line) for line in perf_rows]
+    assert {row["system"] for row in row_payloads} == {"prism", "contenders"}
+    assert {row["status"] for row in row_payloads} == {"planned"}
+    validated_rows = [PerformanceRow.model_validate(row) for row in row_payloads]
+    assert {row.record_type for row in validated_rows} == {"planned_performance_baseline_case"}
+    summary_path = tmp_path / "baseline_summary.md"
+    assert summary_path.exists()
+    summary_text = summary_path.read_text(encoding="utf-8")
+    assert "## Review Workflow" in summary_text
+    assert "PERFORMANCE_OPTIMIZATION_WORKFLOW.md" in summary_text
+
+    dashboard_payload = json.loads((tmp_path / "perf_dashboard.json").read_text(encoding="utf-8"))
+    assert dashboard_payload["review_references"]["child_issue_template"].endswith(
+        "#optimization-child-issue-template"
+    )
+    dashboard_html = (tmp_path / "perf_dashboard.html").read_text(encoding="utf-8")
+    assert "Every optimization branch must carry the baseline artifact path" in dashboard_html
+
+
+def test_performance_baseline_materializes_measured_rows_from_matrix_workspace(tmp_path) -> None:
+    matrix_workspace = tmp_path / "matrix-workspace"
+    run_dir = matrix_workspace / "runs" / "stratograph" / "tier1_core_eval64_seed42"
+    report_dir = matrix_workspace / "reports" / "tier1_core_eval64_seed42"
+    run_dir.mkdir(parents=True)
+    report_dir.mkdir(parents=True)
+
+    (matrix_workspace / "matrix.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "cases": [
+                    {
+                        "pack_name": "tier1_core_eval64",
+                        "budget": 64,
+                        "seed": 42,
+                        "report_dir": str(report_dir),
+                        "stratograph_run_dir": str(run_dir),
+                    }
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "system": "stratograph",
+                "run_id": "tier1_core_eval64_seed42",
+                "run_name": "tier1_core_eval64_seed42",
+                "created_at": "2026-04-30T09:00:00+00:00",
+                "pack_name": "tier1_core_eval64",
+                "seed": 42,
+                "benchmarks": [
+                    {
+                        "benchmark_id": "iris_classification",
+                        "task_kind": "classification",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                        "status": "ok",
+                    }
+                ],
+                "budget": {
+                    "evaluation_count": 64,
+                    "epochs_per_candidate": 20,
+                    "wall_clock_seconds": 8.0,
+                    "actual_evaluations": 64,
+                    "cached_evaluations": 16,
+                    "failed_evaluations": 0,
+                    "partial_run": False,
+                },
+                "device": {
+                    "device_name": "x86_64",
+                    "precision_mode": "fp32",
+                    "framework": "numpy-fallback",
+                    "framework_version": "0.0-test",
+                },
+                "artifacts": {
+                    "config_snapshot": "config.yaml",
+                    "report_markdown": "report.md",
+                },
+                "fairness": {
+                    "benchmark_pack_id": "tier1_core_eval64",
+                    "seed": 42,
+                    "evaluation_count": 64,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "results.json").write_text(
+        json.dumps(
+            [
+                {
+                    "system": "stratograph",
+                    "run_id": "tier1_core_eval64_seed42",
+                    "benchmark_id": "iris_classification",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": 0.9,
+                    "quality": 0.9,
+                    "train_seconds": 2.5,
+                    "peak_memory_mb": 128.0,
+                    "status": "ok",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (report_dir / "fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier1_core_eval64",
+                "systems": ["stratograph"],
+                "trend_rows": [
+                    {
+                        "benchmark_id": "iris_classification",
+                        "budget": 64,
+                        "evaluation_count": 64,
+                        "epochs_per_candidate": 20,
+                        "budget_policy_name": "prototype_equal_budget",
+                        "failure_reason": None,
+                        "fairness_metadata": {
+                            "system_operating_state": "trusted-core",
+                        },
+                        "lane_budget_accounting_ok": True,
+                        "lane_operating_state": "trusted-core",
+                        "lane_repeatability_ready": True,
+                        "matrix_scope": "all_scope",
+                        "metric_direction": "max",
+                        "metric_name": "accuracy",
+                        "metric_value": 0.9,
+                        "outcome_status": "ok",
+                        "pack_name": "tier1_core_eval64",
+                        "run_id": "tier1_core_eval64_seed42",
+                        "seed": 42,
+                        "system": "stratograph",
+                        "system_operating_state": "trusted-core",
+                        "wall_clock_seconds": 8.0,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output_root = tmp_path / "baseline-output"
+    result = runner.invoke(
+        app,
+        [
+            "performance-baseline",
+            "--output-root",
+            str(output_root),
+            "--packs",
+            "tier1_core",
+            "--budgets",
+            "64",
+            "--seeds",
+            "42",
+            "--cache-modes",
+            "cold",
+            "--systems",
+            "stratograph",
+            "--matrix-workspace",
+            str(matrix_workspace),
+        ],
+    )
+    assert result.exit_code == 0
+    assert "mode\tmaterialized" in result.stdout
+
+    perf_rows = [json.loads(line) for line in (output_root / "perf_rows.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(perf_rows) == 2
+    measured_payload = next(row for row in perf_rows if row["status"] == "measured")
+    planned_payload = next(row for row in perf_rows if row["status"] == "planned")
+    row = PerformanceRow.model_validate(measured_payload)
+    assert row.status == "measured"
+    assert row.record_type == "measured_performance_baseline_case"
+    assert row.backend_class == "linux_fallback"
+    assert row.accounting_tags == ("cached",)
+    assert row.actual_evaluations == 64
+    assert row.cached_evaluations == 16
+    assert row.metrics.wall_clock_seconds == 8.0
+    assert row.metrics.evals_per_second == 10.0
+    assert row.metrics.cache_hit_rate == 0.2
+    assert row.metrics.train_seconds == 2.5
+    assert row.metrics.peak_memory_mb == 128.0
+    assert row.quality_guard.median_rank == 1.0
+    assert row.trust_guard.observed_state == "trusted-core"
+    assert Path(row.raw_run_dir).is_symlink()
+    assert planned_payload["backend_class"] == "mlx_truth"
+    assert planned_payload["status"] == "planned"
+    manifest = json.loads((output_root / "baseline_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["status_counts"] == {"measured": 1, "planned": 1}
 
 
 def test_fair_matrix_defaults_to_local_daily_dry_run(tmp_path) -> None:

@@ -57,6 +57,14 @@ class SelectionConfig(BaseModel):
     max_contenders_per_benchmark: int | None = None
 
 
+class ExecutionConfig(BaseModel):
+    """Execution knobs for contender runtime behavior."""
+
+    model_config = ConfigDict(frozen=True)
+
+    trial_workers: int = Field(default=1, ge=1)
+
+
 class BaselineConfig(BaseModel):
     """Baseline cache controls for contender reuse."""
 
@@ -112,6 +120,7 @@ class RunConfig(BaseModel):
     benchmark_pool: BenchmarkPoolConfig
     contender_pool: ContenderPoolConfig = Field(default_factory=ContenderPoolConfig)
     selection: SelectionConfig = Field(default_factory=SelectionConfig)
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     baseline: BaselineConfig = Field(default_factory=BaselineConfig)
     svm: SvmConfig = Field(default_factory=SvmConfig)
     boosted_trees: BoostedTreesConfig = Field(default_factory=BoostedTreesConfig)
@@ -127,6 +136,7 @@ def baseline_signature(config: RunConfig) -> str:
         "target_evaluation_count": config.baseline.target_evaluation_count,
         "contender_pool": config.contender_pool.model_dump(mode="json"),
         "selection": config.selection.model_dump(mode="json"),
+        "execution": config.execution.model_dump(mode="json"),
         "svm": config.svm.model_dump(mode="json"),
         "boosted_trees": config.boosted_trees.model_dump(mode="json"),
         "torch": config.torch.model_dump(mode="json"),

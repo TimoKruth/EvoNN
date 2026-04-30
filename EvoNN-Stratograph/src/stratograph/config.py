@@ -39,6 +39,7 @@ class EvolutionConfig(BaseModel):
     generations: int = 1
     elite_per_benchmark: int = 1
     architecture_mode: str = "two_level_shared"
+    benchmark_parallel_workers: int = Field(default=1, ge=1)
 
 
 class RuntimeConfig(BaseModel):

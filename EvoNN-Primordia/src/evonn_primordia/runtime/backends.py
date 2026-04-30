@@ -12,7 +12,6 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import mean_squared_error
 from sklearn.neural_network import MLPClassifier, MLPRegressor
-from sklearn.preprocessing import StandardScaler
 
 from evonn_primordia.config import EvolutionConfig, RunConfig
 from evonn_primordia.runtime.training import EvaluationResult, _compute_metric
@@ -186,9 +185,6 @@ def _train_and_evaluate_numpy_fallback(
 
         x_train = _flatten_inputs(X_train)
         x_val = _flatten_inputs(X_val)
-        scaler = StandardScaler()
-        x_train = scaler.fit_transform(x_train)
-        x_val = scaler.transform(x_val)
 
         if task == "classification":
             estimator = _build_classification_estimator(family, genome, epochs, lr, weight_decay)
