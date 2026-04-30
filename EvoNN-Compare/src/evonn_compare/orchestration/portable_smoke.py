@@ -84,13 +84,14 @@ def ensure_topograph_portable_smoke_export(
     run_dir: Path,
     output_dir: Path | None = None,
     log_dir: Path | None = None,
+    seeding_ladder: Literal["direct", "staged"] | None = None,
 ) -> PortableArtifacts:
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     population_size = int(payload.get("evolution", {}).get("population_size", 2))
     generations = int(payload.get("evolution", {}).get("num_generations", 1))
     seed = int(payload.get("seed", 42))
     epochs = int(payload.get("training", {}).get("epochs", 1))
-    seeding = _portable_topograph_seeding(payload)
+    seeding = _portable_topograph_seeding(payload, seeding_ladder=seeding_ladder)
     return _portable_export(
         system="topograph",
         config_path=config_path,
@@ -249,9 +250,13 @@ def _portable_export(
             effective_training_epochs=epochs,
         ),
         seeding=(
-            legacy_topograph_primordia_seeding_manifest(seeding)
-            if seeding is not None
-            else seeding_manifest(seeding_enabled=False, seeding_ladder="none")
+            _portable_topograph_seeding_manifest(seeding)
+            if system == "topograph" and seeding is not None
+            else (
+                legacy_topograph_primordia_seeding_manifest(seeding)
+                if seeding is not None
+                else seeding_manifest(seeding_enabled=False, seeding_ladder="none")
+            )
         ),
         fairness=fairness_manifest(
             pack_name=pack_name,
@@ -458,7 +463,11 @@ def _topograph_candidates(*, limit: int, seeding: dict[str, Any] | None = None) 
     return candidates
 
 
-def _portable_topograph_seeding(payload: dict[str, Any]) -> dict[str, Any] | None:
+def _portable_topograph_seeding(
+    payload: dict[str, Any],
+    *,
+    seeding_ladder: Literal["direct", "staged"] | None = None,
+) -> dict[str, Any] | None:
     pool_payload = payload.get("benchmark_pool") or {}
     seed_path_raw = pool_payload.get("primordia_seed_candidates_path")
     if not seed_path_raw:
@@ -476,14 +485,35 @@ def _portable_topograph_seeding(payload: dict[str, Any]) -> dict[str, Any] | Non
     return {
         "seed_source_system": str(seed_payload.get("system") or "primordia"),
         "seed_source_run_id": seed_payload.get("run_id"),
+        "seeding_ladder": seeding_ladder or "direct",
         "seed_path": str(seed_path),
         "target_family": target_family,
         "selected_family": str(selected.get("family") or "mlp"),
         "selected_rank": int(selected.get("seed_rank", 1)),
-        "seed_overlap_policy": "family-overlapping",
+        "seed_overlap_policy": str(selected.get("seed_overlap_policy") or "family-overlapping"),
         "representative_genome_id": selected.get("representative_genome_id"),
         "representative_architecture_summary": selected.get("representative_architecture_summary"),
     }
+
+
+def _portable_topograph_seeding_manifest(seeding: dict[str, Any]) -> dict[str, Any]:
+    return seeding_manifest(
+        seeding_enabled=True,
+        seeding_ladder=str(seeding.get("seeding_ladder") or "direct"),
+        seed_source_system=str(seeding.get("seed_source_system") or "primordia"),
+        seed_source_run_id=None if seeding.get("seed_source_run_id") is None else str(seeding.get("seed_source_run_id")),
+        seed_artifact_path=str(seeding.get("seed_path")),
+        seed_target_family=None if seeding.get("target_family") is None else str(seeding.get("target_family")),
+        seed_selected_family=None if seeding.get("selected_family") is None else str(seeding.get("selected_family")),
+        seed_rank=int(seeding.get("selected_rank", 1)),
+        seed_overlap_policy=None if seeding.get("seed_overlap_policy") is None else str(seeding.get("seed_overlap_policy")),
+        representative_genome_id=None if seeding.get("representative_genome_id") is None else str(seeding.get("representative_genome_id")),
+        representative_architecture_summary=(
+            None
+            if seeding.get("representative_architecture_summary") is None
+            else str(seeding.get("representative_architecture_summary"))
+        ),
+    )
 
 
 def _seeded_hidden_layers(seeding: dict[str, Any]) -> tuple[int, ...]:

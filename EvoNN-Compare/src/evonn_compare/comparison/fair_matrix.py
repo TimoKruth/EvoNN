@@ -9,6 +9,11 @@ from typing import Any
 from evonn_compare.comparison.engine import ComparisonResult
 from evonn_shared.contracts import ResultRecord, RunManifest
 from evonn_compare.contracts.parity import ParityPack
+from evonn_compare.specialization import (
+    infer_benchmark_family,
+    infer_expected_specialization,
+    infer_search_profile,
+)
 
 
 SYSTEM_ORDER = ("prism", "topograph", "stratograph", "primordia", "contenders")
@@ -72,9 +77,12 @@ class MatrixTrendRow:
     system: str
     run_id: str
     benchmark_id: str
+    task_kind: str
+    benchmark_family: str
     metric_name: str
     metric_direction: str
     metric_value: float | None
+    architecture_summary: str | None
     outcome_status: str
     failure_reason: str | None
     evaluation_count: int
@@ -82,6 +90,8 @@ class MatrixTrendRow:
     budget_policy_name: str | None
     wall_clock_seconds: float | None
     matrix_scope: str
+    search_profile: str
+    expected_specialization: str
     fairness_metadata: dict[str, Any]
     lane_operating_state: str = "reference-only"
     system_operating_state: str = "unknown"
@@ -184,6 +194,7 @@ def build_matrix_trend_rows(
     systems: tuple[str, ...] = SYSTEM_ORDER,
 ) -> list[MatrixTrendRow]:
     matrix_scope = "fair" if _reference_note(pair_results) is None else "reference"
+    comparison_case_id = _comparison_case_id(pack_name=pack.name, budget=budget, seed=seed, runs=runs)
     by_system = {
         system: {record.benchmark_id: record for record in results}
         for system, (_manifest, results) in runs.items()
@@ -203,6 +214,12 @@ def build_matrix_trend_rows(
             status = record.status if record is not None else (benchmark_entry.status if benchmark_entry is not None else "missing")
             metric_name = record.metric_name if record is not None else benchmark.metric_name
             metric_direction = record.metric_direction if record is not None else benchmark.metric_direction
+            task_kind = benchmark.task_kind
+            benchmark_family = infer_benchmark_family(
+                benchmark.benchmark_id,
+                task_kind=benchmark.task_kind,
+                explicit_family=getattr(benchmark, "benchmark_family", None),
+            )
             fairness = manifest.fairness
             seeding = manifest.seeding
             fairness_metadata = {
@@ -223,6 +240,9 @@ def build_matrix_trend_rows(
                 "seed_overlap_policy": seeding.seed_overlap_policy if seeding is not None else None,
                 "seeding_bucket": _seeding_bucket(manifest),
                 "pairwise_fairness_ok": matrix_scope == "fair",
+                "comparison_cohort": "current-workspace",
+                "comparison_label": "current-workspace",
+                "comparison_case_id": comparison_case_id,
                 "lane_operating_state": lane.operating_state if lane is not None else "reference-only",
                 "system_operating_state": lane.system_operating_states.get(system, "unknown") if lane is not None else "unknown",
                 "budget_accounting_ok": lane.budget_accounting_ok if lane is not None else False,
@@ -235,9 +255,12 @@ def build_matrix_trend_rows(
                     system=system,
                     run_id=manifest.run_id,
                     benchmark_id=benchmark.benchmark_id,
+                    task_kind=task_kind,
+                    benchmark_family=benchmark_family,
                     metric_name=metric_name,
                     metric_direction=metric_direction,
                     metric_value=record.metric_value if record is not None else None,
+                    architecture_summary=record.architecture_summary if record is not None else None,
                     outcome_status=status,
                     failure_reason=record.failure_reason if record is not None else None,
                     evaluation_count=manifest.budget.evaluation_count,
@@ -245,6 +268,8 @@ def build_matrix_trend_rows(
                     budget_policy_name=manifest.budget.budget_policy_name,
                     wall_clock_seconds=manifest.budget.wall_clock_seconds,
                     matrix_scope=matrix_scope,
+                    search_profile=infer_search_profile(system),
+                    expected_specialization=infer_expected_specialization(system),
                     fairness_metadata=fairness_metadata,
                     lane_operating_state=lane.operating_state if lane is not None else "reference-only",
                     system_operating_state=lane.system_operating_states.get(system, "unknown") if lane is not None else "unknown",
@@ -312,3 +337,17 @@ def _seeding_bucket(manifest: RunManifest) -> str:
     if not seeding.seeding_enabled or seeding.seeding_ladder == "none":
         return "unseeded"
     return seeding.seeding_ladder
+
+
+def _comparison_case_id(
+    *,
+    pack_name: str,
+    budget: int,
+    seed: int,
+    runs: dict[str, tuple[RunManifest, list[ResultRecord]]],
+) -> str:
+    run_tokens = [
+        f"{system}:{manifest.run_id}"
+        for system, (manifest, _results) in sorted(runs.items())
+    ]
+    return f"current-workspace:{pack_name}:{budget}:{seed}:{'|'.join(run_tokens)}"

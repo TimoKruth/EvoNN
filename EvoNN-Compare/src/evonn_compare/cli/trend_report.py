@@ -10,6 +10,11 @@ import typer
 
 from evonn_compare.comparison.fair_matrix import MatrixTrendRow
 from evonn_compare.reporting.fair_matrix_trends_md import render_fair_matrix_trend_markdown
+from evonn_compare.specialization import (
+    infer_benchmark_family,
+    infer_expected_specialization,
+    infer_search_profile,
+)
 
 
 def trend_report(
@@ -67,16 +72,25 @@ def _dedupe_trend_rows(rows: list[MatrixTrendRow]) -> list[MatrixTrendRow]:
 
 
 def _trend_row_key(row: MatrixTrendRow) -> tuple[object, ...]:
+    comparison_case_id = row.fairness_metadata.get("comparison_case_id")
+    comparison_label = row.fairness_metadata.get("comparison_label")
+    comparison_cohort = row.fairness_metadata.get("comparison_cohort")
     return (
         row.pack_name,
         row.budget,
         row.seed,
+        comparison_case_id,
+        comparison_label,
+        comparison_cohort,
         row.system,
         row.run_id,
         row.benchmark_id,
+        row.task_kind,
+        row.benchmark_family,
         row.metric_name,
         row.metric_direction,
         row.metric_value,
+        row.architecture_summary,
         row.outcome_status,
         row.failure_reason,
         row.evaluation_count,
@@ -84,6 +98,8 @@ def _trend_row_key(row: MatrixTrendRow) -> tuple[object, ...]:
         row.budget_policy_name,
         row.wall_clock_seconds,
         row.matrix_scope,
+        row.search_profile,
+        row.expected_specialization,
         row.lane_operating_state,
         row.system_operating_state,
         row.lane_repeatability_ready,
@@ -98,17 +114,28 @@ def _read_payload(path: Path):
 
 
 def _coerce_trend_row(entry: dict) -> MatrixTrendRow:
+    task_kind = str(entry.get("task_kind") or "classification")
+    benchmark_id = str(entry["benchmark"] if "benchmark" in entry else entry["benchmark_id"])
+    benchmark_family = infer_benchmark_family(
+        benchmark_id,
+        task_kind=task_kind,
+        explicit_family=entry.get("benchmark_family"),
+    )
+    system = str(entry["engine"] if "engine" in entry else entry["system"])
     if "pack_name" not in entry and "pack" in entry:
         return MatrixTrendRow(
             pack_name=str(entry["pack"]),
             budget=int(entry["budget"]),
             seed=int(entry["seed"]),
-            system=str(entry["engine"]),
+            system=system,
             run_id=str(entry["run_id"]),
-            benchmark_id=str(entry["benchmark"]),
+            benchmark_id=benchmark_id,
+            task_kind=task_kind,
+            benchmark_family=benchmark_family,
             metric_name=str(entry["metric_name"]),
             metric_direction=str(entry["metric_direction"]),
             metric_value=None if entry.get("metric_value") is None else float(entry["metric_value"]),
+            architecture_summary=None if entry.get("architecture_summary") is None else str(entry["architecture_summary"]),
             outcome_status=str(entry["outcome_status"]),
             failure_reason=None if entry.get("failure_reason") is None else str(entry["failure_reason"]),
             evaluation_count=int((entry.get("fairness") or {}).get("evaluation_count") or entry["budget"]),
@@ -116,6 +143,8 @@ def _coerce_trend_row(entry: dict) -> MatrixTrendRow:
             budget_policy_name=None if (entry.get("fairness") or {}).get("budget_policy_name") is None else str((entry.get("fairness") or {})["budget_policy_name"]),
             wall_clock_seconds=None if entry.get("wall_clock_seconds") is None else float(entry["wall_clock_seconds"]),
             matrix_scope="fair" if not entry.get("reference_only") else "reference",
+            search_profile=str(entry.get("search_profile") or infer_search_profile(system)),
+            expected_specialization=str(entry.get("expected_specialization") or infer_expected_specialization(system)),
             fairness_metadata=dict(entry.get("fairness") or {}),
             lane_operating_state=str((entry.get("lane") or {}).get("operating_state") or (entry.get("fairness") or {}).get("lane_operating_state") or ("fair" if not entry.get("reference_only") else "reference-only")),
             system_operating_state=str(entry.get("system_operating_state") or (entry.get("fairness") or {}).get("system_operating_state") or "unknown"),
@@ -126,12 +155,15 @@ def _coerce_trend_row(entry: dict) -> MatrixTrendRow:
         pack_name=str(entry["pack_name"]),
         budget=int(entry["budget"]),
         seed=int(entry["seed"]),
-        system=str(entry["system"]),
+        system=system,
         run_id=str(entry["run_id"]),
-        benchmark_id=str(entry["benchmark_id"]),
+        benchmark_id=benchmark_id,
+        task_kind=task_kind,
+        benchmark_family=benchmark_family,
         metric_name=str(entry["metric_name"]),
         metric_direction=str(entry["metric_direction"]),
         metric_value=None if entry.get("metric_value") is None else float(entry["metric_value"]),
+        architecture_summary=None if entry.get("architecture_summary") is None else str(entry["architecture_summary"]),
         outcome_status=str(entry["outcome_status"]),
         failure_reason=None if entry.get("failure_reason") is None else str(entry["failure_reason"]),
         evaluation_count=int(entry["evaluation_count"]),
@@ -139,6 +171,8 @@ def _coerce_trend_row(entry: dict) -> MatrixTrendRow:
         budget_policy_name=None if entry.get("budget_policy_name") is None else str(entry["budget_policy_name"]),
         wall_clock_seconds=None if entry.get("wall_clock_seconds") is None else float(entry["wall_clock_seconds"]),
         matrix_scope=str(entry["matrix_scope"]),
+        search_profile=str(entry.get("search_profile") or infer_search_profile(system)),
+        expected_specialization=str(entry.get("expected_specialization") or infer_expected_specialization(system)),
         fairness_metadata=dict(entry.get("fairness_metadata") or {}),
         lane_operating_state=str(entry.get("lane_operating_state") or (entry.get("fairness_metadata") or {}).get("lane_operating_state") or "reference-only"),
         system_operating_state=str(entry.get("system_operating_state") or (entry.get("fairness_metadata") or {}).get("system_operating_state") or "unknown"),

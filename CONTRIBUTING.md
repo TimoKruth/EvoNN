@@ -9,6 +9,10 @@
 - If multiple efforts need to stay isolated at once, create a separate git
   worktree per issue or feature branch.
 - Push the branch, open a pull request, and merge through review.
+- If the PR makes an engine-advancement claim, complete the decision-gate
+  evidence summary from [RESEARCH_DECISION_GATE.md](./RESEARCH_DECISION_GATE.md)
+  and link the exact trend, dashboard, case, and run artifacts used for the
+  claim.
 
 ## Suggested Flow
 
@@ -40,3 +44,21 @@ bash scripts/ci/stratograph-checks.sh all
 
 If the change also touches Prism or Topograph runtime behavior, run the
 package-local macOS checks in their native lane as well.
+
+## Evidence Expectations For Advancement PRs
+
+When a PR argues that an engine improved, regressed, or should become the new
+default, reviewers should not have to reconstruct the claim from chat or local
+shell history.
+
+The PR must include:
+
+- one decision category from `RESEARCH_DECISION_GATE.md`
+- the workspace trend report and dashboard paths
+- exact case IDs and run IDs
+- the dashboard slices used for the judgment
+- the lane operating state, accounting state, and repeatability state
+
+If the claim is relative to a prior branch or release, import that baseline into
+the live workspace with `evonn-compare historical-baseline` and review both
+cohorts from the same artifact surface.

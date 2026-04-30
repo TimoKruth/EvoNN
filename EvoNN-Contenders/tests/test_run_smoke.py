@@ -478,18 +478,23 @@ seed_policy:
 
 
 def test_official_lane_config_resolves_benchmark_pack_names() -> None:
-    config_path = (
-        Path(__file__).resolve().parents[1]
-        / "configs"
-        / "official_lanes"
-        / "tier1_core_eval64.yaml"
-    )
-    config = load_config(config_path)
+    config_root = Path(__file__).resolve().parents[1] / "configs" / "official_lanes"
+    tier1 = load_config(config_root / "tier1_core_eval64.yaml")
+    tier_b = load_config(config_root / "tier_b_core_eval256.yaml")
 
-    assert config.benchmark_pool.name == "tier1_core"
-    assert "iris" in config.benchmark_pool.benchmarks
-    assert "diabetes" in config.benchmark_pool.benchmarks
-    assert config.baseline.target_evaluation_count == 64
+    assert tier1.benchmark_pool.name == "tier1_core"
+    assert "iris" in tier1.benchmark_pool.benchmarks
+    assert "diabetes" in tier1.benchmark_pool.benchmarks
+    assert tier1.baseline.target_evaluation_count == 64
+
+    assert tier_b.benchmark_pool.name == "tier_b_core"
+    assert tier_b.benchmark_pool.benchmarks == [
+        "gas_sensor",
+        "cpu_performance",
+        "fashion_mnist",
+        "tinystories_lm_smoke",
+    ]
+    assert tier_b.baseline.target_evaluation_count == 256
 
 
 def test_export_optional_skip_metadata_respects_selection_cap(tmp_path: Path, monkeypatch) -> None:

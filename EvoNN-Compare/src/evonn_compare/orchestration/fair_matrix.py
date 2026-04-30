@@ -23,6 +23,7 @@ from evonn_compare.comparison.engine import ComparisonEngine
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.ingest.loader import SystemIngestor
 from evonn_compare.orchestration.benchmark_resolution import resolve_supported_benchmark_ids
+from evonn_compare.orchestration.campaign_state import StopRequested, sync_workspace_state
 from evonn_compare.orchestration.config_gen import (
     DEFAULT_PRISM_ROOT,
     DEFAULT_TOPOGRAPH_ROOT,
@@ -41,6 +42,11 @@ from evonn_compare.reporting import (
     render_comparison_markdown,
     render_fair_matrix_markdown,
     render_fair_matrix_trend_markdown,
+)
+from evonn_compare.specialization import (
+    infer_benchmark_family,
+    infer_expected_specialization,
+    infer_search_profile,
 )
 from evonn_compare.comparison.fair_matrix import (
     CORE_TRUSTED_SYSTEMS,
@@ -267,6 +273,7 @@ def prepare_fair_matrix_cases(
 
     payload = {
         "pack_name": pack_name,
+        "lane_preset": lane_preset,
         "seeds": seeds,
         "budgets": budgets,
         "systems": list(systems),
@@ -281,6 +288,14 @@ def prepare_fair_matrix_cases(
         ],
     }
     paths.manifest_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    sync_workspace_state(
+        workspace_kind="fair_matrix",
+        workspace=paths.workspace,
+        manifest_path=paths.manifest_path,
+        cases=cases,
+        lane_preset=lane_preset,
+        trend_dataset_path=paths.trends_dir / "fair_matrix_trends.jsonl",
+    )
     return paths, cases
 
 
@@ -389,8 +404,12 @@ def run_fair_matrix_case(
     primordia_root: Path = DEFAULT_PRIMORDIA_ROOT,
     contenders_root: Path = DEFAULT_CONTENDERS_ROOT,
     parallel: bool = True,
+    resume: bool = False,
+    stage_callback: Any | None = None,
+    stop_requested: Any | None = None,
 ) -> Path:
-    _reset_case_outputs(case)
+    if not resume:
+        _reset_case_outputs(case)
     case.report_dir.mkdir(parents=True, exist_ok=True)
     case.log_dir.mkdir(parents=True, exist_ok=True)
     pack = load_parity_pack(case.pack_path)
@@ -406,7 +425,10 @@ def run_fair_matrix_case(
             CommandSpec(
                 name="prism_run",
                 cwd=prism_root.resolve(),
-                argv=["uv", "run", "prism", "evolve", "--config", str(case.prism_config_path), "--run-dir", str(case.prism_run_dir)],
+                argv=_append_resume_flag(
+                    ["uv", "run", "prism", "evolve", "--config", str(case.prism_config_path), "--run-dir", str(case.prism_run_dir)],
+                    resume=resume,
+                ),
             )
         )
         stage_exports.append(
@@ -432,7 +454,10 @@ def run_fair_matrix_case(
             CommandSpec(
                 name="topograph_run",
                 cwd=topograph_root.resolve(),
-                argv=["uv", "run", "topograph", "evolve", "--config", str(case.topograph_config_path), "--run-dir", str(case.topograph_run_dir)],
+                argv=_append_resume_flag(
+                    ["uv", "run", "topograph", "evolve", "--config", str(case.topograph_config_path), "--run-dir", str(case.topograph_run_dir)],
+                    resume=resume,
+                ),
             )
         )
         stage_exports.append(
@@ -458,7 +483,10 @@ def run_fair_matrix_case(
         CommandSpec(
             name="stratograph_run",
             cwd=stratograph_root.resolve(),
-            argv=["uv", "run", "stratograph", "evolve", "--config", str(case.stratograph_config_path), "--run-dir", str(case.stratograph_run_dir)],
+            argv=_append_resume_flag(
+                ["uv", "run", "stratograph", "evolve", "--config", str(case.stratograph_config_path), "--run-dir", str(case.stratograph_run_dir)],
+                resume=resume,
+            ),
         )
     )
     stage_exports.append(
@@ -481,8 +509,11 @@ def run_fair_matrix_case(
         )
     )
 
+    _notify_stage(stage_callback, "run")
     run_failures = _execute_stage_specs(specs=stage_runs, log_dir=case.log_dir, parallel=parallel)
     failures.update(run_failures)
+    _raise_if_stop_requested(stop_requested, reason="stop requested after run stage")
+    _notify_stage(stage_callback, "export")
     export_specs = [spec for spec in stage_exports if _system_name_from_stage(spec.name) not in failures]
     export_failures = _execute_stage_specs(specs=export_specs, log_dir=case.log_dir, parallel=parallel)
     failures.update(export_failures)
@@ -534,6 +565,7 @@ def run_fair_matrix_case(
         except Exception as exc:
             failures["contenders"] = f"contenders export failed: {type(exc).__name__}: {exc}"
 
+    _raise_if_stop_requested(stop_requested, reason="stop requested after export stage")
     run_dirs = {
         "prism": case.prism_run_dir,
         "topograph": case.topograph_run_dir,
@@ -554,6 +586,7 @@ def run_fair_matrix_case(
         )
     runs = _load_runs_with_failure_fallback(case=case, pack=pack, run_dirs=run_dirs, failures=failures)
 
+    _notify_stage(stage_callback, "compare")
     pair_results: dict[tuple[str, str], tuple[Any, Path]] = {}
     for left_system, right_system in itertools.combinations(case.systems, 2):
         left_manifest, left_results = runs[left_system]
@@ -573,6 +606,7 @@ def run_fair_matrix_case(
         )
         pair_results[(left_system, right_system)] = (result, report_path)
 
+    _raise_if_stop_requested(stop_requested, reason="stop requested after compare stage")
     fair_row, reference_row, parity_rows = summarize_matrix_case(
         pack=pack,
         budget=case.budget,
@@ -599,6 +633,7 @@ def run_fair_matrix_case(
         ),
         systems=case.systems,
     )
+    _notify_stage(stage_callback, "report")
     case.summary_output_path.write_text(render_fair_matrix_markdown(summary), encoding="utf-8")
     case.summary_output_path.with_suffix(".json").write_text(
         json.dumps(asdict(summary), indent=2, default=str),
@@ -917,6 +952,25 @@ def _render_blocking_benchmark(benchmark_id: str, status: str, failure_reason: s
     return f"{benchmark_id}={status}"
 
 
+def _append_resume_flag(argv: list[str], *, resume: bool) -> list[str]:
+    if not resume:
+        return argv
+    return [*argv, "--resume"]
+
+
+def _notify_stage(stage_callback: Any | None, stage: str) -> None:
+    if stage_callback is None:
+        return
+    stage_callback(stage)
+
+
+def _raise_if_stop_requested(stop_requested_fn: Any | None, *, reason: str) -> None:
+    if stop_requested_fn is None:
+        return
+    if stop_requested_fn():
+        raise StopRequested(reason)
+
+
 def _execute_stage_specs(*, specs: list[CommandSpec], log_dir: Path, parallel: bool) -> dict[str, str]:
     if not specs:
         return {}
@@ -1124,6 +1178,11 @@ def _build_trend_records(
                     "pack": case.pack_name,
                     "benchmark": benchmark.benchmark_id,
                     "task_kind": benchmark.task_kind,
+                    "benchmark_family": infer_benchmark_family(
+                        benchmark.benchmark_id,
+                        task_kind=benchmark.task_kind,
+                        explicit_family=getattr(benchmark, "benchmark_family", None),
+                    ),
                     "engine": system,
                     "run_id": manifest.run_id,
                     "run_name": manifest.run_name,
@@ -1134,8 +1193,11 @@ def _build_trend_records(
                     "metric_name": benchmark.metric_name,
                     "metric_direction": benchmark.metric_direction,
                     "metric_value": float(record.metric_value) if record is not None and record.metric_value is not None else None,
+                    "architecture_summary": record.architecture_summary if record is not None else None,
                     "quality": float(record.quality) if record is not None and record.quality is not None else None,
                     "failure_reason": record.failure_reason if record is not None else None,
+                    "search_profile": infer_search_profile(system),
+                    "expected_specialization": infer_expected_specialization(system),
                     "fairness": {
                         "benchmark_pack_id": fairness.benchmark_pack_id if fairness is not None else manifest.pack_name,
                         "seed": fairness.seed if fairness is not None else manifest.seed,

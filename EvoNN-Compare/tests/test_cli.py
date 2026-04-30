@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 
 from evonn_compare.cli import fair_matrix as fair_matrix_cli
 from evonn_compare.cli import seeded_compare as seeded_compare_cli
+from evonn_compare.cli import transfer_regimes as transfer_regimes_cli
 from evonn_compare.cli.main import app
 from evonn_compare.comparison.fair_matrix import build_matrix_trend_rows
 from evonn_compare.comparison.engine import ComparisonEngine
@@ -48,10 +49,13 @@ def test_campaign_help() -> None:
     assert result.exit_code == 0
     text = _normalized_cli_output(result.stdout)
     assert "--workspace" in text
+    assert "--resume" in text
     assert "smoke" in text
     assert "local" in text
     assert "overnight" in text
     assert "weekend" in text
+    assert "tier_b_overnight" in text
+    assert "tier_b_weekend" in text
 
 
 def test_fair_matrix_help() -> None:
@@ -61,12 +65,15 @@ def test_fair_matrix_help() -> None:
     assert "--primordia-root" in text
     assert "--no-contenders" in text
     assert "--preset" in text
+    assert "--resume" in text
     assert "--reset-workspace" in text
     assert "--no-open" in text
     assert "smoke" in text
     assert "local" in text
     assert "overnight" in text
     assert "weekend" in text
+    assert "tier_b_overnight" in text
+    assert "tier_b_weekend" in text
 
 
 def test_trend_report_help() -> None:
@@ -96,6 +103,15 @@ def test_workspace_report_help() -> None:
     assert "--trend-output" in text
 
 
+def test_historical_baseline_help() -> None:
+    result = _invoke_help("historical-baseline")
+    assert result.exit_code == 0
+    text = _normalized_cli_output(result.stdout)
+    assert "historical baseline" in text.lower()
+    assert "--label" in text
+    assert "--no-open" in text
+
+
 def test_seeded_compare_help() -> None:
     result = _invoke_help("seeded-compare")
     assert result.exit_code == 0
@@ -104,6 +120,18 @@ def test_seeded_compare_help() -> None:
     assert "--pack" in text
     assert "--primordia-root" in text
     assert "--topograph-root" in text
+    assert "--no-open" in text
+
+
+def test_transfer_regimes_help() -> None:
+    result = _invoke_help("transfer-regimes")
+    assert result.exit_code == 0
+    text = _normalized_cli_output(result.stdout)
+    assert "--workspace" in text
+    assert "--budget" in text
+    assert "--primordia-root" in text
+    assert "--topograph-root" in text
+    assert "tier_b_local" in text
     assert "--no-open" in text
 
 
@@ -117,18 +145,21 @@ def test_campaign_preset_smoke_dry_run(tmp_path) -> None:
     result = runner.invoke(app, ["campaign", "--preset", "smoke", "--workspace", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0
     assert "manifest\t" in result.stdout
+    assert "state\t" in result.stdout
     assert "report\t" in result.stdout
     assert "report_json\t" in result.stdout
     assert "prism_run_dir\t" in result.stdout
     assert "topograph_run_dir\t" in result.stdout
     assert "log_dir\t" in result.stdout
     assert "tier1_core_smoke_eval16" in result.stdout
+    assert (tmp_path / "state.json").exists()
 
 
 def test_campaign_defaults_to_local_daily_dry_run(tmp_path) -> None:
     result = runner.invoke(app, ["campaign", "--workspace", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0
     assert "manifest\t" in result.stdout
+    assert "state\t" in result.stdout
     assert "report\t" in result.stdout
     assert "report_json\t" in result.stdout
     assert "prism_run_dir\t" in result.stdout
@@ -141,14 +172,17 @@ def test_fair_matrix_preset_smoke_dry_run(tmp_path) -> None:
     result = runner.invoke(app, ["fair-matrix", "--preset", "smoke", "--workspace", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0
     assert "tier1_core_smoke_eval16" in result.stdout
+    assert "state\t" in result.stdout
     assert "trend-dataset\t" in result.stdout
     assert "fair_matrix_trends.jsonl" in result.stdout
+    assert (tmp_path / "state.json").exists()
 
 
 def test_fair_matrix_defaults_to_local_daily_dry_run(tmp_path) -> None:
     result = runner.invoke(app, ["fair-matrix", "--workspace", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0
     assert "tier1_core_eval64" in result.stdout
+    assert "state\t" in result.stdout
     assert "trend-dataset\t" in result.stdout
     assert "fair_matrix_trends.jsonl" in result.stdout
 
@@ -163,6 +197,13 @@ def test_fair_matrix_preset_weekend_dry_run(tmp_path) -> None:
     result = runner.invoke(app, ["fair-matrix", "--preset", "weekend", "--workspace", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0
     assert "tier1_core_eval1000" in result.stdout
+    assert "trend-dataset\t" in result.stdout
+
+
+def test_fair_matrix_preset_tier_b_weekend_dry_run(tmp_path) -> None:
+    result = runner.invoke(app, ["fair-matrix", "--preset", "tier_b_weekend", "--workspace", str(tmp_path), "--dry-run"])
+    assert result.exit_code == 0
+    assert "tier_b_core_eval1000" in result.stdout
     assert "trend-dataset\t" in result.stdout
 
 
@@ -227,6 +268,38 @@ def test_fair_matrix_execute_surfaces_manifest_and_trend_dataset(tmp_path, monke
     assert "workspace_trend_report_data\t" in result.stdout
     assert "workspace_dashboard\t" in result.stdout
     assert "workspace_dashboard_data\t" in result.stdout
+
+
+def test_campaign_stop_and_inspect_surface_workspace_state(tmp_path) -> None:
+    dry_run = runner.invoke(app, ["campaign", "--preset", "smoke", "--workspace", str(tmp_path), "--dry-run"])
+    assert dry_run.exit_code == 0
+
+    stop_result = runner.invoke(app, ["campaign-stop", str(tmp_path)])
+    assert stop_result.exit_code == 0
+    assert "stop_requested\ttrue" in stop_result.stdout
+
+    inspect_result = runner.invoke(app, ["campaign-inspect", str(tmp_path)])
+    assert inspect_result.exit_code == 0
+    assert f"state\t{tmp_path / 'state.json'}" in inspect_result.stdout
+    assert "kind\tcampaign" in inspect_result.stdout
+    assert "stop_requested\tTrue" in inspect_result.stdout
+    assert "## Campaign State" in inspect_result.stdout
+
+
+def test_workspace_report_renders_state_only_workspace(tmp_path: Path) -> None:
+    dry_run = runner.invoke(app, ["fair-matrix", "--preset", "smoke", "--workspace", str(tmp_path), "--dry-run"])
+    assert dry_run.exit_code == 0
+
+    result = runner.invoke(app, ["workspace-report", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert f"dashboard\t{tmp_path / 'fair_matrix_dashboard.html'}" in result.stdout
+    assert f"trend-report\t{tmp_path / 'trends' / 'fair_matrix_trends.md'}" in result.stdout
+    dashboard_payload = json.loads((tmp_path / "fair_matrix_dashboard.json").read_text(encoding="utf-8"))
+    assert dashboard_payload["campaign_state"]["available"] is True
+    assert dashboard_payload["campaign_state"]["status_counts"]["pending"] >= 1
+    trend_report = (tmp_path / "trends" / "fair_matrix_trends.md").read_text(encoding="utf-8")
+    assert "## Campaign State" in trend_report
 
 
 def test_fair_matrix_open_flag_surfaces_opened_dashboard_uri(tmp_path, monkeypatch) -> None:
@@ -319,6 +392,71 @@ def test_seeded_compare_open_flag_opens_dashboard(tmp_path, monkeypatch) -> None
     monkeypatch.setattr(seeded_compare_cli.webbrowser, "open", lambda url: opened.append(url) or True)
 
     result = runner.invoke(app, ["seeded-compare", "--workspace", str(tmp_path), "--open"])
+
+    assert result.exit_code == 0
+    expected_url = (tmp_path / "fair_matrix_dashboard.html").resolve().as_uri()
+    assert opened == [expected_url]
+    assert f"opened\t{expected_url}" in result.stdout
+
+
+def test_transfer_regimes_surfaces_workspace_artifacts(tmp_path, monkeypatch) -> None:
+    def fake_publish_transfer_regime_workspace(**kwargs):
+        workspace = Path(kwargs["workspace"])
+        return {
+            "workspace": str(workspace),
+            "pack_path": str(workspace / "packs" / "tier_b_core_eval64.yaml"),
+            "primordia_run_dir": str(workspace / "runs" / "primordia" / "tier_b_core_seed42_source"),
+            "direct_seed_artifact": str(workspace / "seed_artifacts" / "seed42_direct_quality.json"),
+            "staged_seed_artifact": str(workspace / "seed_artifacts" / "seed42_staged_seed_candidates.json"),
+            "transfer_summary_report": str(workspace / "reports" / "transfer_regime_summary.md"),
+            "transfer_summary_data": str(workspace / "reports" / "transfer_regime_summary.json"),
+            "trend_dataset": str(workspace / "trends" / "fair_matrix_trend_rows.jsonl"),
+            "trend_report": str(workspace / "trends" / "fair_matrix_trends.md"),
+            "trend_report_data": str(workspace / "trends" / "fair_matrix_trends.json"),
+            "dashboard": str(workspace / "fair_matrix_dashboard.html"),
+            "dashboard_data": str(workspace / "fair_matrix_dashboard.json"),
+        }
+
+    monkeypatch.setattr(
+        "evonn_compare.cli.transfer_regimes.publish_transfer_regime_workspace",
+        fake_publish_transfer_regime_workspace,
+    )
+
+    result = runner.invoke(app, ["transfer-regimes", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert f"workspace\t{tmp_path}" in result.stdout
+    assert f"direct_seed_artifact\t{tmp_path / 'seed_artifacts' / 'seed42_direct_quality.json'}" in result.stdout
+    assert f"transfer_summary_report\t{tmp_path / 'reports' / 'transfer_regime_summary.md'}" in result.stdout
+
+
+def test_transfer_regimes_open_flag_opens_dashboard(tmp_path, monkeypatch) -> None:
+    opened: list[str] = []
+
+    def fake_publish_transfer_regime_workspace(**kwargs):
+        workspace = Path(kwargs["workspace"])
+        return {
+            "workspace": str(workspace),
+            "pack_path": str(workspace / "packs" / "tier_b_core_eval64.yaml"),
+            "primordia_run_dir": str(workspace / "runs" / "primordia" / "tier_b_core_seed42_source"),
+            "direct_seed_artifact": str(workspace / "seed_artifacts" / "seed42_direct_quality.json"),
+            "staged_seed_artifact": str(workspace / "seed_artifacts" / "seed42_staged_seed_candidates.json"),
+            "transfer_summary_report": str(workspace / "reports" / "transfer_regime_summary.md"),
+            "transfer_summary_data": str(workspace / "reports" / "transfer_regime_summary.json"),
+            "trend_dataset": str(workspace / "trends" / "fair_matrix_trend_rows.jsonl"),
+            "trend_report": str(workspace / "trends" / "fair_matrix_trends.md"),
+            "trend_report_data": str(workspace / "trends" / "fair_matrix_trends.json"),
+            "dashboard": str(workspace / "fair_matrix_dashboard.html"),
+            "dashboard_data": str(workspace / "fair_matrix_dashboard.json"),
+        }
+
+    monkeypatch.setattr(
+        "evonn_compare.cli.transfer_regimes.publish_transfer_regime_workspace",
+        fake_publish_transfer_regime_workspace,
+    )
+    monkeypatch.setattr(transfer_regimes_cli.webbrowser, "open", lambda url: opened.append(url) or True)
+
+    result = runner.invoke(app, ["transfer-regimes", "--workspace", str(tmp_path), "--open"])
 
     assert result.exit_code == 0
     expected_url = (tmp_path / "fair_matrix_dashboard.html").resolve().as_uri()
@@ -843,6 +981,117 @@ def test_workspace_report_normalizes_legacy_root_dataset_and_dedupes_rows(tmp_pa
     assert f"trend-dataset\t{canonical_dataset}" in result.stdout
 
 
+def test_historical_baseline_imports_summary_and_refreshes_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace_reports = workspace / "reports" / "tier1_core_eval64_seed42"
+    workspace_reports.mkdir(parents=True)
+    baseline_root = tmp_path / "baseline-source" / "reports" / "tier1_core_eval64_seed42"
+    baseline_root.mkdir(parents=True)
+
+    current_row = _dashboard_row("prism", "iris_classification", 0.82)
+    baseline_row = _dashboard_row(
+        "prism",
+        "iris_classification",
+        0.76,
+        comparison_label="release-2026-04-01",
+        comparison_cohort="historical-baseline",
+        comparison_case_id="historical-baseline:release-2026-04-01:tier1_core_eval64:64:42",
+    )
+    workspace_reports.joinpath("fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier1_core_eval64",
+                "systems": ["prism"],
+                "lane": {
+                    "preset": None,
+                    "pack_name": "tier1_core_eval64",
+                    "expected_budget": 64,
+                    "expected_seed": 42,
+                    "operating_state": "contract-fair",
+                    "artifact_completeness_ok": True,
+                    "fairness_ok": True,
+                    "task_coverage_ok": True,
+                    "budget_consistency_ok": True,
+                    "seed_consistency_ok": True,
+                    "budget_accounting_ok": True,
+                    "core_systems_complete_ok": False,
+                    "extended_systems_complete_ok": False,
+                    "observed_task_kinds": ["classification"],
+                    "system_operating_states": {"prism": "benchmark-complete"},
+                    "acceptance_notes": [],
+                    "repeatability_ready": False,
+                },
+                "fair_rows": [],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [current_row],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    baseline_root.joinpath("fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier1_core_eval64",
+                "systems": ["prism"],
+                "lane": {
+                    "preset": None,
+                    "pack_name": "tier1_core_eval64",
+                    "expected_budget": 64,
+                    "expected_seed": 42,
+                    "operating_state": "contract-fair",
+                    "artifact_completeness_ok": True,
+                    "fairness_ok": True,
+                    "task_coverage_ok": True,
+                    "budget_consistency_ok": True,
+                    "seed_consistency_ok": True,
+                    "budget_accounting_ok": True,
+                    "core_systems_complete_ok": False,
+                    "extended_systems_complete_ok": False,
+                    "observed_task_kinds": ["classification"],
+                    "system_operating_states": {"prism": "benchmark-complete"},
+                    "acceptance_notes": [],
+                    "repeatability_ready": False,
+                },
+                "fair_rows": [],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [baseline_row],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "historical-baseline",
+            str(workspace),
+            str(tmp_path / "baseline-source"),
+            "--label",
+            "release-2026-04-01",
+            "--no-open",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "baseline_label\trelease-2026-04-01" in result.stdout
+    baseline_manifest = workspace / "baselines" / "release-2026-04-01" / "baseline_manifest.json"
+    assert baseline_manifest.exists()
+    manifest = json.loads(baseline_manifest.read_text(encoding="utf-8"))
+    assert manifest["summary_count"] == 1
+    trend_report = workspace / "trends" / "fair_matrix_trends.md"
+    assert trend_report.exists()
+    trend_text = trend_report.read_text(encoding="utf-8")
+    assert "Comparison Labels" in trend_text
+    assert "release-2026-04-01" in trend_text
+    dashboard_payload = json.loads((workspace / "fair_matrix_dashboard.json").read_text(encoding="utf-8"))
+    labels = {run["comparison_label"] for run in dashboard_payload["runs"]}
+    assert labels == {"current-workspace", "release-2026-04-01"}
+
+
 def test_dashboard_recomputes_project_only_winners(tmp_path: Path) -> None:
     summary_dir = tmp_path / "workspace" / "reports" / "tier1_core_eval64_seed42"
     summary_dir.mkdir(parents=True)
@@ -983,6 +1232,334 @@ def test_dashboard_payload_surfaces_run_level_seeding_metadata(tmp_path: Path) -
     assert "Topograph: direct from primordia:prim-run-7 (mlp)" in html
 
 
+def test_dashboard_payload_adds_engine_specialization_views(tmp_path: Path) -> None:
+    summary_dir = tmp_path / "workspace" / "reports" / "tier_b_core_eval64_seed42"
+    summary_dir.mkdir(parents=True)
+    (summary_dir / "fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier_b_core",
+                "systems": ["prism", "topograph", "contenders"],
+                "lane": {
+                    "preset": "tier_b_local",
+                    "pack_name": "tier_b_core",
+                    "expected_budget": 64,
+                    "expected_seed": 42,
+                    "operating_state": "contract-fair",
+                    "artifact_completeness_ok": True,
+                    "fairness_ok": True,
+                    "task_coverage_ok": True,
+                    "budget_consistency_ok": True,
+                    "seed_consistency_ok": True,
+                    "budget_accounting_ok": True,
+                    "core_systems_complete_ok": False,
+                    "extended_systems_complete_ok": False,
+                    "observed_task_kinds": ["classification", "regression", "language_modeling"],
+                    "system_operating_states": {
+                        "prism": "benchmark-complete",
+                        "topograph": "benchmark-complete",
+                        "contenders": "benchmark-complete",
+                    },
+                    "acceptance_notes": [],
+                    "repeatability_ready": False,
+                },
+                "fair_rows": [],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [
+                    _dashboard_row("prism", "openml_gas_sensor", 0.84, pack_name="tier_b_core", benchmark_family="tabular-classification", architecture_summary="mlp:64x32"),
+                    _dashboard_row("topograph", "openml_gas_sensor", 0.82, pack_name="tier_b_core", benchmark_family="tabular-classification", architecture_summary="skip-dag:3"),
+                    _dashboard_row("contenders", "openml_gas_sensor", 0.80, pack_name="tier_b_core", benchmark_family="tabular-classification"),
+                    _dashboard_row("prism", "fashionmnist_image", 0.72, pack_name="tier_b_core", benchmark_family="image-classification", architecture_summary="mlp:64x32"),
+                    _dashboard_row("topograph", "fashionmnist_image", 0.79, pack_name="tier_b_core", benchmark_family="image-classification", architecture_summary="skip-dag:3"),
+                    _dashboard_row("contenders", "fashionmnist_image", None, pack_name="tier_b_core", benchmark_family="image-classification", outcome_status="failed", failure_reason="torch-missing"),
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "dashboard.html"
+
+    result = runner.invoke(app, ["dashboard", str(tmp_path / "workspace"), "--output", str(output_path)])
+
+    assert result.exit_code == 0
+    payload = json.loads(output_path.with_suffix(".json").read_text(encoding="utf-8"))
+    family_groups = payload["specialization"]["family_leaderboards"]["all_systems"]
+    image_group = next(group for group in family_groups if group["benchmark_family"] == "image-classification")
+    assert image_group["system_rows"][0]["system"] == "topograph"
+    profiles = {profile["system"]: profile for profile in payload["specialization"]["engine_profiles"]["all_systems"]}
+    assert profiles["topograph"]["family_strengths"][0]["benchmark_family"] == "image-classification"
+    assert profiles["contenders"]["failure_patterns"] == [{"reason": "torch-missing", "count": 1}]
+    html = output_path.read_text(encoding="utf-8")
+    assert "Engine Rank By Benchmark Family: All 5 Systems" in html
+    assert "Engine Profiles: All 5 Systems" in html
+    assert "topology and skip-connection search" in html
+
+
+def test_dashboard_payload_adds_transfer_regime_views_and_provenance_links(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    reports_dir = workspace_root / "reports" / "seed42"
+    summary_dir = reports_dir / "01-no-seed"
+    summary_dir.mkdir(parents=True)
+    (summary_dir / "fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier_b_core",
+                "systems": ["primordia", "topograph"],
+                "lane": {
+                    "preset": "transfer-regimes",
+                    "pack_name": "tier_b_core",
+                    "expected_budget": 64,
+                    "expected_seed": 42,
+                    "operating_state": "portable-transfer-plumbing",
+                    "artifact_completeness_ok": True,
+                    "fairness_ok": True,
+                    "task_coverage_ok": True,
+                    "budget_consistency_ok": True,
+                    "seed_consistency_ok": True,
+                    "budget_accounting_ok": True,
+                    "core_systems_complete_ok": True,
+                    "extended_systems_complete_ok": True,
+                    "observed_task_kinds": ["classification", "regression"],
+                    "system_operating_states": {
+                        "primordia": "benchmark-complete",
+                        "topograph": "portable-smoke",
+                    },
+                    "acceptance_notes": [],
+                    "repeatability_ready": False,
+                },
+                "fair_rows": [],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [
+                    _dashboard_row("primordia", "openml_gas_sensor", 0.79, pack_name="tier_b_core"),
+                    _dashboard_row(
+                        "topograph",
+                        "openml_gas_sensor",
+                        0.83,
+                        pack_name="tier_b_core",
+                        seeding_bucket="direct",
+                        seed_source_system="primordia",
+                        seed_source_run_id="primordia-seed42-source",
+                        seed_artifact_path=str(workspace_root / "seed_artifacts" / "seed42_direct_candidates.json"),
+                        seed_selected_family="sparse_mlp",
+                    ),
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    seed_artifacts_dir = workspace_root / "seed_artifacts"
+    seed_artifacts_dir.mkdir(parents=True)
+    direct_gate_path = seed_artifacts_dir / "seed42_direct_quality.json"
+    direct_artifact_path = seed_artifacts_dir / "seed42_direct_candidates.json"
+    staged_gate_path = seed_artifacts_dir / "seed42_staged_quality.json"
+    staged_artifact_path = seed_artifacts_dir / "seed42_staged_seed_candidates.json"
+    for path in (direct_gate_path, direct_artifact_path, staged_gate_path, staged_artifact_path):
+        path.write_text("{\"ok\": true}\n", encoding="utf-8")
+
+    (reports_dir / "02-direct_vs_control.json").write_text(
+        json.dumps(
+            {
+                "regime": "direct",
+                "pack_name": "tier_b_core",
+                "seed": 42,
+                "portable_backend": "portable-sklearn",
+                "seed_source": "primordia:primordia-seed42-source",
+                "seed_artifact": str(direct_artifact_path),
+                "seed_overlap_policy": "family-overlapping",
+                "regime_wins": 2,
+                "control_wins": 0,
+                "ties": 1,
+                "verdict": "gain",
+                "gain_count": 2,
+                "regression_count": 0,
+                "tie_count": 1,
+                "other_count": 0,
+                "mean_regime_delta": 0.03,
+                "benchmark_deltas": [
+                    {"benchmark_id": "openml_gas_sensor", "benchmark_family": "classification", "metric_direction": "max", "control_metric": 0.79, "regime_metric": 0.83, "regime_delta": 0.04, "outcome": "gain"},
+                    {"benchmark_id": "openml_cpu_activity", "benchmark_family": "regression", "metric_direction": "min", "control_metric": 0.42, "regime_metric": 0.39, "regime_delta": 0.03, "outcome": "gain"},
+                    {"benchmark_id": "fashionmnist_image", "benchmark_family": "classification", "metric_direction": "max", "control_metric": 0.71, "regime_metric": 0.71, "regime_delta": 0.0, "outcome": "tie"},
+                ],
+                "seed_quality": {
+                    "gate_path": str(direct_gate_path),
+                    "artifact_path": str(direct_artifact_path),
+                    "candidate_count": 1,
+                    "family": "sparse_mlp",
+                    "benchmark_groups": ["classification", "regression"],
+                    "benchmark_wins": 2,
+                    "repeat_support_count": 4,
+                    "median_quality": 0.82,
+                    "overlap_policy": "family-overlapping",
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (reports_dir / "03-staged_vs_control.json").write_text(
+        json.dumps(
+            {
+                "regime": "staged",
+                "pack_name": "tier_b_core",
+                "seed": 42,
+                "portable_backend": "portable-sklearn",
+                "seed_source": "topograph:topograph-direct-seed42",
+                "seed_artifact": str(staged_artifact_path),
+                "seed_overlap_policy": "benchmark-overlapping",
+                "regime_wins": 0,
+                "control_wins": 1,
+                "ties": 1,
+                "verdict": "regression",
+                "gain_count": 0,
+                "regression_count": 1,
+                "tie_count": 1,
+                "other_count": 0,
+                "mean_regime_delta": -0.01,
+                "benchmark_deltas": [
+                    {"benchmark_id": "openml_gas_sensor", "benchmark_family": "classification", "metric_direction": "max", "control_metric": 0.79, "regime_metric": 0.79, "regime_delta": 0.0, "outcome": "tie"},
+                    {"benchmark_id": "openml_cpu_activity", "benchmark_family": "regression", "metric_direction": "min", "control_metric": 0.42, "regime_metric": 0.43, "regime_delta": -0.01, "outcome": "regression"},
+                ],
+                "seed_quality": {
+                    "gate_path": str(staged_gate_path),
+                    "artifact_path": str(staged_artifact_path),
+                    "candidate_count": 1,
+                    "family": "sparse_mlp",
+                    "benchmark_groups": ["classification", "regression"],
+                    "benchmark_wins": 4,
+                    "repeat_support_count": 4,
+                    "median_quality": 0.78,
+                    "overlap_policy": "benchmark-overlapping",
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "dashboard.html"
+
+    result = runner.invoke(app, ["dashboard", str(workspace_root), "--output", str(output_path), "--no-open"])
+
+    assert result.exit_code == 0
+    payload = json.loads(output_path.with_suffix(".json").read_text(encoding="utf-8"))
+    assert payload["transfer"]["case_count"] == 2
+    assert payload["transfer"]["regimes"]["direct"]["consensus"] == "gain"
+    assert payload["transfer"]["regimes"]["staged"]["benchmark_regression_count"] == 1
+    direct_family = next(
+        row
+        for row in payload["transfer"]["family_rows"]
+        if row["regime"] == "direct" and row["benchmark_family"] == "classification"
+    )
+    assert direct_family["gain_count"] == 1
+    assert direct_family["tie_count"] == 1
+    direct_case = next(case for case in payload["transfer"]["cases"] if case["regime"] == "direct")
+    assert direct_case["provenance"]["summary_json_path"].endswith("seed42/02-direct_vs_control.json")
+    assert direct_case["provenance"]["seed_gate_json_path"].endswith("seed42_direct_quality.json")
+    assert direct_case["provenance"]["seed_artifact_json_path"].endswith("seed42_direct_candidates.json")
+    html = output_path.read_text(encoding="utf-8")
+    assert "Transfer Regime Overview" in html
+    assert "Transfer Delta By Benchmark Family" in html
+    assert "Seed Source Quality vs Downstream Effect" in html
+    assert "seed42/02-direct_vs_control.json" in html
+    assert "seed42_direct_quality.json" in html
+
+
+def test_dashboard_payload_adds_multi_seed_statistics(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace" / "reports"
+    seed42_dir = workspace / "tier1_core_eval64_seed42"
+    seed43_dir = workspace / "tier1_core_eval64_seed43"
+    seed42_dir.mkdir(parents=True)
+    seed43_dir.mkdir(parents=True)
+
+    lane = {
+        "preset": None,
+        "pack_name": "tier1_core_eval64",
+        "expected_budget": 64,
+        "operating_state": "trusted-core",
+        "artifact_completeness_ok": True,
+        "fairness_ok": True,
+        "task_coverage_ok": True,
+        "budget_consistency_ok": True,
+        "seed_consistency_ok": True,
+        "budget_accounting_ok": True,
+        "core_systems_complete_ok": True,
+        "extended_systems_complete_ok": False,
+        "observed_task_kinds": ["classification"],
+        "system_operating_states": {
+            "prism": "benchmark-complete",
+            "topograph": "benchmark-complete",
+        },
+        "acceptance_notes": [],
+        "repeatability_ready": True,
+    }
+    (seed42_dir / "fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier1_core_eval64",
+                "systems": ["prism", "topograph"],
+                "lane": {**lane, "expected_seed": 42},
+                "fair_rows": [],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [
+                    _dashboard_row("prism", "iris_classification", 0.85, seed=42),
+                    _dashboard_row("topograph", "iris_classification", 0.80, seed=42),
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (seed43_dir / "fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier1_core_eval64",
+                "systems": ["prism", "topograph"],
+                "lane": {**lane, "expected_seed": 43},
+                "fair_rows": [],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [
+                    _dashboard_row("prism", "iris_classification", 0.79, seed=43),
+                    _dashboard_row("topograph", "iris_classification", 0.86, seed=43),
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "dashboard.html"
+
+    result = runner.invoke(app, ["dashboard", str(tmp_path / "workspace"), "--output", str(output_path), "--no-open"])
+
+    assert result.exit_code == 0
+    payload = json.loads(output_path.with_suffix(".json").read_text(encoding="utf-8"))
+    group = payload["multi_seed"]["all_systems"][0]
+    assert group["seed_count"] == 2
+    assert group["seeds"] == [42, 43]
+    system_rows = {row["system"]: row for row in group["system_rows"]}
+    assert system_rows["prism"]["mean_score"] == 0.5
+    assert system_rows["prism"]["score_stddev"] == 0.5
+    assert system_rows["prism"]["score_range"] == 1.0
+    assert system_rows["topograph"]["mean_score"] == 0.5
+    assert payload["seed_scorecards"]["all_systems"][0]["seed"] == 42
+    pair = group["pairwise"][0]
+    assert pair["left_system"] == "prism"
+    assert pair["right_system"] == "topograph"
+    assert pair["left_better"] == 1
+    assert pair["right_better"] == 1
+    assert pair["sign_test_p_value"] == 1.0
+    html = output_path.read_text(encoding="utf-8")
+    assert "Aggregate Evidence: All 5 Systems" in html
+    assert "Pairwise Seed Score Deltas: All 5 Systems" in html
+    assert "Per-Seed Aggregate Snapshots: All 5 Systems" in html
+    assert "42, 43" in html
+
+
 def test_dashboard_opens_browser_by_default(tmp_path: Path, monkeypatch) -> None:
     summary_dir = tmp_path / "workspace" / "reports" / "tier1_core_eval64_seed42"
     summary_dir.mkdir(parents=True)
@@ -1043,6 +1620,10 @@ def test_resolve_lane_preset_exposes_tier1_core_budget_ladder() -> None:
     assert resolve_lane_preset("local").budgets == (64,)
     assert resolve_lane_preset("overnight").budgets == (256,)
     assert resolve_lane_preset("weekend").budgets == (1000,)
+    assert resolve_lane_preset("tier_b_local").pack == "tier_b_core"
+    assert resolve_lane_preset("tier_b_local").budgets == (64,)
+    assert resolve_lane_preset("tier_b_overnight").budgets == (256,)
+    assert resolve_lane_preset("tier_b_weekend").budgets == (1000,)
 
 
 def _dashboard_row(
@@ -1050,6 +1631,10 @@ def _dashboard_row(
     benchmark_id: str,
     metric_value: float | None,
     *,
+    pack_name: str = "tier1_core_eval64",
+    budget: int = 64,
+    seed: int = 42,
+    run_id: str | None = None,
     outcome_status: str = "ok",
     failure_reason: str | None = None,
     seeding_bucket: str = "transfer-opaque",
@@ -1057,28 +1642,41 @@ def _dashboard_row(
     seed_source_run_id: str | None = None,
     seed_artifact_path: str | None = None,
     seed_selected_family: str | None = None,
+    task_kind: str = "classification",
+    benchmark_family: str | None = None,
+    architecture_summary: str | None = None,
+    search_profile: str | None = None,
+    expected_specialization: str | None = None,
+    comparison_label: str = "current-workspace",
+    comparison_cohort: str = "current-workspace",
+    comparison_case_id: str | None = None,
 ) -> dict[str, object]:
     return {
-        "pack_name": "tier1_core_eval64",
-        "budget": 64,
-        "seed": 42,
+        "pack_name": pack_name,
+        "budget": budget,
+        "seed": seed,
         "system": system,
-        "run_id": "tier1_core_eval64_seed42",
+        "run_id": run_id or f"{pack_name}_seed{seed}",
         "benchmark_id": benchmark_id,
+        "task_kind": task_kind,
+        "benchmark_family": benchmark_family,
         "metric_name": "accuracy",
         "metric_direction": "max",
         "metric_value": metric_value,
+        "architecture_summary": architecture_summary,
         "outcome_status": outcome_status,
         "failure_reason": failure_reason,
-        "evaluation_count": 64,
+        "evaluation_count": budget,
         "epochs_per_candidate": 20,
         "budget_policy_name": "prototype_equal_budget",
         "wall_clock_seconds": 1.0,
         "matrix_scope": "fair",
+        "search_profile": search_profile,
+        "expected_specialization": expected_specialization,
         "fairness_metadata": {
-            "benchmark_pack_id": "tier1_core_eval64",
-            "seed": 42,
-            "evaluation_count": 64,
+            "benchmark_pack_id": pack_name,
+            "seed": seed,
+            "evaluation_count": budget,
             "budget_policy_name": "prototype_equal_budget",
             "data_signature": "shared",
             "code_version": "deadbeef",
@@ -1088,5 +1686,8 @@ def _dashboard_row(
             "seed_artifact_path": seed_artifact_path,
             "seed_selected_family": seed_selected_family,
             "pairwise_fairness_ok": True,
+            "comparison_label": comparison_label,
+            "comparison_cohort": comparison_cohort,
+            "comparison_case_id": comparison_case_id or f"{comparison_label}:{pack_name}:{budget}:{seed}",
         },
     }

@@ -1,0 +1,100 @@
+name: tier_b_core
+description: >
+  Canonical ladder Tier B pack for bounded local research loops. This pack
+  extends beyond the trusted `tier1_core` lane into harder but still
+  laptop-safe benchmark families: harder tabular classification, harder
+  tabular regression, small image classification, and one runtime-safe
+  language-modeling sidecar.
+tier: 2
+ladder_tier: B
+comparison: symmetric
+usage_classification:
+  quick_research:
+    evaluation_count: 32
+    notes: 8 evaluations per benchmark; useful for pack-level sanity and family-level smoke outside CI.
+  standard_research:
+    evaluation_count: 64
+    notes: Default day-to-day Tier B budget; 16 evaluations per benchmark.
+  overnight:
+    evaluation_count: 256
+    notes: Preferred deeper study budget; 64 evaluations per benchmark.
+  weekend:
+    evaluation_count: 1000
+    notes: High-budget Tier B preset for longer local studies; 250 evaluations per benchmark.
+benchmarks:
+  - benchmark_id: openml_gas_sensor
+    native_ids:
+      prism: gas_sensor
+      topograph: gas_sensor
+      stratograph: gas_sensor
+      primordia: gas_sensor
+      contenders: gas_sensor
+      evonn: openml_gas_sensor
+      evonn2: gas_sensor
+      hybrid: gas_sensor
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    notes: >
+      Harder tabular classification anchor. Gas Sensor is a real 128-feature,
+      6-class OpenML task that is still local-safe but punishes brittle
+      low-capacity heuristics and exposes multiclass feature-interaction limits.
+  - benchmark_id: openml_cpu_activity
+    native_ids:
+      prism: cpu_performance
+      topograph: cpu_performance
+      stratograph: cpu_performance
+      primordia: cpu_performance
+      contenders: cpu_performance
+      evonn: openml_cpu_activity
+      evonn2: cpu_performance
+      hybrid: cpu_performance
+    task_kind: regression
+    metric_name: mse
+    metric_direction: min
+    notes: >
+      Harder tabular regression anchor. CPU Activity is a real OpenML
+      regression task with broader feature interactions and noisier fit quality
+      than toy regression fixtures, but it remains practical for repeated local
+      runs.
+  - benchmark_id: fashionmnist_image
+    native_ids:
+      prism: fashion_mnist
+      topograph: fashion_mnist
+      stratograph: fashion_mnist
+      primordia: fashion_mnist
+      contenders: fashion_mnist
+      evonn: fashionmnist_image
+      evonn2: fashion_mnist
+      hybrid: fashion_mnist
+    task_kind: classification
+    metric_name: accuracy
+    metric_direction: max
+    notes: >
+      Small image classification anchor. Fashion-MNIST is materially harder
+      than digits or MNIST while remaining lightweight enough for Apple Silicon
+      local research loops and contender comparisons.
+  - benchmark_id: tinystories_lm_smoke
+    native_ids:
+      prism: tinystories_lm_smoke
+      topograph: tinystories_lm_smoke
+      stratograph: tinystories_lm_smoke
+      primordia: tinystories_lm_smoke
+      contenders: tinystories_lm_smoke
+      evonn: tinystories_lm_smoke
+      evonn2: tinystories_lm_smoke
+      hybrid: tinystories_lm_smoke
+    task_kind: language_modeling
+    metric_name: perplexity
+    metric_direction: min
+    notes: >
+      Runtime-safe sequence/text sidecar. TinyStories LM smoke keeps Tier B
+      honest about sequence support without turning the default local pack into
+      an LM-heavy workflow.
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

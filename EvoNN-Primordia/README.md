@@ -82,6 +82,8 @@ Canonical named configs now live under `EvoNN-Primordia/configs/`:
 - `tier1_core_eval64.yaml`
 - `tier1_core_eval256.yaml`
 - `tier1_core_eval1000.yaml`
+- `tier_b_core_eval256.yaml`
+- `tier_b_core_eval1000.yaml`
 
 Phase-2 baseline results now live in `BASELINE_MATRIX.md`, which records the
 current smoke / tier1 lane runs, benchmark-completeness status, artifact paths,

@@ -208,8 +208,8 @@ def test_build_matrix_trend_rows_capture_minimum_longitudinal_dimensions(tmp_pat
         "prism": tmp_path / "prism",
         "topograph": tmp_path / "topograph",
     }
-    for system, run_dir in systems.items():
-        _write_run(run_dir, system=system)
+    _write_run(systems["prism"], system="prism", architecture_summary="mlp:64x32")
+    _write_run(systems["topograph"], system="topograph", architecture_summary="skip-dag:3")
 
     ingestors = {system: SystemIngestor(path) for system, path in systems.items()}
     runs = {
@@ -241,9 +241,14 @@ def test_build_matrix_trend_rows_capture_minimum_longitudinal_dimensions(tmp_pat
     assert first.system in {"prism", "topograph"}
     assert first.run_id == f"{first.system}-run"
     assert first.benchmark_id == pack.benchmarks[0].benchmark_id
+    assert first.task_kind == pack.benchmarks[0].task_kind
+    assert first.benchmark_family == "tabular-classification"
     assert first.metric_direction == pack.benchmarks[0].metric_direction
     assert first.outcome_status == "ok"
+    assert first.architecture_summary in {"mlp:64x32", "skip-dag:3"}
     assert first.matrix_scope == "fair"
+    assert first.search_profile in {"family-policy search", "topology and skip-connection search"}
+    assert "aggregate winner table" in first.expected_specialization or "topology-sensitive families" in first.expected_specialization
     assert first.lane_operating_state == "reference-only"
     assert first.system_operating_state == "unknown"
     assert first.fairness_metadata["benchmark_pack_id"] == pack.name

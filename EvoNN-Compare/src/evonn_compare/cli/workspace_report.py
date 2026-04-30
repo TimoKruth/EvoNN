@@ -10,6 +10,8 @@ import webbrowser
 import typer
 
 from evonn_compare.cli.trend_report import load_trend_rows
+from evonn_compare.orchestration.historical_baseline import discover_workspace_trend_inputs
+from evonn_compare.orchestration.campaign_state import load_workspace_state, render_workspace_state_markdown
 from evonn_compare.reporting.fair_matrix_dashboard import (
     build_dashboard_payload,
     discover_fair_matrix_summaries,
@@ -51,37 +53,44 @@ def refresh_workspace_reports(
     open_browser: bool = False,
 ) -> dict[str, str | int]:
     workspace_path = workspace.resolve()
-    trend_dataset_path = _resolve_trend_dataset_path(workspace_path)
+    campaign_state = load_workspace_state(workspace_path)
     trend_report_path = trend_output or (workspace_path / "trends" / "fair_matrix_trends.md")
     trend_report_data_path = trend_report_path.with_suffix(".json")
     dashboard_output_path = dashboard_output or (workspace_path / "fair_matrix_dashboard.html")
-    summary_paths = discover_fair_matrix_summaries([workspace_path / "reports", workspace_path])
+    summary_paths = discover_fair_matrix_summaries([workspace_path / "reports", workspace_path / "baselines", workspace_path])
+    trend_inputs = discover_workspace_trend_inputs(workspace_path, summary_paths=summary_paths)
+    trend_dataset_path = trend_report_path.parent / "fair_matrix_trend_rows.jsonl"
 
-    if not trend_dataset_path.exists() and not summary_paths:
+    if not trend_inputs and not summary_paths and campaign_state is None:
         raise typer.BadParameter(
-            "workspace does not contain fair-matrix trend rows or fair_matrix_summary.json artifacts"
+            "workspace does not contain state, fair-matrix trend rows, or fair_matrix_summary.json artifacts"
         )
 
     trend_report_path.parent.mkdir(parents=True, exist_ok=True)
-    if trend_dataset_path.exists():
-        trend_rows = load_trend_rows([trend_dataset_path])
-        canonical_dataset_path = trend_report_path.parent / "fair_matrix_trend_rows.jsonl"
-        canonical_dataset_path.write_text(
+    state_markdown = render_workspace_state_markdown(campaign_state) if campaign_state is not None else None
+    if trend_inputs:
+        trend_rows = load_trend_rows(trend_inputs)
+        trend_dataset_path.write_text(
             "".join(json.dumps(asdict(row), default=str) + "\n" for row in trend_rows),
             encoding="utf-8",
         )
-        trend_dataset_path = canonical_dataset_path
-        trend_report_path.write_text(render_fair_matrix_trend_markdown(trend_rows), encoding="utf-8")
+        trend_body = render_fair_matrix_trend_markdown(trend_rows)
+        if state_markdown is not None:
+            trend_body = state_markdown + "\n\n" + trend_body
+        trend_report_path.write_text(trend_body, encoding="utf-8")
         trend_report_data_path.write_text(
             json.dumps([asdict(row) for row in trend_rows], indent=2, default=str),
             encoding="utf-8",
         )
     else:
-        trend_report_path.write_text("# Fair Matrix Trends: empty\n\n_No trend rows found._", encoding="utf-8")
+        empty_trends = "# Fair Matrix Trends: empty\n\n_No trend rows found._"
+        if state_markdown is not None:
+            empty_trends = state_markdown + "\n\n" + empty_trends
+        trend_report_path.write_text(empty_trends, encoding="utf-8")
         trend_report_data_path.write_text("[]\n", encoding="utf-8")
 
     dashboard_output_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = build_dashboard_payload(summary_paths, output_path=dashboard_output_path) if summary_paths else {
+    payload = build_dashboard_payload(summary_paths, output_path=dashboard_output_path, campaign_state=campaign_state) if summary_paths or campaign_state is not None else {
         "generated_at": None,
         "summary_count": 0,
         "packs": [],
@@ -96,6 +105,23 @@ def refresh_workspace_reports(
         },
         "runs": [],
         "leaderboards": {"all_systems": [], "projects_only": []},
+        "specialization": {
+            "family_leaderboards": {"all_systems": [], "projects_only": []},
+            "engine_profiles": {"all_systems": [], "projects_only": []},
+        },
+        "multi_seed": {"all_systems": [], "projects_only": []},
+        "seed_scorecards": {"all_systems": [], "projects_only": []},
+        "transfer": {"case_count": 0, "cases": [], "regimes": {}, "family_rows": []},
+        "campaign_state": {
+            "available": False,
+            "workspace_kind": None,
+            "case_count": 0,
+            "status_counts": {},
+            "resumed_case_count": 0,
+            "integrity_failed_count": 0,
+            "stop_requested": False,
+            "cases": [],
+        },
     }
     dashboard_output_path.write_text(render_dashboard_html(payload), encoding="utf-8")
     dashboard_output_path.with_suffix(".json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -112,13 +138,3 @@ def refresh_workspace_reports(
         "dashboard": str(dashboard_output_path),
         "dashboard_data": str(dashboard_output_path.with_suffix('.json')),
     }
-
-
-def _resolve_trend_dataset_path(workspace_path: Path) -> Path:
-    canonical = workspace_path / "trends" / "fair_matrix_trend_rows.jsonl"
-    legacy = workspace_path / "fair_matrix_trend_rows.jsonl"
-    if canonical.exists():
-        return canonical
-    if legacy.exists():
-        return legacy
-    return canonical

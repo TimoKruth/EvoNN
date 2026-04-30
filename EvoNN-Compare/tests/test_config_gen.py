@@ -309,6 +309,63 @@ def test_generate_smoke_configs_resolve_supported_benchmark_ids_across_systems(t
     assert "credit_g" in contender_payload["benchmark_pool"]["benchmarks"]
 
 
+def test_generate_tier_b_configs_resolve_supported_benchmark_ids_across_systems(tmp_path: Path) -> None:
+    base_pack = Path(__file__).resolve().parents[2] / "shared-benchmarks" / "suites" / "parity" / "tier_b_core.yaml"
+    pack_path = generate_budget_pack(base_pack_path=base_pack, budget=256, output_dir=tmp_path / "packs")
+
+    prism_path = generate_prism_config(
+        output_path=tmp_path / "configs" / "prism.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=256,
+    )
+    topograph_path = generate_topograph_config(
+        output_path=tmp_path / "configs" / "topograph.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=256,
+        run_dir=tmp_path / "runs" / "topograph",
+    )
+    stratograph_path = generate_stratograph_config(
+        output_path=tmp_path / "configs" / "stratograph.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=256,
+    )
+    primordia_path = generate_primordia_config(
+        output_path=tmp_path / "configs" / "primordia.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=256,
+        run_name="demo",
+    )
+    contender_path = generate_contender_config(
+        output_path=tmp_path / "configs" / "contenders.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=256,
+        run_name="demo",
+    )
+
+    prism_payload = yaml.safe_load(prism_path.read_text(encoding="utf-8"))
+    topograph_payload = yaml.safe_load(topograph_path.read_text(encoding="utf-8"))
+    stratograph_payload = yaml.safe_load(stratograph_path.read_text(encoding="utf-8"))
+    primordia_payload = yaml.safe_load(primordia_path.read_text(encoding="utf-8"))
+    contender_payload = yaml.safe_load(contender_path.read_text(encoding="utf-8"))
+    expected = [
+        "gas_sensor",
+        "cpu_performance",
+        "fashion_mnist",
+        "tinystories_lm_smoke",
+    ]
+
+    assert prism_payload["benchmark_pack"]["benchmark_ids"] == expected
+    assert topograph_payload["benchmark_pool"]["benchmarks"] == expected
+    assert stratograph_payload["benchmark_pool"]["benchmarks"] == expected
+    assert primordia_payload["benchmark_pool"]["benchmarks"] == expected
+    assert contender_payload["benchmark_pool"]["benchmarks"] == expected
+
+
 def test_generate_primordia_config_sets_training_epochs_from_pack_budget(tmp_path: Path) -> None:
     base_pack = Path(__file__).resolve().parents[1] / "parity_packs" / "tier1_core.yaml"
     pack_path = generate_budget_pack(base_pack_path=base_pack, budget=64, output_dir=tmp_path / "packs")

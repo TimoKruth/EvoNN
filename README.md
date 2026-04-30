@@ -80,6 +80,8 @@ uv run --package evonn-compare python -m evonn_compare fair-matrix \
   from the working branch.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the expected branch and PR flow.
+Engine-advancement PRs must also follow
+[RESEARCH_DECISION_GATE.md](./RESEARCH_DECISION_GATE.md).
 
 ## Where To Read Next
 
@@ -89,6 +91,8 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the expected branch and PR flow.
 - [ROADMAP.md](./ROADMAP.md): long-horizon execution sequencing
 - [EVONN_90_DAY_PLAN.md](./EVONN_90_DAY_PLAN.md): current delivery window and
   active execution source of truth
+- [RESEARCH_DECISION_GATE.md](./RESEARCH_DECISION_GATE.md): decision categories,
+  evidence bundle, and PR expectations for advancement claims
 - [.hermes/plans/README.md](./.hermes/plans/README.md): active package and
   subsystem branch plans
 

@@ -30,6 +30,7 @@ def _write_run(
     seeding: dict | None = None,
     framework: str | None = None,
     framework_version: str | None = None,
+    architecture_summary: str | None = None,
 ) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "config_snapshot.json").write_text("{}", encoding="utf-8")
@@ -92,6 +93,7 @@ def _write_run(
                 metric_name=entry.metric_name,
                 metric_direction=entry.metric_direction,
                 metric_value=metric_value,
+                architecture_summary=architecture_summary,
                 status="ok",
             )
         )

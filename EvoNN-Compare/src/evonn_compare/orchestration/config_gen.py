@@ -11,12 +11,15 @@ import yaml
 
 from evonn_compare.contracts.parity import load_parity_pack
 from evonn_compare.orchestration.benchmark_resolution import resolve_supported_benchmark_ids
+from evonn_compare.orchestration.campaign_state import sync_workspace_state
 
 
 COMPARE_ROOT = Path(__file__).resolve().parents[3]
 WORKSPACE_ROOT = COMPARE_ROOT.parent
 DEFAULT_PRISM_ROOT = WORKSPACE_ROOT / "EvoNN-Prism"
 DEFAULT_TOPOGRAPH_ROOT = WORKSPACE_ROOT / "EvoNN-Topograph"
+
+
 @dataclass(frozen=True)
 class CampaignPaths:
     workspace: Path
@@ -225,7 +228,16 @@ def prepare_campaign_cases(
         ],
     }
     paths.manifest_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    sync_workspace_state(
+        workspace_kind="campaign",
+        workspace=paths.workspace,
+        manifest_path=paths.manifest_path,
+        cases=cases,
+        lane_preset=lane_preset,
+    )
     return paths, cases
+
+
 def _prism_allowed_families(pack, *, budget: int) -> list[str]:
     benchmark_count = len(pack.benchmarks)
     if benchmark_count == 0:

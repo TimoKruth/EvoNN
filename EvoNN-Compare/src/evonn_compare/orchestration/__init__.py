@@ -26,7 +26,6 @@ from evonn_compare.orchestration.primordia import (
     ensure_primordia_export,
     ensure_primordia_run,
 )
-from evonn_compare.orchestration.seeded_compare import publish_seeded_vs_unseeded_workspace
 
 __all__ = [
     "CampaignCase",
@@ -46,6 +45,19 @@ __all__ = [
     "generate_stratograph_config",
     "generate_topograph_config",
     "publish_seeded_vs_unseeded_workspace",
+    "publish_transfer_regime_workspace",
     "prepare_fair_matrix_cases",
     "run_fair_matrix_case",
 ]
+
+
+def __getattr__(name: str):
+    if name == "publish_seeded_vs_unseeded_workspace":
+        from evonn_compare.orchestration.seeded_compare import publish_seeded_vs_unseeded_workspace
+
+        return publish_seeded_vs_unseeded_workspace
+    if name == "publish_transfer_regime_workspace":
+        from evonn_compare.orchestration.transfer_regimes import publish_transfer_regime_workspace
+
+        return publish_transfer_regime_workspace
+    raise AttributeError(name)
