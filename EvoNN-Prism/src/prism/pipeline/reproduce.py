@@ -60,38 +60,66 @@ def reproduce(
     )
 
     for slot in range(evolution.offspring_per_generation):
-        child = None
-        record = None
-        for _attempt in range(MAX_OFFSPRING_ATTEMPTS):
-            family_target = family_floor_targets[slot] if slot < len(family_floor_targets) else None
-            specialist_target = specialist_targets[slot] if slot < len(specialist_targets) else None
-            candidate, candidate_record = _make_offspring(
-                parent_pool,
-                quality_map,
-                evolution,
-                rng,
-                state=state,
-                family_target=family_target,
-                specialist_target=specialist_target,
-            )
-            child = candidate
-            record = candidate_record
-            is_novel = _is_novel_offspring(
-                child,
-                record.get("parent_ids", []),
-                seen_offspring_ids,
-                parent_pool_ids,
-            )
-            if is_novel and (family_target is None or child.family == family_target):
-                break
-
-        assert child is not None
-        assert record is not None
+        family_target = family_floor_targets[slot] if slot < len(family_floor_targets) else None
+        specialist_target = specialist_targets[slot] if slot < len(specialist_targets) else None
+        child, record = _select_novel_offspring(
+            parent_pool,
+            quality_map,
+            evolution,
+            rng,
+            state=state,
+            seen_offspring_ids=seen_offspring_ids,
+            parent_pool_ids=parent_pool_ids,
+            family_target=family_target,
+            specialist_target=specialist_target,
+        )
         offspring.append(child)
         lineage.append(record)
         seen_offspring_ids.add(child.genome_id)
 
     return offspring, lineage
+
+
+def _select_novel_offspring(
+    parent_pool: list[ModelGenome],
+    quality_map: dict[str, float],
+    evolution,
+    rng: Random,
+    state,
+    seen_offspring_ids: set[str],
+    parent_pool_ids: set[str],
+    family_target: str | None,
+    specialist_target: dict | None,
+) -> tuple[ModelGenome, dict]:
+    strategies = [
+        (family_target, specialist_target),
+        (family_target, None),
+        (None, None),
+    ]
+    for target_family, target_specialist in strategies:
+        for _attempt in range(MAX_OFFSPRING_ATTEMPTS):
+            child, record = _make_offspring(
+                parent_pool,
+                quality_map,
+                evolution,
+                rng,
+                state=state,
+                family_target=target_family,
+                specialist_target=target_specialist,
+            )
+            if not _is_novel_offspring(
+                child,
+                record.get("parent_ids", []),
+                seen_offspring_ids,
+                parent_pool_ids,
+            ):
+                continue
+            if target_family is not None and child.family != target_family:
+                continue
+            return child, record
+    raise RuntimeError(
+        "failed to generate a novel Prism offspring after exhausting reproduction retries"
+    )
 
 
 def _make_offspring(

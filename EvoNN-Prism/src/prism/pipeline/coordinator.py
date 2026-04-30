@@ -146,6 +146,11 @@ def run_evolution(
             # 6. Reproduce (skip on last generation)
             if gen < total_gens - 1:
                 offspring, lineage = reproduce(state, config, rng)
+                _validate_offspring_batch(
+                    offspring,
+                    lineage,
+                    expected_size=evolution.offspring_per_generation,
+                )
                 _persist_lineage(store, run_id, gen + 1, lineage)
 
                 # Replace population with offspring
@@ -227,6 +232,30 @@ def _create_seed_population(
         seen_ids.add(child.genome_id)
 
     return population[: evolution.population_size]
+
+
+def _validate_offspring_batch(
+    offspring: list[ModelGenome],
+    lineage: list[dict],
+    *,
+    expected_size: int,
+) -> None:
+    if len(offspring) != expected_size:
+        raise RuntimeError(
+            f"reproduction produced {len(offspring)} offspring; expected {expected_size}"
+        )
+    offspring_ids = [genome.genome_id for genome in offspring]
+    if len(set(offspring_ids)) != len(offspring_ids):
+        raise RuntimeError("reproduction produced duplicate offspring genome ids")
+    lineage_ids = [str(record.get("genome_id")) for record in lineage]
+    if len(lineage_ids) != expected_size:
+        raise RuntimeError(
+            f"lineage recorded {len(lineage_ids)} offspring; expected {expected_size}"
+        )
+    if len(set(lineage_ids)) != len(lineage_ids):
+        raise RuntimeError("lineage contains duplicate offspring genome ids")
+    if set(lineage_ids) != set(offspring_ids):
+        raise RuntimeError("lineage and offspring genome ids do not match")
 
 
 def _checkpoint(run_dir: str, generation: int, state: GenerationState) -> None:

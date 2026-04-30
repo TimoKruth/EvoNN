@@ -358,6 +358,63 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
     assert "| moons | 0.910000 | accuracy | 123 | 0.20 |" in report
 
 
+def test_run_evolution_rejects_duplicate_offspring_ids(monkeypatch, tmp_path: Path):
+    coordinator = _import_coordinator_or_skip()
+    cfg = RunConfig.model_validate(
+        {
+            "seed": 3,
+            "training": {"epochs": 1},
+            "evolution": {
+                "population_size": 2,
+                "offspring_per_generation": 2,
+                "num_generations": 2,
+                "allowed_families": ["mlp"],
+                "family_offspring_floor": 0,
+                "benchmark_specialist_offspring": 0,
+            },
+        }
+    )
+    benchmark = SimpleNamespace(id="moons", name="moons")
+
+    monkeypatch.setattr(
+        "prism.pipeline.evaluate._evaluate_single",
+        lambda genome, spec, training, epoch_scale, cache, parent_ids=None: EvaluationResult(
+            metric_name="accuracy",
+            metric_value=0.91,
+            quality=0.91,
+            parameter_count=123,
+            train_seconds=0.2,
+            failure_reason=None,
+            inherited_from=parent_ids[0] if parent_ids else None,
+        ),
+    )
+
+    duplicate_child = _sample_genome("mlp", [32, 16])
+
+    def fake_reproduce(state, config, rng):
+        return (
+            [duplicate_child, duplicate_child],
+            [
+                {
+                    "genome_id": duplicate_child.genome_id,
+                    "parent_ids": [state.population[0].genome_id],
+                    "operator": "mutation:width",
+                },
+                {
+                    "genome_id": duplicate_child.genome_id,
+                    "parent_ids": [state.population[1].genome_id],
+                    "operator": "mutation:width",
+                },
+            ],
+        )
+
+    monkeypatch.setattr(coordinator, "reproduce", fake_reproduce)
+
+    run_dir = tmp_path / "run"
+    with pytest.raises(RuntimeError, match="duplicate offspring genome ids"):
+        coordinator.run_evolution(cfg, [benchmark], run_dir=str(run_dir))
+
+
 def test_inspect_surfaces_failure_patterns_and_recent_failures(tmp_path: Path):
     run_dir = tmp_path / "inspect-run"
     run_dir.mkdir()

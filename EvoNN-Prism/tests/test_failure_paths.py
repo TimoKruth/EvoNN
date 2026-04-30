@@ -421,6 +421,82 @@ def test_reproduce_retries_until_child_is_novel(monkeypatch):
     assert lineage[0]["genome_id"] == novel_child.genome_id
 
 
+def test_reproduce_retries_across_slots_to_keep_offspring_ids_unique(monkeypatch):
+    parent = _sample_genome("mlp")
+    first_child = parent.model_copy(update={"hidden_layers": [32, 16]})
+    second_child = parent.model_copy(update={"hidden_layers": [48, 16]})
+
+    state = SimpleNamespace(
+        population=[parent],
+        archives={},
+        results={
+            parent.genome_id: {
+                "moons": EvaluationResult("accuracy", 0.8, 0.8, 10, 0.1),
+            },
+        },
+    )
+    config = RunConfig.model_validate(
+        {
+            "evolution": {
+                "offspring_per_generation": 2,
+                "crossover_rate": 0.0,
+                "tournament_size": 1,
+                "allowed_families": ["mlp"],
+                "family_offspring_floor": 0,
+                "benchmark_specialist_offspring": 0,
+            }
+        }
+    )
+
+    attempts = iter([
+        (first_child, "width"),
+        (first_child, "width"),
+        (second_child, "width"),
+    ])
+
+    monkeypatch.setattr(reproduce_mod, "apply_random_mutation", lambda *args, **kwargs: next(attempts))
+
+    offspring, lineage = reproduce_mod.reproduce(state, config, Random(0))
+
+    assert offspring == [first_child, second_child]
+    assert [record["genome_id"] for record in lineage] == [
+        first_child.genome_id,
+        second_child.genome_id,
+    ]
+    assert len({genome.genome_id for genome in offspring}) == 2
+
+
+def test_reproduce_raises_when_no_novel_child_can_be_found(monkeypatch):
+    parent = _sample_genome("mlp")
+
+    state = SimpleNamespace(
+        population=[parent],
+        archives={},
+        results={
+            parent.genome_id: {
+                "moons": EvaluationResult("accuracy", 0.8, 0.8, 10, 0.1),
+            },
+        },
+    )
+    config = RunConfig.model_validate(
+        {
+            "evolution": {
+                "offspring_per_generation": 1,
+                "crossover_rate": 0.0,
+                "tournament_size": 1,
+                "allowed_families": ["mlp"],
+                "family_offspring_floor": 0,
+                "benchmark_specialist_offspring": 0,
+            }
+        }
+    )
+
+    monkeypatch.setattr(reproduce_mod, "apply_random_mutation", lambda *args, **kwargs: (parent, "width"))
+
+    with pytest.raises(RuntimeError, match="novel Prism offspring"):
+        reproduce_mod.reproduce(state, config, Random(0))
+
+
 def test_undercovered_parent_bias_rewards_rare_successes():
     common = _sample_genome("mlp")
     rare = _sample_genome("sparse_mlp")
