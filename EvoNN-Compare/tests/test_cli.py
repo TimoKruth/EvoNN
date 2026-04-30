@@ -61,6 +61,7 @@ def test_fair_matrix_help() -> None:
     assert "--primordia-root" in text
     assert "--no-contenders" in text
     assert "--preset" in text
+    assert "--reset-workspace" in text
     assert "--no-open" in text
     assert "smoke" in text
     assert "local" in text
@@ -124,7 +125,7 @@ def test_campaign_preset_smoke_dry_run(tmp_path) -> None:
     assert "tier1_core_smoke_eval16" in result.stdout
 
 
-def test_campaign_defaults_to_smoke_dry_run(tmp_path) -> None:
+def test_campaign_defaults_to_local_daily_dry_run(tmp_path) -> None:
     result = runner.invoke(app, ["campaign", "--workspace", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0
     assert "manifest\t" in result.stdout
@@ -133,7 +134,7 @@ def test_campaign_defaults_to_smoke_dry_run(tmp_path) -> None:
     assert "prism_run_dir\t" in result.stdout
     assert "topograph_run_dir\t" in result.stdout
     assert "log_dir\t" in result.stdout
-    assert "tier1_core_smoke_eval16" in result.stdout
+    assert "tier1_core_eval64" in result.stdout
 
 
 def test_fair_matrix_preset_smoke_dry_run(tmp_path) -> None:
@@ -144,10 +145,10 @@ def test_fair_matrix_preset_smoke_dry_run(tmp_path) -> None:
     assert "fair_matrix_trends.jsonl" in result.stdout
 
 
-def test_fair_matrix_defaults_to_smoke_dry_run(tmp_path) -> None:
+def test_fair_matrix_defaults_to_local_daily_dry_run(tmp_path) -> None:
     result = runner.invoke(app, ["fair-matrix", "--workspace", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0
-    assert "tier1_core_smoke_eval16" in result.stdout
+    assert "tier1_core_eval64" in result.stdout
     assert "trend-dataset\t" in result.stdout
     assert "fair_matrix_trends.jsonl" in result.stdout
 
@@ -325,7 +326,70 @@ def test_seeded_compare_open_flag_opens_dashboard(tmp_path, monkeypatch) -> None
     assert f"opened\t{expected_url}" in result.stdout
 
 
-def test_fair_matrix_execute_resets_managed_workspace_before_prepare(tmp_path, monkeypatch) -> None:
+def test_fair_matrix_execute_preserves_managed_workspace_by_default(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    stale_report = workspace / "reports" / "stale" / "fair_matrix_summary.json"
+    stale_dataset = workspace / "trends" / "fair_matrix_trend_rows.jsonl"
+    stale_dashboard = workspace / "fair_matrix_dashboard.html"
+    for artifact in (stale_report, stale_dataset, stale_dashboard):
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text("stale\n", encoding="utf-8")
+
+    def fake_prepare_fair_matrix_cases(**kwargs):
+        assert stale_report.exists()
+        assert stale_dataset.exists()
+        assert stale_dashboard.exists()
+        workspace_path = Path(kwargs["workspace"])
+        case_dir = workspace_path / "reports" / "tier1_core_eval64_seed42"
+        case = type(
+            "Case",
+            (),
+            {
+                "summary_output_path": case_dir / "fair_matrix_summary.md",
+            },
+        )()
+        paths = type(
+            "Paths",
+            (),
+            {
+                "manifest_path": workspace_path / "matrix.yaml",
+                "trends_dir": workspace_path / "trends",
+            },
+        )()
+        paths.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        paths.manifest_path.write_text("pack_name: tier1_core\n", encoding="utf-8")
+        return paths, [case]
+
+    def fake_run_fair_matrix_case(case, **_kwargs):
+        case.summary_output_path.parent.mkdir(parents=True, exist_ok=True)
+        case.summary_output_path.write_text("# summary\n", encoding="utf-8")
+        return case.summary_output_path
+
+    def fake_refresh_workspace_reports(*, workspace, open_browser=False):
+        return {
+            "workspace": str(workspace),
+            "summary_count": 1,
+            "trend_dataset": str(Path(workspace) / "trends" / "fair_matrix_trend_rows.jsonl"),
+            "trend_report": str(Path(workspace) / "trends" / "fair_matrix_trends.md"),
+            "trend_report_data": str(Path(workspace) / "trends" / "fair_matrix_trends.json"),
+            "dashboard": str(Path(workspace) / "fair_matrix_dashboard.html"),
+            "dashboard_data": str(Path(workspace) / "fair_matrix_dashboard.json"),
+        }
+
+    monkeypatch.setattr(fair_matrix_cli, "prepare_fair_matrix_cases", fake_prepare_fair_matrix_cases)
+    monkeypatch.setattr(fair_matrix_cli, "run_fair_matrix_case", fake_run_fair_matrix_case)
+    monkeypatch.setattr(fair_matrix_cli, "refresh_workspace_reports", fake_refresh_workspace_reports)
+
+    result = runner.invoke(app, ["fair-matrix", "--preset", "smoke", "--workspace", str(workspace), "--serial"])
+
+    assert result.exit_code == 0
+    assert "mode\texecute" in result.stdout
+    assert stale_report.exists()
+    assert stale_dataset.exists()
+    assert stale_dashboard.exists()
+
+
+def test_fair_matrix_execute_can_reset_managed_workspace_before_prepare(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     stale_report = workspace / "reports" / "stale" / "fair_matrix_summary.json"
     stale_dataset = workspace / "trends" / "fair_matrix_trend_rows.jsonl"
@@ -379,7 +443,10 @@ def test_fair_matrix_execute_resets_managed_workspace_before_prepare(tmp_path, m
     monkeypatch.setattr(fair_matrix_cli, "run_fair_matrix_case", fake_run_fair_matrix_case)
     monkeypatch.setattr(fair_matrix_cli, "refresh_workspace_reports", fake_refresh_workspace_reports)
 
-    result = runner.invoke(app, ["fair-matrix", "--preset", "smoke", "--workspace", str(workspace), "--serial"])
+    result = runner.invoke(
+        app,
+        ["fair-matrix", "--preset", "smoke", "--workspace", str(workspace), "--serial", "--reset-workspace"],
+    )
 
     assert result.exit_code == 0
     assert "mode\texecute" in result.stdout
@@ -438,7 +505,7 @@ def test_fair_matrix_prints_trend_artifact_paths(monkeypatch, tmp_path: Path) ->
     assert f"workspace_dashboard_data\t{tmp_path / 'fair_matrix_dashboard.json'}" in result.stdout
 
 
-def test_fair_matrix_default_smoke_persists_lane_preset(monkeypatch, tmp_path: Path) -> None:
+def test_fair_matrix_default_local_persists_lane_preset(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
     def fake_prepare_fair_matrix_cases(**kwargs):
@@ -457,7 +524,7 @@ def test_fair_matrix_default_smoke_persists_lane_preset(monkeypatch, tmp_path: P
     result = runner.invoke(app, ["fair-matrix", "--workspace", str(tmp_path), "--dry-run"])
 
     assert result.exit_code == 0
-    assert captured["lane_preset"] == "smoke"
+    assert captured["lane_preset"] == "local"
 
 
 def test_fair_matrix_pack_without_preset_defaults_to_pack_budget(monkeypatch, tmp_path: Path) -> None:
@@ -483,7 +550,7 @@ def test_fair_matrix_pack_without_preset_defaults_to_pack_budget(monkeypatch, tm
     assert captured["budgets"] == [16]
 
 
-def test_campaign_default_smoke_persists_lane_preset(monkeypatch, tmp_path: Path) -> None:
+def test_campaign_default_local_persists_lane_preset(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
     def fake_prepare_campaign_cases(**kwargs):
@@ -502,7 +569,7 @@ def test_campaign_default_smoke_persists_lane_preset(monkeypatch, tmp_path: Path
     result = runner.invoke(app, ["campaign", "--workspace", str(tmp_path), "--dry-run"])
 
     assert result.exit_code == 0
-    assert captured["lane_preset"] == "smoke"
+    assert captured["lane_preset"] == "local"
 
 
 def test_campaign_pack_without_preset_defaults_to_pack_budget(monkeypatch, tmp_path: Path) -> None:
@@ -864,7 +931,7 @@ def test_dashboard_payload_surfaces_run_level_seeding_metadata(tmp_path: Path) -
                     "pack_name": "tier1_core_eval64",
                     "expected_budget": 64,
                     "expected_seed": 42,
-                    "operating_state": "contract-fair",
+                    "operating_state": "portable-transfer-plumbing",
                     "artifact_completeness_ok": True,
                     "fairness_ok": True,
                     "task_coverage_ok": True,
@@ -879,7 +946,7 @@ def test_dashboard_payload_surfaces_run_level_seeding_metadata(tmp_path: Path) -
                         "topograph": "portable-smoke",
                     },
                     "acceptance_notes": [],
-                    "repeatability_ready": True,
+                    "repeatability_ready": False,
                 },
                 "fair_rows": [{"budget": 64, "seed": 42, "benchmark_count": 1, "evaluation_counts": {"primordia": 64, "topograph": 64}, "wins": {"primordia": 0, "topograph": 1}, "ties": 0, "note": None}],
                 "reference_rows": [],

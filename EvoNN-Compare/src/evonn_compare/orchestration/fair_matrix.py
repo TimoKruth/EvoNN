@@ -704,7 +704,11 @@ def _build_lane_metadata(
         elif accounting_issues:
             system_operating_states[system] = "accounting-incomplete"
         else:
-            system_operating_states[system] = coverage["operating_state"]
+            system_operating_states[system] = _runtime_truth_operating_state(
+                system=system,
+                manifest=manifest,
+                coverage_state=coverage["operating_state"],
+            )
         observed_task_kinds.update(entry.task_kind for entry in manifest.benchmarks)
 
     fairness_ok = all(result.parity_status == "fair" for result, _report_path in pair_results.values())
@@ -725,10 +729,14 @@ def _build_lane_metadata(
         system in case_systems and system_benchmark_complete.get(system, False)
         for system in EXTENDED_TRUSTED_SYSTEMS
     )
-    if contract_fair_ok and core_systems_complete_ok and extended_systems_complete_ok:
+    native_runtime_truth_gaps = _native_runtime_truth_gaps(case_systems=case_systems, runs=runs)
+    native_runtime_truth_ok = not native_runtime_truth_gaps
+    if contract_fair_ok and core_systems_complete_ok and extended_systems_complete_ok and native_runtime_truth_ok:
         operating_state = "trusted-extended"
-    elif contract_fair_ok and core_systems_complete_ok:
+    elif contract_fair_ok and core_systems_complete_ok and native_runtime_truth_ok:
         operating_state = "trusted-core"
+    elif contract_fair_ok and not native_runtime_truth_ok:
+        operating_state = "portable-contract-fair"
     elif contract_fair_ok:
         operating_state = "contract-fair"
     else:
@@ -751,6 +759,8 @@ def _build_lane_metadata(
             if issues:
                 accounting_notes.append(f"{system} ({'; '.join(issues)})")
         acceptance_notes.append("budget accounting incomplete: " + ", ".join(accounting_notes))
+    if contract_fair_ok and native_runtime_truth_gaps:
+        acceptance_notes.append("native runtime truth unmet: " + ", ".join(native_runtime_truth_gaps))
     for system in sorted(system_coverage_notes):
         acceptance_notes.append(f"{system} coverage: {system_coverage_notes[system]}")
     if contract_fair_ok and not core_systems_complete_ok:
@@ -809,15 +819,40 @@ def _budget_accounting_issues(manifest: Any) -> list[str]:
         issues.append("missing actual_evaluations")
     elif budget.partial_run:
         issues.append("partial_run=true")
-    elif budget.actual_evaluations != budget.evaluation_count:
+    elif budget.accounted_evaluations() != budget.evaluation_count:
         issues.append(
-            f"actual_evaluations {budget.actual_evaluations} != declared {budget.evaluation_count}"
+            "accounted evaluations "
+            f"{budget.accounted_evaluations()} != declared {budget.evaluation_count} "
+            f"(actual={budget.actual_evaluations}, cached={budget.cached_evaluations or 0})"
         )
     if not budget.evaluation_semantics:
         issues.append("missing evaluation_semantics")
     if budget.resumed_from_run_id is not None and budget.resumed_evaluations is None:
         issues.append("missing resumed_evaluations")
     return issues
+
+
+def _runtime_truth_operating_state(*, system: str, manifest: Any, coverage_state: str) -> str:
+    framework = getattr(manifest.device, "framework", None)
+    if system in {"prism", "topograph"} and framework == "portable-sklearn" and coverage_state.startswith("benchmark-"):
+        return f"portable-{coverage_state}"
+    return coverage_state
+
+
+def _native_runtime_truth_gaps(
+    *,
+    case_systems: tuple[str, ...],
+    runs: dict[str, tuple[Any, list[Any]]],
+) -> list[str]:
+    gaps: list[str] = []
+    for system in ("prism", "topograph"):
+        if system not in case_systems or system not in runs:
+            continue
+        manifest, _results = runs[system]
+        framework = getattr(manifest.device, "framework", None) or "unknown"
+        if framework != "mlx":
+            gaps.append(f"{system}={framework}")
+    return gaps
 
 
 def _system_benchmark_complete(*, manifest: Any, results: list[Any]) -> bool:

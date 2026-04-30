@@ -1,4 +1,4 @@
-"""Named local-first compare lane presets."""
+"""Named compare lane presets for recurring and exploratory workflows."""
 
 from __future__ import annotations
 
@@ -20,14 +20,14 @@ LANE_PRESETS: dict[str, LanePreset] = {
         pack="tier1_core_smoke",
         seeds=(42,),
         budgets=(16,),
-        description="Lowest-cost repeatable compare lane for contract and artifact validation.",
+        description="Lowest-cost validation lane for contract and artifact checks; not the trusted daily default.",
     ),
     "local": LanePreset(
         name="local",
         pack="tier1_core",
         seeds=(42,),
         budgets=(64,),
-        description="Default local-first compare lane for a fuller but still practical head-to-head.",
+        description="Default trusted daily tier1_core lane for a fuller but still practical head-to-head.",
     ),
     "overnight": LanePreset(
         name="overnight",

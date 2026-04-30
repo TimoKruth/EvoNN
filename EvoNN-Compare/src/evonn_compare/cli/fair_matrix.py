@@ -19,7 +19,7 @@ from evonn_compare.orchestration.fair_matrix import (
 
 def fair_matrix(
     pack: str | None = typer.Option(None, "--pack", help="Parity pack name or YAML path"),
-    preset: str | None = typer.Option(None, "--preset", help=lane_preset_help(default_name="smoke")),
+    preset: str | None = typer.Option(None, "--preset", help=lane_preset_help(default_name="local")),
     seeds: str | None = typer.Option(None, "--seeds", help="Comma-separated seeds"),
     budgets: str | None = typer.Option(None, "--budgets", help="Comma-separated budgets"),
     workspace: str = typer.Option(..., "--workspace", help="Campaign workspace"),
@@ -31,16 +31,17 @@ def fair_matrix(
     include_contenders: bool = typer.Option(True, "--include-contenders/--no-contenders", help="Include contender baselines in the fair-matrix run"),
     parallel: bool = typer.Option(True, "--parallel/--serial", help="Run project stages concurrently"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Only generate configs and print cases"),
+    reset_workspace: bool = typer.Option(False, "--reset-workspace/--preserve-workspace", help="Remove managed workspace artifacts before generating cases"),
     open_browser: bool = typer.Option(False, "--open/--no-open", help="Open the refreshed dashboard in the default browser"),
 ) -> None:
     """Generate and optionally execute fair four-way compare cases."""
 
-    preset_name = preset or (None if pack else "smoke")
+    preset_name = preset or (None if pack else "local")
     preset_spec = resolve_lane_preset(preset_name) if preset_name else None
     pack_name = pack or (preset_spec.pack if preset_spec else None)
     workspace_path = Path(workspace)
 
-    if not dry_run:
+    if not dry_run and reset_workspace:
         reset_fair_matrix_workspace(workspace_path)
 
     pack_path = resolve_pack_path(pack_name)

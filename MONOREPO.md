@@ -105,8 +105,8 @@ For the current local-first workflow:
 
 - Prism is the default operating engine for day-to-day search runs
 - Topograph remains the first serious challenger in Compare
-- `evonn-compare fair-matrix` and `campaign` default to the low-cost `smoke`
-  lane when no explicit pack or preset is supplied
+- `evonn-compare fair-matrix` and `campaign` default to the trusted daily
+  `local` lane (`tier1_core` @ `64`) when no explicit pack or preset is supplied
 - named compare presets now cover the main quarter-critical `tier1_core`
   budgets directly:
   - `local` → `64`

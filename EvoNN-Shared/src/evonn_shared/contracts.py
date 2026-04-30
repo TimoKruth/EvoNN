@@ -86,6 +86,13 @@ class BudgetEnvelope(BaseModel):
             raise ValueError("resumed_from_run_id is required when resumed_evaluations is set")
         return self
 
+    def accounted_evaluations(self) -> int | None:
+        """Return the compare-surface evaluation count including cached reruns."""
+
+        if self.actual_evaluations is None:
+            return None
+        return self.actual_evaluations + (self.cached_evaluations or 0)
+
 
 class DeviceInfo(BaseModel):
     """Execution environment metadata."""

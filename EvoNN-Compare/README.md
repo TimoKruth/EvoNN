@@ -12,7 +12,7 @@ uv run --package evonn-compare python -m evonn_compare --help
 
 Package metadata stays in [pyproject.toml](./pyproject.toml). Workspace lock lives at monorepo root.
 
-## Fair-matrix smoke lane
+## Fair-matrix preset ladder
 
 The local-first preset ladder now exposes the quarter-critical `tier1_core`
 budgets directly:
@@ -22,17 +22,18 @@ budgets directly:
 - `overnight` → `tier1_core` @ `256`
 - `weekend` → `tier1_core` @ `1000`
 
-`fair-matrix` and `campaign` default to `smoke` when neither `--pack` nor
-`--preset` is supplied. If you target a parity pack directly with `--pack`
+`fair-matrix` and `campaign` now default to the trusted daily `local`
+lane (`tier1_core` @ `64`) when neither `--pack` nor `--preset` is supplied.
+If you target a parity pack directly with `--pack`
 without a preset, the default budget now comes from that pack's declared
 `budget_policy.evaluation_count` unless you override `--budgets` explicitly:
 
 ```bash
 uv run --package evonn-compare python -m evonn_compare fair-matrix \
-  --workspace .tmp/fair-matrix-smoke
+  --workspace .tmp/fair-matrix-local
 
 uv run --package evonn-compare python -m evonn_compare campaign \
-  --workspace .tmp/campaign-smoke
+  --workspace .tmp/campaign-local
 
 uv run --package evonn-compare python -m evonn_compare fair-matrix \
   --preset overnight \
@@ -62,6 +63,10 @@ Phase-1 acceptance for milestones 4-5 is captured directly in the emitted artifa
   - structured longitudinal records derived from JSON artifacts only
 - `trends/fair_matrix_trends.jsonl`
   - append-only workspace trend dataset for repeated reruns
+
+By default, repeated `fair-matrix` runs preserve the managed workspace so trend,
+report, and dashboard artifacts continue to accumulate across recurring reruns.
+Use `--reset-workspace` only when you intentionally want a fresh workspace.
 
 Minimum longitudinal fields preserved per record:
 
@@ -96,7 +101,7 @@ Each fair-matrix workspace also accumulates:
 
 After `fair-matrix` execution, the CLI refreshes the workspace-level trend report and dashboard automatically from the canonical JSON artifacts. It prints the paths for the case summary markdown/JSON, lane acceptance metadata, structured case trend JSON/JSONL artifacts, workspace trend dataset/report/report-JSON, and workspace dashboard so reruns can be reviewed from the longitudinal surface first.
 
-This means repeated `smoke` lane runs can be appended to one shared trend dataset without per-engine parsers or markdown scraping. The trend markdown now also surfaces lane accounting and repeatability state directly, so budget-truth drift is visible from the default human review surface.
+This means repeated recurring-lane runs can be appended to one shared trend dataset without per-engine parsers or markdown scraping. The trend markdown now also surfaces lane accounting and repeatability state directly, so budget-truth drift is visible from the default human review surface.
 
 ### Workspace-first review flow
 
@@ -207,15 +212,15 @@ path and the sibling JSON artifact path directly in CLI output.
 
 ## Milestone 6: Prism default operating path
 
-Prism is now the default operating path for the routine low-cost compare flow:
+Prism is now the default operating path for the routine trusted daily compare flow:
 
-- `campaign` defaults to the `smoke` lane when no `--pack` or `--preset` is supplied
-- `fair-matrix` defaults to the same `smoke` lane when no `--pack` or `--preset` is supplied
+- `campaign` defaults to the `local` `tier1_core` lane when no `--pack` or `--preset` is supplied
+- `fair-matrix` defaults to the same `local` `tier1_core` lane when no `--pack` or `--preset` is supplied
 - the default path still keeps Topograph on the same shared compare/report surface as the first challenger
 
 Functional shared-surface checks currently covered in Compare tests:
 
-- Prism + Topograph default/smoke fair-matrix flow
+- Prism + Topograph default/local fair-matrix flow
 - Stratograph config generation on the shared budget/benchmark surface
 - Primordia config generation on the shared budget/benchmark surface
 - four-system fair-matrix orchestration with Prism, Topograph, Stratograph, and Primordia contributing artifact-complete outputs in the test harness

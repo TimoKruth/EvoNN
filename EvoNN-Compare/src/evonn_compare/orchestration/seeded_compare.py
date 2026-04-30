@@ -30,7 +30,7 @@ def publish_seeded_vs_unseeded_workspace(
     primordia_root: Path,
     topograph_root: Path,
 ) -> dict[str, str | int]:
-    """Publish a canonical Primordia->Topograph seeded-vs-unseeded workspace."""
+    """Publish a portable Primordia->Topograph seeded control workspace."""
 
     workspace = workspace.resolve()
     _reset_workspace(workspace)
@@ -238,15 +238,20 @@ def _build_lane_metadata(
         manifest.system: _system_operating_state(manifest)
         for manifest in manifests
     }
-    repeatability_ready = artifact_completeness_ok and fairness_ok and budget_consistency_ok and seed_consistency_ok
+    repeatability_ready = False
     acceptance_notes = [
-        "portable topograph exporter used for host-portable reproduction",
+        "portable topograph exporter used for host-portable reproduction only",
+        "portable seeded-vs-unseeded lane validates seeding contract plumbing, not native MLX transfer behavior",
         "seeded topograph case consumes the Primordia seed_candidates.json artifact directly",
         "topograph seeding mode is visible in manifests, compare markdown, trend rows, and dashboard payloads",
     ]
     if not seeded:
-        acceptance_notes[1] = "unseeded control case keeps Topograph on the same pack/budget/seed without a Primordia seed artifact"
-    operating_state = "contract-fair" if fairness_ok and task_coverage_ok and budget_consistency_ok and seed_consistency_ok else "reference-only"
+        acceptance_notes[2] = "unseeded control case keeps Topograph on the same pack/budget/seed without a Primordia seed artifact"
+    operating_state = (
+        "portable-transfer-plumbing"
+        if fairness_ok and task_coverage_ok and budget_consistency_ok and seed_consistency_ok
+        else "reference-only"
+    )
     return LaneMetadata(
         preset="seeded-compare",
         pack_name=pack_name,
@@ -360,6 +365,8 @@ def _write_seeded_vs_unseeded_summary(*, reports_dir: Path, comparison: Comparis
         f"- Pack: `{comparison.pack_name}`",
         f"- Left: `{comparison.left_manifest.run_id}`",
         f"- Right: `{comparison.right_manifest.run_id}`",
+        f"- Transfer Boundary: `{report_payload['transfer_boundary']}`",
+        f"- Transfer Proof State: `{report_payload['transfer_proof_state']}`",
         f"- Verdict: `{report_payload['verdict']}`",
         f"- Seeded Wins: `{report_payload['seeded_wins']}`",
         f"- Unseeded Wins: `{report_payload['unseeded_wins']}`",
@@ -426,6 +433,12 @@ def _seeded_vs_unseeded_payload(comparison: ComparisonResult) -> dict[str, Any]:
         "pack_name": comparison.pack_name,
         "seed": seeded.seed,
         "portable_backend": seeded.device.framework,
+        "transfer_boundary": "portable-topograph-seeding-contract",
+        "transfer_proof_state": (
+            "portable-plumbing-only"
+            if seeded.device.framework == "portable-sklearn"
+            else "native-runtime-transfer"
+        ),
         "seed_artifact": None if seeding is None else seeding.seed_artifact_path,
         "seed_source_run_id": None if seeding is None else seeding.seed_source_run_id,
         "seed_selected_family": None if seeding is None else seeding.seed_selected_family,

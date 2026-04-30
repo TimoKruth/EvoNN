@@ -1,7 +1,7 @@
 # Canonical Seeded vs Unseeded Compare
 
-The first canonical seeded transfer artifact path is `Primordia -> Topograph`
-on the portable compare boundary.
+The canonical seeded control artifact path is `Primordia -> Topograph` on the
+portable compare boundary.
 
 Use the dedicated compare command from the repo root:
 
@@ -24,6 +24,8 @@ What this command does:
 - writes a direct seeded-vs-unseeded markdown/JSON summary
 - writes fair-matrix-compatible case summaries so the workspace trend report and
   dashboard can expose seed mode/source/artifact provenance
+- marks the lane as portable seeding-contract evidence rather than native MLX
+  transfer proof
 - opens the canonical dashboard immediately when `--open` is supplied, so the
   seeded control and transfer lane can be reviewed from the same recurring
   evidence surface used by fair-matrix workspaces
@@ -40,3 +42,6 @@ Key outputs:
 The command intentionally uses the portable Topograph exporter so the canonical
 artifact set is reproducible on the supported host/runtime boundary without
 depending on native MLX availability.
+
+That also means this workspace proves portable seeding/export plumbing only. It
+does not prove native MLX transfer behavior for Topograph.

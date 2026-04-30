@@ -752,6 +752,129 @@ def test_build_lane_metadata_can_block_on_strict_optional_skip_policy(tmp_path: 
     assert lane.system_operating_states["contenders"] == "benchmark-incomplete-optional-skips"
 
 
+def test_build_lane_metadata_marks_portable_core_fallback_as_non_native(tmp_path: Path) -> None:
+    pack = load_parity_pack(PACK_PATH)
+    run_dirs = {
+        "prism": tmp_path / "prism",
+        "topograph": tmp_path / "topograph",
+        "contenders": tmp_path / "contenders",
+    }
+    _write_run(
+        run_dirs["prism"],
+        system="prism",
+        score_shift=0.02,
+        budget_policy_name="evolutionary_search",
+        framework="portable-sklearn",
+        framework_version="1.7-portable",
+    )
+    _write_run(
+        run_dirs["topograph"],
+        system="topograph",
+        budget_policy_name="evolutionary_search",
+        framework="portable-sklearn",
+        framework_version="1.7-portable",
+    )
+    _write_run(run_dirs["contenders"], system="contenders", budget_policy_name="evolutionary_search")
+    contenders_manifest_path = run_dirs["contenders"] / "manifest.json"
+    contenders_manifest = json.loads(contenders_manifest_path.read_text(encoding="utf-8"))
+    contenders_manifest["baseline_coverage"] = {
+        "benchmark_complete_policy": "required_only_optional_skips_allowed",
+        "policy_stage": "steady_state",
+        "policy_reason": "trusted recurring lanes ratify the sklearn-backed contender pool as the required floor",
+        "optional_dependency_skips": {"tabular": ["xgb_small", "lgbm_small"]},
+        "notes": ["optional dependency backends skipped under required-only completeness policy"],
+    }
+    contenders_manifest_path.write_text(json.dumps(contenders_manifest, indent=2), encoding="utf-8")
+
+    ingestors = {system: SystemIngestor(path) for system, path in run_dirs.items()}
+    runs = {
+        system: (ingestor.load_manifest(), ingestor.load_results())
+        for system, ingestor in ingestors.items()
+    }
+    pair_results = {}
+    for left, right in (("prism", "topograph"), ("prism", "contenders")):
+        result = ComparisonEngine().compare(
+            left_manifest=runs[left][0],
+            left_results=runs[left][1],
+            right_manifest=runs[right][0],
+            right_results=runs[right][1],
+            pack=pack,
+        )
+        pair_results[(left, right)] = (result, Path(f"{left}_vs_{right}.md"))
+
+    class CaseStub:
+        lane_preset = "local"
+        pack_name = pack.name
+        budget = 64
+        seed = 42
+        prism_run_dir = run_dirs["prism"]
+        topograph_run_dir = run_dirs["topograph"]
+        stratograph_run_dir = tmp_path / "stratograph"
+        primordia_run_dir = tmp_path / "primordia"
+        contender_run_dir = run_dirs["contenders"]
+        systems = ("prism", "topograph", "contenders")
+
+    lane = _build_lane_metadata(case=CaseStub(), runs=runs, pair_results=pair_results)
+
+    assert lane.operating_state == "portable-contract-fair"
+    assert lane.repeatability_ready is False
+    assert lane.system_operating_states["prism"] == "portable-benchmark-complete"
+    assert lane.system_operating_states["topograph"] == "portable-benchmark-complete"
+    assert any("native runtime truth unmet: prism=portable-sklearn, topograph=portable-sklearn" in note for note in lane.acceptance_notes)
+
+
+def test_build_lane_metadata_accepts_cached_contender_reruns_when_accounted_budget_matches(tmp_path: Path) -> None:
+    pack = load_parity_pack(PACK_PATH)
+    run_dirs = {
+        "prism": tmp_path / "prism",
+        "topograph": tmp_path / "topograph",
+        "contenders": tmp_path / "contenders",
+    }
+    _write_run(run_dirs["prism"], system="prism", score_shift=0.02, budget_policy_name="evolutionary_search")
+    _write_run(run_dirs["topograph"], system="topograph", budget_policy_name="evolutionary_search")
+    _write_run(run_dirs["contenders"], system="contenders", budget_policy_name="fixed_contender_pool")
+
+    contenders_manifest_path = run_dirs["contenders"] / "manifest.json"
+    contenders_manifest = json.loads(contenders_manifest_path.read_text(encoding="utf-8"))
+    contenders_manifest["budget"]["actual_evaluations"] = 0
+    contenders_manifest["budget"]["cached_evaluations"] = contenders_manifest["budget"]["evaluation_count"]
+    contenders_manifest_path.write_text(json.dumps(contenders_manifest, indent=2), encoding="utf-8")
+
+    ingestors = {system: SystemIngestor(path) for system, path in run_dirs.items()}
+    runs = {
+        system: (ingestor.load_manifest(), ingestor.load_results())
+        for system, ingestor in ingestors.items()
+    }
+    pair_results = {}
+    for left, right in (("prism", "topograph"), ("prism", "contenders")):
+        result = ComparisonEngine().compare(
+            left_manifest=runs[left][0],
+            left_results=runs[left][1],
+            right_manifest=runs[right][0],
+            right_results=runs[right][1],
+            pack=pack,
+        )
+        pair_results[(left, right)] = (result, Path(f"{left}_vs_{right}.md"))
+
+    class CaseStub:
+        lane_preset = "local"
+        pack_name = pack.name
+        budget = 64
+        seed = 42
+        prism_run_dir = run_dirs["prism"]
+        topograph_run_dir = run_dirs["topograph"]
+        stratograph_run_dir = tmp_path / "stratograph"
+        primordia_run_dir = tmp_path / "primordia"
+        contender_run_dir = run_dirs["contenders"]
+        systems = ("prism", "topograph", "contenders")
+
+    lane = _build_lane_metadata(case=CaseStub(), runs=runs, pair_results=pair_results)
+
+    assert lane.budget_accounting_ok is True
+    assert lane.operating_state == "reference-only"
+    assert lane.system_operating_states["contenders"] == "benchmark-complete"
+
+
 def test_run_fair_matrix_case_emits_failure_artifacts_when_stage_export_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

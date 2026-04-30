@@ -30,7 +30,13 @@ def _pack() -> ParityPack:
     )
 
 
-def _manifest(*, actual_evaluations: int | None = None, partial_run: bool = False, evaluation_semantics: str | None = None) -> RunManifest:
+def _manifest(
+    *,
+    actual_evaluations: int | None = None,
+    cached_evaluations: int | None = None,
+    partial_run: bool = False,
+    evaluation_semantics: str | None = None,
+) -> RunManifest:
     return RunManifest(
         schema_version="1.0",
         system="prism",
@@ -52,6 +58,7 @@ def _manifest(*, actual_evaluations: int | None = None, partial_run: bool = Fals
             evaluation_count=16,
             epochs_per_candidate=1,
             actual_evaluations=actual_evaluations,
+            cached_evaluations=cached_evaluations,
             partial_run=partial_run,
             evaluation_semantics=evaluation_semantics,
         ),
@@ -96,6 +103,21 @@ def test_validate_contract_warns_when_actual_budget_is_lower_without_partial_fla
 def test_validate_contract_does_not_warn_when_partial_run_is_explicit() -> None:
     report = validate_contract(
         _manifest(actual_evaluations=8, partial_run=True, evaluation_semantics="one evolved candidate evaluation"),
+        _results(),
+        _pack(),
+    )
+
+    assert all(issue.code != "budget_actual_lt_declared" for issue in report.issues)
+
+
+def test_validate_contract_accepts_cached_budget_accounting_when_totals_match() -> None:
+    report = validate_contract(
+        _manifest(
+            actual_evaluations=0,
+            cached_evaluations=16,
+            partial_run=False,
+            evaluation_semantics="one contender fit/eval pass counted per contender in the configured pool",
+        ),
         _results(),
         _pack(),
     )

@@ -65,8 +65,8 @@ uv run --package evonn-compare python -m evonn_compare fair-matrix \
 
 - Prism is the default operating engine for routine work.
 - Topograph is the primary challenger on the shared compare surface.
-- `fair-matrix` and `campaign` default to the low-cost `smoke` lane when no
-  pack or preset is supplied.
+- `fair-matrix` and `campaign` default to the trusted daily `local` lane
+  (`tier1_core` @ `64`) when no pack or preset is supplied.
 - Shared infrastructure should converge where it improves trust, parity, and
   maintenance, while search-core logic stays package-local.
 

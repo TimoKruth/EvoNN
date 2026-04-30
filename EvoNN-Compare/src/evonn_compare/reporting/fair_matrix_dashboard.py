@@ -12,6 +12,7 @@ from typing import Any
 
 ALL_SYSTEMS = ("prism", "topograph", "stratograph", "primordia", "contenders")
 PROJECT_SYSTEMS = ("prism", "topograph", "stratograph", "primordia")
+CONTRACT_FAIR_STATES = {"contract-fair", "portable-contract-fair", "trusted-core", "trusted-extended"}
 
 
 def discover_fair_matrix_summaries(inputs: list[Path] | None) -> list[Path]:
@@ -47,7 +48,7 @@ def build_dashboard_payload(summary_paths: list[Path], *, output_path: Path) -> 
         "budgets": sorted({item["budget"] for item in runs}),
         "lane_counts": {
             "fair": sum(1 for item in runs if item["lane"]["fairness_ok"]),
-            "contract_fair": sum(1 for item in runs if item["lane"]["operating_state"] != "reference-only"),
+            "contract_fair": sum(1 for item in runs if item["lane"]["operating_state"] in CONTRACT_FAIR_STATES),
             "trusted_core": sum(1 for item in runs if item["lane"]["operating_state"] in {"trusted-core", "trusted-extended"}),
             "trusted_extended": sum(1 for item in runs if item["lane"]["operating_state"] == "trusted-extended"),
             "repeatable": sum(1 for item in runs if item["lane"]["repeatability_ready"]),
@@ -104,7 +105,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
         "</section>",
         "<section class='panel'>",
         "<h2>How To Read This</h2>",
-        "<p><strong>Operating State</strong> is the lane-level trust label. <strong>reference-only</strong> means fairness or accounting caveats remain. <strong>contract-fair</strong> means the lane is structurally fair but not yet benchmark-complete for the core systems. <strong>trusted-core</strong> and <strong>trusted-extended</strong> add benchmark-complete coverage for the quarter-critical core and then the secondary challengers.</p>",
+        "<p><strong>Operating State</strong> is the lane-level trust label. <strong>reference-only</strong> means fairness or accounting caveats remain. <strong>contract-fair</strong> means the lane is structurally fair but not yet benchmark-complete for the core systems. <strong>portable-contract-fair</strong> means the lane is fair on a portable fallback boundary and must not be read as native MLX truth. <strong>portable-transfer-plumbing</strong> means the seeded lane proves portable seeding/export plumbing only, not native transfer behavior. <strong>trusted-core</strong> and <strong>trusted-extended</strong> add benchmark-complete coverage for the quarter-critical core and then the secondary challengers.</p>",
         "<p><strong>System States</strong> adds per-system detail inside a lane. Contenders may report <strong>benchmark-complete-optional-skips</strong> when the ratified sklearn-backed floor ran cleanly and optional boosted or torch breadth extras were unavailable.</p>",
         "<p><strong>Solo Wins</strong> means a system was uniquely best on a benchmark in the chosen scope. "
         "<strong>Shared Wins</strong> means a tie for best. <strong>Benchmark Failures</strong> and "
@@ -589,6 +590,10 @@ code {
   background: rgba(31, 107, 82, 0.12);
   color: var(--good);
 }
+.tag-portable-contract-fair {
+  background: rgba(18, 94, 112, 0.16);
+  color: #155e75;
+}
 .tag-trusted-core {
   background: rgba(31, 107, 82, 0.18);
   color: var(--good);
@@ -596,6 +601,10 @@ code {
 .tag-trusted-extended {
   background: rgba(31, 107, 82, 0.24);
   color: var(--good);
+}
+.tag-portable-transfer-plumbing {
+  background: rgba(12, 74, 110, 0.12);
+  color: #0f4c81;
 }
 .tag-reference-only {
   background: rgba(143, 91, 0, 0.12);

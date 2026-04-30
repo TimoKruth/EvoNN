@@ -167,6 +167,11 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
         benchmark_count=38,
         fallback=0,
     ) == 304
+    assert sym._resolved_actual_evaluations(
+        run_summary={"total_evaluations": 1000},
+        evaluations=[{"genome_id": "a"}, {"genome_id": "b"}],
+        fallback=0,
+    ) == 1000
 
     manifest = {"run_id": "demo", "budget": {"evaluation_count": 3, "wall_clock_seconds": 12.5}}
     results = [
@@ -540,6 +545,81 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
     assert summary["operator_mix"]["crossover"] == 1
     assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
     assert summary["failure_patterns"] == {}
+
+
+def test_export_symbiosis_contract_prefers_persisted_total_evaluations(monkeypatch, tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "seed": 17,
+                "training": {"epochs": 3},
+                "evolution": {"population_size": 10},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "elapsed_seconds": 17.5,
+                "runtime_backend": "mlx",
+                "runtime_version": "0.0-test",
+                "precision_mode": "fp32",
+                "total_evaluations": 1000,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    genome_a = _sample_genome("mlp", [16, 8])
+    genome_b = _sample_genome("conv2d", [32, 16])
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run(run_dir.name, {"seed": 17})
+        store.save_genome(run_dir.name, genome_a)
+        store.save_genome(run_dir.name, genome_b)
+        store.save_evaluation(
+            run_dir.name,
+            genome_a.genome_id,
+            49,
+            "moons",
+            "accuracy",
+            0.91,
+            0.91,
+            101,
+            0.2,
+        )
+        store.save_evaluation(
+            run_dir.name,
+            genome_b.genome_id,
+            49,
+            "iris",
+            "accuracy",
+            0.95,
+            0.95,
+            205,
+            0.3,
+        )
+
+    monkeypatch.setattr(
+        sym,
+        "load_parity_pack",
+        lambda pack_path: [
+            SimpleNamespace(id="moons", task="classification"),
+            SimpleNamespace(id="iris", task="classification"),
+        ],
+    )
+    monkeypatch.setattr(sym, "get_canonical_id", lambda name: f"canon::{name}")
+
+    manifest_path, _ = sym.export_symbiosis_contract(run_dir, "demo_pack.yaml")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["budget"]["evaluation_count"] == 1000
+    assert manifest["budget"]["actual_evaluations"] == 1000
+    assert manifest["budget"]["cached_evaluations"] == 0
 
 
 @pytest.mark.skipif(mx is None, reason="MLX runtime unavailable on this host")

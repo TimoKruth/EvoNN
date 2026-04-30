@@ -28,6 +28,8 @@ def _write_run(
     pack_name_override: str | None = None,
     data_signature: str | None = "shared-signature",
     seeding: dict | None = None,
+    framework: str | None = None,
+    framework_version: str | None = None,
 ) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "config_snapshot.json").write_text("{}", encoding="utf-8")
@@ -59,7 +61,12 @@ def _write_run(
             actual_evaluations=evaluation_count,
             evaluation_semantics="one candidate evaluation counted at the compare surface",
         ),
-        device=DeviceInfo(device_name="apple_silicon", precision_mode="fp32"),
+        device=DeviceInfo(
+            device_name="apple_silicon",
+            precision_mode="fp32",
+            framework=framework or ("mlx" if system in {"prism", "topograph", "stratograph", "primordia"} else None),
+            framework_version=framework_version or ("0.0-test" if system in {"prism", "topograph", "stratograph", "primordia"} else None),
+        ),
         artifacts=ArtifactPaths(
             config_snapshot="config_snapshot.json",
             report_markdown="report.md",

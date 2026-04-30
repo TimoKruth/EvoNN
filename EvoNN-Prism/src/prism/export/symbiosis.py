@@ -149,6 +149,7 @@ def export_symbiosis_contract(
 
     # 7. Build manifest
     runtime_meta = _resolved_runtime_metadata(run_dir)
+    run_summary = _load_run_summary(run_dir)
     pack_name = Path(pack_path).stem
     generations = (latest_gen + 1) if latest_gen is not None else 0
     total_evaluations = _intended_evaluation_count(
@@ -157,7 +158,11 @@ def export_symbiosis_contract(
         benchmark_count=len(pack_specs),
         fallback=len(evaluations),
     )
-    actual_evaluations = len(evaluations) if evaluations else total_evaluations
+    actual_evaluations = _resolved_actual_evaluations(
+        run_summary=run_summary,
+        evaluations=evaluations,
+        fallback=total_evaluations,
+    )
     failed_evaluations = sum(1 for row in evaluations if row.get("status") not in {None, "ok"})
     config_snapshot_name = "config.yaml" if (output_dir / "config.yaml").exists() else "config.json"
     report_name = "report.md"
@@ -353,15 +358,18 @@ def _detect_device() -> str:
     return f"{system.lower()}_{machine}"
 
 
-def _load_runtime_metadata(run_dir: Path) -> dict[str, str | None]:
+def _load_run_summary(run_dir: Path) -> dict[str, Any]:
     summary_path = run_dir / "summary.json"
-    if summary_path.exists():
-        try:
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            summary = {}
-    else:
-        summary = {}
+    if not summary_path.exists():
+        return {}
+    try:
+        return json.loads(summary_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _load_runtime_metadata(run_dir: Path) -> dict[str, str | None]:
+    summary = _load_run_summary(run_dir)
     return {
         "runtime_backend": summary.get("runtime_backend") or "unknown",
         "runtime_version": summary.get("runtime_version") or "unknown",
@@ -427,13 +435,26 @@ def _intended_evaluation_count(
     return config.evolution.population_size * generations * benchmark_count
 
 
+def _resolved_actual_evaluations(
+    *,
+    run_summary: dict[str, Any],
+    evaluations: list[dict[str, Any]],
+    fallback: int,
+) -> int:
+    persisted_total = run_summary.get("total_evaluations")
+    if persisted_total is not None:
+        try:
+            return int(persisted_total)
+        except (TypeError, ValueError):
+            pass
+    if evaluations:
+        return len(evaluations)
+    return fallback
+
+
 def _load_wall_clock_seconds(run_dir: Path) -> float | None:
-    summary_path = run_dir / "summary.json"
-    if not summary_path.exists():
-        return None
-    try:
-        payload = json.loads(summary_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    payload = _load_run_summary(run_dir)
+    if not payload:
         return None
     value = payload.get("wall_clock_seconds", payload.get("elapsed_seconds"))
     if value is None:

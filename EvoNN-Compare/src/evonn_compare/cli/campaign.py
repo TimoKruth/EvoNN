@@ -17,7 +17,7 @@ from evonn_compare.orchestration.runner import CampaignRunner
 
 def campaign(
     pack: str | None = typer.Option(None, "--pack", help="Parity pack name or YAML path"),
-    preset: str | None = typer.Option(None, "--preset", help=lane_preset_help(default_name="smoke")),
+    preset: str | None = typer.Option(None, "--preset", help=lane_preset_help(default_name="local")),
     seeds: str | None = typer.Option(None, "--seeds", help="Comma-separated seeds"),
     budgets: str | None = typer.Option(None, "--budgets", help="Comma-separated budgets"),
     workspace: str = typer.Option(..., "--workspace", help="Campaign workspace"),
@@ -28,7 +28,7 @@ def campaign(
 ) -> None:
     """Generate and optionally execute a Prism-vs-Topograph campaign."""
 
-    preset_name = preset or (None if pack else "smoke")
+    preset_name = preset or (None if pack else "local")
     preset_spec = resolve_lane_preset(preset_name) if preset_name else None
     pack_name = pack or (preset_spec.pack if preset_spec else None)
 

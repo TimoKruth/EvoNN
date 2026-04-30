@@ -68,6 +68,17 @@ def test_budget_envelope_requires_resume_source_for_resumed_evaluations() -> Non
         )
 
 
+def test_budget_envelope_accounted_evaluations_include_cached_reruns() -> None:
+    budget = BudgetEnvelope(
+        evaluation_count=64,
+        epochs_per_candidate=20,
+        actual_evaluations=0,
+        cached_evaluations=64,
+    )
+
+    assert budget.accounted_evaluations() == 64
+
+
 def test_run_manifest_accepts_baseline_coverage_policy() -> None:
     manifest = RunManifest(
         schema_version="1.0",

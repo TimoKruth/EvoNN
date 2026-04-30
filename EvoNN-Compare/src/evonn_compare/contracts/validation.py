@@ -204,14 +204,19 @@ def validate_contract(
                 message="budget actual_evaluations is missing",
             )
         )
-    elif not manifest.budget.partial_run and manifest.budget.actual_evaluations < manifest.budget.evaluation_count:
+    elif (
+        not manifest.budget.partial_run
+        and (accounted_evaluations := manifest.budget.accounted_evaluations()) is not None
+        and accounted_evaluations < manifest.budget.evaluation_count
+    ):
         issues.append(
             ValidationIssue(
                 level="warning",
                 code="budget_actual_lt_declared",
                 message=(
-                    "budget actual_evaluations is lower than declared evaluation_count "
-                    f"without partial_run=true: {manifest.budget.actual_evaluations} vs {manifest.budget.evaluation_count}"
+                    "budget actual_evaluations + cached_evaluations is lower than declared "
+                    "evaluation_count without partial_run=true: "
+                    f"{accounted_evaluations} vs {manifest.budget.evaluation_count}"
                 ),
             )
         )
