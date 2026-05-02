@@ -226,6 +226,7 @@ def _write_contract_summary_json(
     runtime_meta = load_runtime_metadata(report_context.get("budget_meta", {}))
     status_payload = report_context.get("status", {})
     representative_genome = report_context.get("representative_genome")
+    hierarchy_leaders = report_context.get("hierarchy_leaders", {})
     non_ok_results = report_context.get("non_ok_results", [])
 
     summary: dict[str, Any] = {
@@ -264,6 +265,8 @@ def _write_contract_summary_json(
             "avg_cell_depth": float(representative_genome.average_cell_depth),
             "reuse_ratio": float(representative_genome.reuse_ratio),
         }
+    if hierarchy_leaders:
+        summary["hierarchy_leaders"] = hierarchy_leaders
     write_json(output_dir / "summary.json", summary)
 
 

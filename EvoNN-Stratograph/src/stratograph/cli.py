@@ -137,6 +137,9 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_row("Remaining Benchmarks", str(status_payload.get("remaining_count", 0)))
     overview.add_row("Novelty Mean", f"{float(budget_meta.get('novelty_score_mean', 0.0)):.4f}")
     overview.add_row("Occupied Niches", str(budget_meta.get("map_elites_occupied_niches", 0)))
+    overview.add_row("Parent Selection", str(budget_meta.get("parent_selection_strategy", "unknown")))
+    overview.add_row("Mutation Pressure", str(budget_meta.get("mutation_pressure", "unknown")))
+    overview.add_row("Hierarchy Policy", str(budget_meta.get("hierarchy_selection_policy", "unknown")))
     if representative_genome is not None:
         overview.add_row("Representative Genome", str(representative_genome.genome_id))
         overview.add_row("Cell Library Size", str(len(representative_genome.cell_library)))

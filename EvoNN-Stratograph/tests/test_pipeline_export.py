@@ -56,6 +56,10 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     run_dir = tmp_path / "prototype_run"
     run_evolution(config, run_dir=run_dir, config_path=config_path)
 
+    direct_report = (run_dir / "report.md").read_text(encoding="utf-8")
+    direct_status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+    assert f"- Run State: `{direct_status['state']}`" in direct_report
+
     store = RunStore(run_dir / "metrics.duckdb")
     runs = store.load_runs()
     results = store.load_results(run_dir.name)
@@ -100,6 +104,10 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert summary["failure_count"] == sum(1 for record in exported_results if record["status"] != "ok")
     assert "failure_patterns" in summary
     assert "hierarchy_summary" in summary
+    assert "hierarchy_leaders" in summary
+    assert "highest_reuse" in summary["hierarchy_leaders"]
+    assert "deepest_macro" in summary["hierarchy_leaders"]
+    assert summary["hierarchy_leaders"]["highest_reuse"]["genome_id"]
     assert manifest["artifacts"]["config_snapshot"] == "config.yaml"
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
@@ -136,6 +144,10 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert "| Macro Depth | `" in report
     assert "| Avg Cell Depth | `" in report
     assert "| Reuse Ratio | `" in report
+    assert "## Hierarchy Leaders" in report
+    assert "| Leader Type | Genome | Value | Notes |" in report
+    assert "| highest_reuse | `" in report
+    assert "| deepest_macro | `" in report
     assert "## Benchmarks" in report
     assert "## Best Benchmarks" in report
     assert "## Failure Patterns" in report
@@ -175,6 +187,9 @@ def test_inspect_command_surfaces_rich_run_summary(repo_root, tmp_path) -> None:
     assert "Remaining Benchmarks" in result.stdout
     assert "Status Artifact" in result.stdout
     assert "Occupied Niches" in result.stdout
+    assert "Parent Selection" in result.stdout
+    assert "Mutation Pressure" in result.stdout
+    assert "Hierarchy Policy" in result.stdout
     assert "Representative Genome" in result.stdout
     assert "Cell Library Size" in result.stdout
     assert "Macro Depth" in result.stdout
@@ -390,6 +405,8 @@ def test_report_context_selects_representative_hierarchy_genome(tmp_path) -> Non
     assert context["representative_genome"].genome_id == "g2"
     assert context["representative_genome"].macro_depth == 3
     assert context["representative_genome"].reuse_ratio == 0.5
+    assert context["hierarchy_leaders"]["highest_reuse"]["genome_id"] == "g2"
+    assert context["hierarchy_leaders"]["deepest_macro"]["genome_id"] == "g2"
 
 
 def test_build_execution_ladder(tmp_path) -> None:
@@ -466,3 +483,107 @@ def test_regression_benchmarks_complete_successfully_in_runtime(repo_root, tmp_p
     assert {row["status"] for row in results} == {"ok"}
     assert budget_meta["evaluation_count"] == 2
     assert budget_meta["benchmark_load_failures"] == 0
+
+
+def test_failed_candidate_evaluations_are_counted_in_budget_metadata(repo_root, tmp_path, monkeypatch) -> None:
+    base_config = load_config(repo_root / "configs" / "tier1_core_eval64.yaml")
+    config = base_config.model_copy(
+        update={
+            "run_name": "failed_eval_accounting",
+            "benchmark_pool": BenchmarkPoolConfig(name="failed_eval_accounting", benchmarks=["moons"]),
+            "evolution": base_config.evolution.model_copy(update={"population_size": 2, "generations": 2}),
+        }
+    )
+    config_path = tmp_path / "failed_eval_accounting.yaml"
+    config_path.write_text(
+        yaml.safe_dump(config.model_dump(mode="python"), sort_keys=False),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "failed_eval_accounting"
+
+    def _always_fail(*args, **kwargs):
+        raise RuntimeError("forced evaluation failure")
+
+    monkeypatch.setattr("stratograph.pipeline.coordinator.evaluate_candidate_with_state", _always_fail)
+
+    run_evolution(config, run_dir=run_dir, config_path=config_path)
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        results = store.load_results(run_dir.name)
+        budget_meta = store.load_budget_metadata(run_dir.name)
+
+    status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+
+    assert len(results) == 1
+    assert results[0]["status"] == "failed"
+    assert results[0]["failure_reason"] == "forced evaluation failure"
+    assert budget_meta["evaluation_count"] == 4
+    assert budget_meta["actual_evaluations"] == 4
+    assert budget_meta["failed_evaluations"] == 4
+    assert budget_meta["invalid_evaluations"] == 0
+    assert budget_meta["partial_run"] is False
+    assert budget_meta["completed_benchmark_count"] == 1
+    assert budget_meta["parent_selection_strategy"] == "benchmark_leader_plus_reuse_and_niche_elites"
+    assert budget_meta["mutation_pressure"] == "contrasting_elite_crossover_every_third_else_elite_mutation"
+    assert budget_meta["hierarchy_selection_policy"] == "shared_variants_preserve_reuse_and_niche_diversity"
+    assert status["state"] == "completed"
+    assert status["completed_count"] == 1
+    assert status["remaining_count"] == 0
+    assert "- Parent Selection: `benchmark_leader_plus_reuse_and_niche_elites`" in report
+    assert "- Mutation Pressure: `contrasting_elite_crossover_every_third_else_elite_mutation`" in report
+
+
+
+def test_benchmark_load_failures_mark_run_complete_and_invalid(repo_root, tmp_path, monkeypatch) -> None:
+    base_config = load_config(repo_root / "configs" / "tier1_core_eval64.yaml")
+    config = base_config.model_copy(
+        update={
+            "run_name": "load_failure_accounting",
+            "benchmark_pool": BenchmarkPoolConfig(name="load_failure_accounting", benchmarks=["moons"]),
+            "evolution": base_config.evolution.model_copy(update={"population_size": 2, "generations": 2}),
+        }
+    )
+    config_path = tmp_path / "load_failure_accounting.yaml"
+    config_path.write_text(
+        yaml.safe_dump(config.model_dump(mode="python"), sort_keys=False),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "load_failure_accounting"
+
+    class BrokenSpec:
+        name = "moons"
+        task = "classification"
+        model_input_dim = 2
+        model_output_dim = 2
+        metric_name = "accuracy"
+        metric_direction = "max"
+
+        def load_data(self, seed):
+            raise RuntimeError("forced load failure")
+
+    monkeypatch.setattr("stratograph.pipeline.coordinator.get_benchmark", lambda name: BrokenSpec())
+
+    run_evolution(config, run_dir=run_dir, config_path=config_path)
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        results = store.load_results(run_dir.name)
+        budget_meta = store.load_budget_metadata(run_dir.name)
+
+    status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+    checkpoint = json.loads((run_dir / "checkpoint.json").read_text(encoding="utf-8"))
+
+    assert len(results) == 1
+    assert results[0]["status"] == "failed"
+    assert results[0]["failure_reason"] == "forced load failure"
+    assert budget_meta["evaluation_count"] == 0
+    assert budget_meta["actual_evaluations"] == 0
+    assert budget_meta["failed_evaluations"] == 0
+    assert budget_meta["invalid_evaluations"] == 1
+    assert budget_meta["benchmark_load_failures"] == 1
+    assert budget_meta["completed_benchmark_count"] == 1
+    assert status["state"] == "completed"
+    assert status["completed_count"] == 1
+    assert status["remaining_count"] == 0
+    assert checkpoint["completed_count"] == 1
+    assert checkpoint["remaining_count"] == 0
