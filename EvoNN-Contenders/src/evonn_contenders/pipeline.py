@@ -12,6 +12,7 @@ from evonn_contenders.benchmarks import get_benchmark
 from evonn_contenders.config import RunConfig, baseline_signature, resolve_baseline_id
 from evonn_contenders.contender_pool import (
     benchmark_group,
+    backend_dispatch_metadata,
     choose_best,
     contender_names_for_config,
     evaluate_contender,
@@ -70,6 +71,7 @@ def run_contenders(
     executed_evaluation_count = 0
     cache_hits = 0
     optional_missing_by_group: dict[str, list[str]] = {}
+    baseline_floor_evidence = _empty_baseline_floor_evidence()
     group_counts = {"tabular": 0, "synthetic": 0, "image": 0, "language_modeling": 0}
     _emit_progress(
         f"start run_id={run_id} benchmarks={len(config.benchmark_pool.benchmarks)} "
@@ -88,6 +90,7 @@ def run_contenders(
         )
         group_counts[group] += 1
         evaluation_count += len(trials)
+        _record_trial_evidence(baseline_floor_evidence, group=group, trials=trials)
         _emit_progress(
             f"[{benchmark_index}/{benchmark_total}] benchmark={benchmark_name} group={group} trials={len(trials)}"
         )
@@ -98,6 +101,7 @@ def run_contenders(
             run_store.replace_contenders(run_id=run_id, benchmark_name=benchmark_name, records=cached_records)
             run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=cached_best)
             cache_hits += 1
+            _record_winner_evidence(baseline_floor_evidence, cached_best)
             _emit_progress(
                 f"[{benchmark_index}/{benchmark_total}] cache-hit benchmark={benchmark_name} "
                 f"status={cached_best['status']} contender={cached_best['contender_name']}"
@@ -128,6 +132,7 @@ def run_contenders(
             run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=failed_records[0])
             baseline_store.replace_contenders(run_id=baseline_id, benchmark_name=benchmark_name, records=failed_records)
             baseline_store.replace_result(run_id=baseline_id, benchmark_name=benchmark_name, record=failed_records[0])
+            _record_winner_evidence(baseline_floor_evidence, failed_records[0])
             _emit_progress(f"[{benchmark_index}/{benchmark_total}] load-failed benchmark={benchmark_name} reason={exc}")
             continue
 
@@ -152,6 +157,7 @@ def run_contenders(
         run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=best)
         baseline_store.replace_contenders(run_id=baseline_id, benchmark_name=benchmark_name, records=list(records))
         baseline_store.replace_result(run_id=baseline_id, benchmark_name=benchmark_name, record=best)
+        _record_winner_evidence(baseline_floor_evidence, best)
         _emit_progress(
             f"[{benchmark_index}/{benchmark_total}] done benchmark={benchmark_name} "
             f"best={best['contender_name']} status={best['status']} metric={best.get('metric_value')}"
@@ -175,6 +181,8 @@ def run_contenders(
             "baseline_id": baseline_id,
             "baseline_signature": baseline_sig,
             "target_evaluation_count": config.baseline.target_evaluation_count,
+            "backend_dispatch": backend_dispatch_metadata(),
+            "baseline_floor_evidence": _finalize_baseline_floor_evidence(baseline_floor_evidence),
         },
     )
     _update_baseline_budget_metadata(baseline_store, baseline_id=baseline_id, created_at=created_at)
@@ -227,6 +235,7 @@ def materialize_baseline_run(
 
     evaluation_count = 0
     optional_missing_by_group: dict[str, list[str]] = {}
+    baseline_floor_evidence = _empty_baseline_floor_evidence()
     group_counts = {"tabular": 0, "synthetic": 0, "image": 0, "language_modeling": 0}
     _emit_progress(
         f"materialize run_id={run_id} benchmarks={len(config.benchmark_pool.benchmarks)} baseline={baseline_id}"
@@ -243,6 +252,7 @@ def materialize_baseline_run(
             optional_missing_by_group=optional_missing_by_group,
         )
         evaluation_count += len(trials)
+        _record_trial_evidence(baseline_floor_evidence, group=group, trials=trials)
 
         cached_records = baseline_store.load_contenders_for_benchmark(baseline_id, benchmark_name)
         cached_best = baseline_store.load_result_for_benchmark(baseline_id, benchmark_name)
@@ -252,6 +262,7 @@ def materialize_baseline_run(
             raise ValueError(f"benchmark '{benchmark_name}' missing from baseline cache '{baseline_id}'")
         run_store.replace_contenders(run_id=run_id, benchmark_name=benchmark_name, records=cached_records)
         run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=cached_best)
+        _record_winner_evidence(baseline_floor_evidence, cached_best)
         _emit_progress(
             f"[{benchmark_index}/{benchmark_total}] materialized benchmark={benchmark_name} "
             f"status={cached_best['status']} contender={cached_best['contender_name']}"
@@ -275,6 +286,8 @@ def materialize_baseline_run(
             "baseline_id": baseline_id,
             "baseline_signature": baseline_sig,
             "target_evaluation_count": config.baseline.target_evaluation_count,
+            "backend_dispatch": backend_dispatch_metadata(),
+            "baseline_floor_evidence": _finalize_baseline_floor_evidence(baseline_floor_evidence),
         },
     )
 
@@ -287,6 +300,57 @@ def materialize_baseline_run(
 
 def _emit_progress(message: str) -> None:
     print(f"[evonn-contenders] {message}", flush=True)
+
+
+def _empty_baseline_floor_evidence() -> dict[str, object]:
+    return {
+        "contender_trials_by_group": {},
+        "contender_trials_by_family": {},
+        "contender_trials_by_backend": {},
+        "contender_trials_by_budget_mode": {},
+        "winning_contenders_by_family": {},
+        "winning_contenders_by_name": {},
+        "successful_winner_count": 0,
+        "failed_winner_count": 0,
+    }
+
+
+def _increment_counter(payload: dict[str, object], key: str, value: str, amount: int = 1) -> None:
+    counter = payload.setdefault(key, {})
+    if not isinstance(counter, dict):
+        raise TypeError(f"baseline evidence field '{key}' is not a counter")
+    counter[value] = int(counter.get(value, 0)) + amount
+
+
+def _record_trial_evidence(
+    payload: dict[str, object],
+    *,
+    group: str,
+    trials: list[ContenderTrial],
+) -> None:
+    for trial in trials:
+        contender = trial.contender
+        _increment_counter(payload, "contender_trials_by_group", group)
+        _increment_counter(payload, "contender_trials_by_family", str(getattr(contender, "family", "unknown")))
+        _increment_counter(payload, "contender_trials_by_backend", str(getattr(contender, "backend", "unknown")))
+        _increment_counter(payload, "contender_trials_by_budget_mode", str(getattr(contender, "budget_mode", "unknown")))
+
+
+def _record_winner_evidence(payload: dict[str, object], record: dict[str, object]) -> None:
+    _increment_counter(payload, "winning_contenders_by_family", str(record.get("family") or "unknown"))
+    _increment_counter(payload, "winning_contenders_by_name", str(record.get("contender_name") or "unknown"))
+    status_key = "successful_winner_count" if record.get("status") == "ok" else "failed_winner_count"
+    payload[status_key] = int(payload.get(status_key, 0)) + 1
+
+
+def _finalize_baseline_floor_evidence(payload: dict[str, object]) -> dict[str, object]:
+    finalized: dict[str, object] = {}
+    for key, value in payload.items():
+        if isinstance(value, dict):
+            finalized[key] = dict(sorted(value.items(), key=lambda item: item[0]))
+        else:
+            finalized[key] = value
+    return finalized
 
 
 def _baseline_cache_dir(

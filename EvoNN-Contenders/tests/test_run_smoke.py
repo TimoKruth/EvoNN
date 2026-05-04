@@ -109,6 +109,17 @@ seed_policy:
     assert summary["system"] == "contenders"
     assert summary["run_id"] == manifest["run_id"]
     assert summary["benchmarks_evaluated"] == len(results)
+    assert set(summary["best_fitness"]) == {"iris_classification", "tiny_lm_synthetic"}
+    assert summary["backend_dispatch"]["sklearn_classifier"]["runner"] == "_run_classifier_backend"
+    assert summary["baseline_floor_evidence"]["contender_trials_by_group"] == {
+        "language_modeling": 2,
+        "tabular": 2,
+    }
+    assert summary["baseline_floor_evidence"]["successful_winner_count"] == 2
+
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Baseline Floor Evidence" in report
+    assert "Winner families" in report
 
 
 def test_baseline_cache_reuses_existing_benchmarks(tmp_path: Path, monkeypatch) -> None:

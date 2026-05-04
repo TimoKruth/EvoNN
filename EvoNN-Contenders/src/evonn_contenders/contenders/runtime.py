@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from time import perf_counter
+from collections.abc import Callable
 from typing import Any, Protocol
 import math
 import warnings
@@ -137,50 +138,16 @@ def evaluate_contender(
     contender_id = f"{spec.name}:{contender_name}:seed{seed}"
     started = perf_counter()
     try:
-        if contender.backend in {"sklearn_classifier", "boosted_classifier"}:
-            metric_value, parameter_count = _run_classifier(
-                spec,
-                contender.name,
-                seed,
-                x_train,
-                y_train,
-                x_val,
-                y_val,
-                config,
-            )
-        elif contender.backend == "ngram_lm":
-            metric_value, parameter_count = _run_ngram_language_model(
-                contender.name,
-                spec.model_output_dim,
-                x_train,
-                y_train,
-                x_val,
-                y_val,
-            )
-        elif contender.backend == "torch_cnn":
-            metric_value, parameter_count = _run_cnn_classifier(
-                spec,
-                contender.name,
-                seed,
-                x_train,
-                y_train,
-                x_val,
-                y_val,
-                config,
-            )
-        elif contender.backend == "torch_transformer_lm":
-            metric_value, parameter_count = _run_transformer_language_model(
-                spec,
-                contender.name,
-                seed,
-                x_train,
-                y_train,
-                x_val,
-                y_val,
-                config,
-            )
-        else:
-            raise KeyError(f"Unknown contender backend: {contender.backend}")
+        metric_value, parameter_count = _resolve_backend_runner(contender.backend)(
+            spec,
+            contender,
+            seed,
+            x_train,
+            y_train,
+            x_val,
+            y_val,
+            config,
+        )
         status = "ok"
         failure_reason = None
     except Exception as exc:
@@ -203,6 +170,93 @@ def evaluate_contender(
         "contender_id": contender_id,
         "status": status,
         "failure_reason": failure_reason,
+    }
+
+
+BackendRunner = Callable[
+    [Any, ContenderSpec, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Any | None],
+    tuple[float, int],
+]
+
+
+def _run_classifier_backend(
+    spec: Any,
+    contender: ContenderSpec,
+    seed: int,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_val: np.ndarray,
+    y_val: np.ndarray,
+    config: Any | None,
+) -> tuple[float, int]:
+    return _run_classifier(spec, contender.name, seed, x_train, y_train, x_val, y_val, config)
+
+
+def _run_ngram_backend(
+    spec: Any,
+    contender: ContenderSpec,
+    seed: int,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_val: np.ndarray,
+    y_val: np.ndarray,
+    config: Any | None,
+) -> tuple[float, int]:
+    del seed, config
+    return _run_ngram_language_model(contender.name, spec.model_output_dim, x_train, y_train, x_val, y_val)
+
+
+def _run_cnn_backend(
+    spec: Any,
+    contender: ContenderSpec,
+    seed: int,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_val: np.ndarray,
+    y_val: np.ndarray,
+    config: Any | None,
+) -> tuple[float, int]:
+    return _run_cnn_classifier(spec, contender.name, seed, x_train, y_train, x_val, y_val, config)
+
+
+def _run_transformer_lm_backend(
+    spec: Any,
+    contender: ContenderSpec,
+    seed: int,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_val: np.ndarray,
+    y_val: np.ndarray,
+    config: Any | None,
+) -> tuple[float, int]:
+    return _run_transformer_language_model(spec, contender.name, seed, x_train, y_train, x_val, y_val, config)
+
+
+_BACKEND_RUNNERS: dict[str, BackendRunner] = {
+    "sklearn_classifier": _run_classifier_backend,
+    "boosted_classifier": _run_classifier_backend,
+    "ngram_lm": _run_ngram_backend,
+    "torch_cnn": _run_cnn_backend,
+    "torch_transformer_lm": _run_transformer_lm_backend,
+}
+
+
+def _resolve_backend_runner(backend: str) -> BackendRunner:
+    try:
+        return _BACKEND_RUNNERS[backend]
+    except KeyError as exc:
+        raise KeyError(f"Unknown contender backend: {backend}") from exc
+
+
+def backend_dispatch_metadata() -> dict[str, dict[str, str]]:
+    """Expose runtime dispatch policy for reports and tests."""
+
+    return {
+        backend: {
+            "runner": runner.__name__,
+            "runtime_layer": "optional" if backend.startswith("torch") else "core",
+        }
+        for backend, runner in sorted(_BACKEND_RUNNERS.items())
     }
 
 

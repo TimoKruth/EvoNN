@@ -7,11 +7,12 @@ from evonn_contenders.contenders.registry import (
     resolve_configured_contenders,
     resolve_contenders,
 )
-from evonn_contenders.contenders.runtime import choose_best, evaluate_contender
+from evonn_contenders.contenders.runtime import backend_dispatch_metadata, choose_best, evaluate_contender
 
 __all__ = [
     "ContenderSpec",
     "benchmark_group",
+    "backend_dispatch_metadata",
     "choose_best",
     "contender_names_for_config",
     "evaluate_contender",
