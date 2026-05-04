@@ -67,6 +67,9 @@ def test_fair_matrix_markdown_splits_fair_and_reference_rows(tmp_path: Path) -> 
     )
     markdown = render_fair_matrix_markdown(summary)
 
+    assert "## Decision Summary" in markdown
+    assert "- Recommended Action: `compare_with_caveats`" in markdown
+    assert "- Fair Budgets: `64`" in markdown
     assert "## Fair Search-Budget Results" in markdown
     assert "## Reference Baseline Results" in markdown
     assert "## Parity/Validity Check" in markdown
@@ -108,12 +111,62 @@ def test_fair_matrix_markdown_includes_lane_metadata() -> None:
 
     markdown = render_fair_matrix_markdown(summary)
 
+    assert "## Decision Summary" in markdown
+    assert "- Decision Grade: `core-decision-grade`" in markdown
+    assert "- Recommended Action: `use_core_systems_only`" in markdown
     assert "## Lane Metadata" in markdown
     assert "- Preset: `smoke`" in markdown
     assert "- Operating State: `trusted-core`" in markdown
     assert "- Budget Accounting: `ok`" in markdown
     assert "- Task Coverage: `ok` (classification, regression)" in markdown
     assert "- Repeatability Ready: `yes`" in markdown
+
+
+def test_build_matrix_summary_decision_marks_reference_blockers() -> None:
+    from evonn_compare.comparison.fair_matrix import LaneMetadata, MatrixBudgetRow
+
+    summary = build_matrix_summary(
+        pack_name="tier1_core_eval64",
+        lane=LaneMetadata(
+            preset="local",
+            pack_name="tier1_core_eval64",
+            expected_budget=64,
+            expected_seed=42,
+            artifact_completeness_ok=False,
+            fairness_ok=True,
+            task_coverage_ok=True,
+            budget_consistency_ok=True,
+            seed_consistency_ok=True,
+            budget_accounting_ok=True,
+            core_systems_complete_ok=False,
+            extended_systems_complete_ok=False,
+            observed_task_kinds=("classification", "regression"),
+            system_operating_states={"prism": "artifacts-missing"},
+            operating_state="reference-only",
+            acceptance_notes=("missing required artifacts",),
+            repeatability_ready=False,
+        ),
+        fair_rows=[],
+        reference_rows=[
+            MatrixBudgetRow(
+                budget=64,
+                seed=42,
+                benchmark_count=8,
+                evaluation_counts={"prism": 64, "topograph": 64},
+                wins={"prism": 5, "topograph": 3},
+                ties=0,
+                note="prism/topograph: invalid",
+            )
+        ],
+        parity_rows=[],
+        systems=("prism", "topograph"),
+    )
+
+    assert summary.decision.recommended_action == "do_not_use_for_decision"
+    assert summary.decision.decision_grade == "reference-only"
+    assert summary.decision.leading_systems == ("prism",)
+    assert summary.decision.reference_only_budgets == (64,)
+    assert summary.decision.blockers == ("missing required artifacts",)
 
 
 def test_fair_matrix_reference_row_for_nonfair_pair(tmp_path: Path) -> None:

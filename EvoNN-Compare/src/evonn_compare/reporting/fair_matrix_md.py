@@ -9,6 +9,20 @@ def render_fair_matrix_markdown(summary: FairMatrixSummary) -> str:
     lines = [
         f"# Fair Matrix: {summary.pack_name}",
         "",
+        "## Decision Summary",
+        "",
+        f"- Operating State: `{summary.decision.operating_state}`",
+        f"- Decision Grade: `{summary.decision.decision_grade}`",
+        f"- Recommended Action: `{summary.decision.recommended_action}`",
+        f"- Repeatability Ready: `{'yes' if summary.decision.repeatability_ready else 'no'}`",
+        f"- Leading Systems: `{', '.join(system_display_name(system) for system in summary.decision.leading_systems) or 'none'}`",
+        f"- Winner Counts: `{'; '.join(f'{system}={wins}' for system, wins in summary.decision.winner_counts.items()) or 'none'}`",
+        f"- Ties: `{summary.decision.ties}`",
+        f"- Fair Budgets: `{', '.join(str(value) for value in summary.decision.evaluated_budgets) or 'none'}`",
+        f"- Reference-Only Budgets: `{', '.join(str(value) for value in summary.decision.reference_only_budgets) or 'none'}`",
+        f"- Blockers: `{'; '.join(summary.decision.blockers) if summary.decision.blockers else 'none'}`",
+        f"- Notes: `{'; '.join(summary.decision.notes) if summary.decision.notes else 'none'}`",
+        "",
     ]
     if summary.lane is not None:
         lines.extend(
