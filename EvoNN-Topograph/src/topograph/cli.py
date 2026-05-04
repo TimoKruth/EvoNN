@@ -81,6 +81,11 @@ def evolve(
         "--parallel-worker-thread-limit",
         help="Override training.parallel_worker_thread_limit",
     ),
+    runtime_backend: str | None = typer.Option(
+        None,
+        "--runtime-backend",
+        help="Override runtime.backend: auto, mlx, or numpy-fallback",
+    ),
 ) -> None:
     """Run evolution."""
     cfg = load_config(config)
@@ -91,6 +96,7 @@ def evolve(
         parallel_memory_fraction_limit=parallel_memory_fraction_limit,
         parallel_reserved_system_memory_bytes=parallel_reserved_system_memory_bytes,
         parallel_worker_thread_limit=parallel_worker_thread_limit,
+        runtime_backend=runtime_backend,
     )
 
     if run_dir is None:
@@ -112,6 +118,7 @@ def evolve(
     console.print(f"  Run dir: {run_path}")
     console.print(f"  Seed: {cfg.seed}")
     console.print(f"  Benchmark: {cfg.benchmark}")
+    console.print(f"  Runtime backend: {cfg.runtime.backend}")
     console.print(
         f"  Population: {cfg.evolution.population_size} | "
         f"Generations: {cfg.evolution.num_generations}"
@@ -225,10 +232,23 @@ def inspect(
         table.add_row("Effective Training Epochs", str(budget["effective_training_epochs"]))
     if budget.get("runtime_backend"):
         table.add_row("Runtime", str(budget["runtime_backend"]))
+    if budget.get("runtime_backend_requested"):
+        table.add_row("Runtime Requested", str(budget["runtime_backend_requested"]))
     if budget.get("runtime_version") is not None:
         table.add_row("Runtime Version", str(budget.get("runtime_version") or "unknown"))
+    if budget.get("runtime_backend_limitations"):
+        table.add_row("Runtime Limitations", str(budget["runtime_backend_limitations"]))
+    runtime_policy = budget.get("runtime_execution_policy")
+    if isinstance(runtime_policy, dict) and runtime_policy.get("name"):
+        table.add_row("Runtime Policy", str(runtime_policy["name"]))
     if budget.get("precision_mode") is not None:
         table.add_row("Precision Mode", str(budget.get("precision_mode") or "unknown"))
+    if budget.get("benchmark_slot_integrity") is not None:
+        table.add_row("Benchmark Slot Integrity", json.dumps(budget["benchmark_slot_integrity"]))
+    if budget.get("topology_selection_policy"):
+        table.add_row("Topology Selection", str(budget["topology_selection_policy"]))
+    if budget.get("mutation_pressure_policy"):
+        table.add_row("Mutation Pressure", str(budget["mutation_pressure_policy"]))
     if budget.get("novelty_score_mean") is not None:
         table.add_row("Novelty Mean", f"{float(budget['novelty_score_mean']):.4f}")
     if budget.get("map_elites_occupied_niches") is not None:
@@ -455,6 +475,7 @@ def _apply_evolve_overrides(
     parallel_memory_fraction_limit: float | None,
     parallel_reserved_system_memory_bytes: int | None,
     parallel_worker_thread_limit: int | None,
+    runtime_backend: str | None,
 ) -> RunConfig:
     training_updates: dict[str, int | float] = {}
     if parallel_workers is not None:
@@ -469,9 +490,12 @@ def _apply_evolve_overrides(
         )
     if parallel_worker_thread_limit is not None:
         training_updates["parallel_worker_thread_limit"] = parallel_worker_thread_limit
-    if not training_updates:
+    if not training_updates and runtime_backend is None:
         return cfg
 
     payload = cfg.model_dump(mode="json")
-    payload.setdefault("training", {}).update(training_updates)
+    if training_updates:
+        payload.setdefault("training", {}).update(training_updates)
+    if runtime_backend is not None:
+        payload.setdefault("runtime", {})["backend"] = runtime_backend
     return RunConfig.model_validate(payload)

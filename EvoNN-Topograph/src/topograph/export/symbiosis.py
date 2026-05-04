@@ -188,6 +188,8 @@ def export_symbiosis_contract(
             "precision_mode": runtime_meta["precision_mode"],
             "framework": runtime_meta["runtime_backend"],
             "framework_version": runtime_meta["runtime_version"],
+            "framework_requested": runtime_meta["runtime_backend_requested"],
+            "framework_limitations": runtime_meta["runtime_backend_limitations"],
         },
         "config_snapshot": config.model_dump(mode="json"),
         "artifacts": _build_artifacts_section(
@@ -307,6 +309,11 @@ def _budget_manifest(
         "failed_evaluations": int(budget_meta.get("cache_failed_count", 0)),
         "invalid_evaluations": 0,
         "partial_run": covered_evaluations < int(evaluation_count),
+        "benchmark_slot_plan": budget_meta.get("benchmark_slot_plan"),
+        "benchmark_slot_integrity": budget_meta.get("benchmark_slot_integrity"),
+        "runtime_execution_policy": budget_meta.get("runtime_execution_policy"),
+        "topology_selection_policy": budget_meta.get("topology_selection_policy"),
+        "mutation_pressure_policy": budget_meta.get("mutation_pressure_policy"),
         "evaluation_semantics": (
             "one scheduled candidate-benchmark slot counted for each genome evaluated on each benchmark; "
             "evaluation_count = population_size * generations * benchmark_count"
@@ -321,8 +328,13 @@ def _search_telemetry(
     qd_enabled = config.novelty_weight > 0 or config.map_elites
     multi_fidelity = config.training.multi_fidelity
     family_search = config.benchmark_pool is not None
+    policy_tracked = bool(
+        budget_meta.get("topology_selection_policy")
+        or budget_meta.get("mutation_pressure_policy")
+        or budget_meta.get("runtime_execution_policy")
+    )
 
-    if not qd_enabled and not multi_fidelity and not family_search:
+    if not qd_enabled and not multi_fidelity and not family_search and not policy_tracked:
         return None
 
     occupied = budget_meta.get("map_elites_occupied_niches")
@@ -368,6 +380,9 @@ def _search_telemetry(
         "benchmark_elite_families": budget_meta.get("benchmark_elite_families"),
         "topology_atlas_motif_counts": budget_meta.get("topology_atlas_motif_counts"),
         "primordia_seeding": budget_meta.get("primordia_seeding"),
+        "runtime_execution_policy": budget_meta.get("runtime_execution_policy"),
+        "topology_selection_policy": budget_meta.get("topology_selection_policy"),
+        "mutation_pressure_policy": budget_meta.get("mutation_pressure_policy"),
     }
 
 
@@ -379,8 +394,16 @@ def _runtime_metadata_from_budget(budget_meta: dict[str, Any]) -> dict[str, str]
     """
 
     return {
+        "runtime_backend_requested": str(
+            budget_meta.get("runtime_backend_requested")
+            or budget_meta.get("runtime_backend")
+            or "unknown"
+        ),
         "runtime_backend": str(budget_meta.get("runtime_backend") or "unknown"),
         "runtime_version": str(budget_meta.get("runtime_version") or "unknown"),
+        "runtime_backend_limitations": str(
+            budget_meta.get("runtime_backend_limitations") or ""
+        ),
         "precision_mode": str(budget_meta.get("precision_mode") or "unknown"),
     }
 
@@ -643,8 +666,14 @@ def _write_summary_json(
         "population_size": budget.get("population_size", config.evolution.population_size),
         **core,
         "runtime_backend": device.get("framework", "unknown"),
+        "runtime_backend_requested": device.get("framework_requested", "unknown"),
         "runtime_version": device.get("framework_version", "unknown"),
+        "runtime_backend_limitations": device.get("framework_limitations", ""),
         "precision_mode": device.get("precision_mode", "unknown"),
+        "runtime_execution_policy": budget.get("runtime_execution_policy"),
+        "benchmark_slot_integrity": budget.get("benchmark_slot_integrity"),
+        "topology_selection_policy": budget.get("topology_selection_policy"),
+        "mutation_pressure_policy": budget.get("mutation_pressure_policy"),
         "seeding_enabled": seeding["seeding_enabled"],
         "seeding_ladder": seeding["seeding_ladder"],
         "seed_source_system": seeding.get("seed_source_system"),

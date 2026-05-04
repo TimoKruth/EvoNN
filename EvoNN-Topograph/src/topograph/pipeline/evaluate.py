@@ -26,6 +26,7 @@ from topograph.nn.train import (
 )
 from topograph.parallel import ParallelBatchContext, ParallelEvaluator, ParallelGenomeTask
 from topograph.pipeline.archive import compute_behavior
+from topograph.runtime.backends import resolve_runtime_backend_with_policy
 
 
 @dataclass
@@ -519,6 +520,35 @@ def _evaluate_single(
     lr = float(plan["lr"])
     batch_size = int(plan["batch_size"])
     weight_snapshot = plan["weight_snapshot"]
+    runtime_selection = resolve_runtime_backend_with_policy(
+        config.runtime.backend,
+        allow_fallback=config.runtime.allow_fallback,
+    )
+    if runtime_selection.resolved_backend == "numpy-fallback":
+        result, mb = _evaluate_single_numpy_fallback(
+            genome=genome,
+            X_train=X_train,
+            y_train=y_train,
+            X_val=X_val,
+            y_val=y_val,
+            input_dim=input_dim,
+            num_classes=num_classes,
+            task=task,
+        )
+        _apply_completed_result(
+            genome=genome,
+            result=result,
+            model_bytes=mb,
+            cache=cache,
+            cache_namespace=cache_namespace,
+            family_namespace=family_namespace,
+            weights=None,
+            evaluation_memo=evaluation_memo,
+            epochs=epochs,
+            lr=lr,
+            batch_size=batch_size,
+        )
+        return result, mb
 
     model = compile_genome(
         genome,
@@ -564,6 +594,100 @@ def _evaluate_single(
     )
 
     return result, mb
+
+
+def _evaluate_single_numpy_fallback(
+    *,
+    genome: Genome,
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    input_dim: int,
+    num_classes: int,
+    task: str,
+) -> tuple[EvaluationResult, int]:
+    started = time.perf_counter()
+    try:
+        if task == "regression":
+            predictions = _fallback_regression(X_train, y_train, X_val)
+        elif task == "language_modeling":
+            predictions = _fallback_language_probs(y_train, y_val, num_classes)
+        else:
+            predictions = _fallback_classification(X_train, y_train, X_val)
+        metric_name, metric_direction, metric_value, quality = _compute_fallback_metric(task, y_val, predictions)
+        native_fitness = -quality if metric_direction == "max" else metric_value
+        result = EvaluationResult(
+            metric_name=metric_name,
+            metric_direction=metric_direction,
+            metric_value=metric_value,
+            quality=quality,
+            native_fitness=float(native_fitness),
+            train_seconds=time.perf_counter() - started,
+        )
+    except Exception as exc:
+        result = _failure_result(task, f"numpy_fallback_error:{type(exc).__name__}")
+    return result, effective_model_bytes(genome, input_dim=input_dim, num_classes=num_classes)
+
+
+def _fallback_classification(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray) -> np.ndarray:
+    x_train, x_val = _standardize_pair(X_train, X_val)
+    classes = np.unique(y_train.astype(int, copy=False))
+    centroids = []
+    for label in classes:
+        mask = y_train == label
+        centroids.append(x_train[mask].mean(axis=0) if np.any(mask) else np.zeros(x_train.shape[1], dtype=np.float32))
+    centroid_matrix = np.asarray(centroids, dtype=np.float32)
+    distances = np.sum((x_val[:, None, :] - centroid_matrix[None, :, :]) ** 2, axis=2)
+    return classes[np.argmin(distances, axis=1)]
+
+
+def _fallback_regression(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray) -> np.ndarray:
+    x_train, x_val = _standardize_pair(X_train, X_val)
+    design = np.concatenate([x_train, np.ones((x_train.shape[0], 1), dtype=np.float32)], axis=1)
+    ridge = np.eye(design.shape[1], dtype=np.float32) * 1e-4
+    ridge[-1, -1] = 0.0
+    coeffs = np.linalg.solve(design.T @ design + ridge, design.T @ y_train.astype(np.float32))
+    val_design = np.concatenate([x_val, np.ones((x_val.shape[0], 1), dtype=np.float32)], axis=1)
+    return val_design @ coeffs
+
+
+def _fallback_language_probs(y_train: np.ndarray, y_val: np.ndarray, num_classes: int) -> np.ndarray:
+    targets = y_train.reshape(-1).astype(int)
+    vocab_size = max(int(num_classes), int(targets.max(initial=0)) + 1, int(y_val.max(initial=0)) + 1)
+    counts = np.bincount(targets, minlength=vocab_size).astype(np.float32) + 1.0
+    probs = counts / counts.sum()
+    if y_val.ndim == 2:
+        return np.broadcast_to(probs, (*y_val.shape, vocab_size)).copy()
+    return np.broadcast_to(probs, (len(y_val), vocab_size)).copy()
+
+
+def _standardize_pair(X_train: np.ndarray, X_val: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    train = np.asarray(X_train, dtype=np.float32).reshape(X_train.shape[0], -1)
+    val = np.asarray(X_val, dtype=np.float32).reshape(X_val.shape[0], -1)
+    mean = train.mean(axis=0, keepdims=True)
+    std = train.std(axis=0, keepdims=True)
+    std = np.where(std < 1e-6, 1.0, std)
+    return (train - mean) / std, (val - mean) / std
+
+
+def _compute_fallback_metric(
+    task: str,
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+) -> tuple[str, str, float, float]:
+    if task == "classification":
+        accuracy = float(np.mean(y_pred.ravel().astype(int) == y_true.ravel().astype(int)))
+        return "accuracy", "max", accuracy, accuracy
+    if task == "language_modeling":
+        probs = np.clip(y_pred, 1e-8, 1.0)
+        targets = y_true.reshape(-1).astype(int)
+        flat = probs.reshape(-1, probs.shape[-1])
+        cross_entropy = float(-np.mean(np.log(flat[np.arange(len(targets)), targets])))
+        perplexity = float(np.exp(np.clip(cross_entropy, -20.0, 20.0)))
+        return "perplexity", "min", perplexity, -perplexity
+    mse = float(np.mean((y_pred.ravel() - y_true.ravel()) ** 2))
+    return "mse", "min", mse, -mse
 
 
 def evaluate_pool(

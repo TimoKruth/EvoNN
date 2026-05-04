@@ -1,14 +1,26 @@
 """Training loop, fitness evaluation, and weight snapshot utilities."""
 
+from __future__ import annotations
+
 import math
 import time
 from dataclasses import dataclass
 
-import mlx.core as mx
-import mlx.nn as nn
-import mlx.optimizers as optim
-import mlx.utils
 import numpy as np
+try:  # pragma: no cover - depends on host runtime
+    import mlx
+    import mlx.core as mx
+    import mlx.nn as nn
+    import mlx.optimizers as optim
+    import mlx.utils
+
+    MLX_AVAILABLE = True
+except ImportError:  # pragma: no cover - covered by fallback-only hosts
+    mlx = None
+    mx = None
+    nn = None
+    optim = None
+    MLX_AVAILABLE = False
 
 from topograph.genome.genome import INPUT_INNOVATION, OUTPUT_INNOVATION, Genome
 
@@ -203,6 +215,8 @@ def train_and_evaluate(
     patience: int = 2,
 ) -> EvaluationResult:
     """Train model and return canonical metric fields plus native optimizer fitness."""
+    if not MLX_AVAILABLE:
+        raise RuntimeError("MLX training backend is unavailable; use runtime.backend='numpy-fallback'.")
     start_time = time.perf_counter()
 
     X = X_train if isinstance(X_train, mx.array) else mx.array(X_train)
@@ -413,11 +427,15 @@ def effective_model_bytes(genome: Genome, input_dim: int = 0, num_classes: int =
 
 def extract_weights(model: nn.Module) -> dict[str, np.ndarray]:
     """Snapshot model parameters to NumPy arrays."""
+    if not MLX_AVAILABLE:
+        return {}
     return {name: np.array(val) for name, val in mlx.utils.tree_flatten(model.parameters())}
 
 
 def load_weight_snapshot(model: nn.Module, snapshot: dict[str, np.ndarray | mx.array]) -> int:
     """Load subset of weights matching by name and shape. Returns count loaded."""
+    if not MLX_AVAILABLE:
+        return 0
     current = dict(mlx.utils.tree_flatten(model.parameters()))
     compatible: dict[str, mx.array] = {}
     for name, value in snapshot.items():

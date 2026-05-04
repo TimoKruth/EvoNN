@@ -1,9 +1,38 @@
 """Compile a Genome into a trainable MLX nn.Module."""
 
+from __future__ import annotations
+
 import math
 
-import mlx.core as mx
-import mlx.nn as nn
+try:  # pragma: no cover - depends on host runtime
+    import mlx.core as mx
+    import mlx.nn as nn
+
+    MLX_AVAILABLE = True
+except ImportError:  # pragma: no cover - covered by fallback-only hosts
+    mx = None
+
+    class _UnavailableModule:
+        pass
+
+    class _UnavailableLayer:
+        def __init__(self, *args, **kwargs) -> None:
+            raise RuntimeError("MLX compiler backend is unavailable.")
+
+    class _UnavailableNN:
+        Module = _UnavailableModule
+        ReLU = _UnavailableLayer
+        Sigmoid = _UnavailableLayer
+        Tanh = _UnavailableLayer
+        GELU = _UnavailableLayer
+        SiLU = _UnavailableLayer
+        Linear = _UnavailableLayer
+        Conv2d = _UnavailableLayer
+        LayerNorm = _UnavailableLayer
+        Embedding = _UnavailableLayer
+
+    nn = _UnavailableNN()
+    MLX_AVAILABLE = False
 
 from topograph.genome.genes import (
     Activation,
@@ -11,8 +40,16 @@ from topograph.genome.genes import (
     WeightBits,
 )
 from topograph.genome.genome import INPUT_INNOVATION, OUTPUT_INNOVATION, Genome
-from topograph.nn.layers import BitLinear, QuantizedLinear, hadamard_smooth
-from topograph.nn.moe import MixtureOfExperts
+if MLX_AVAILABLE:
+    from topograph.nn.layers import BitLinear, QuantizedLinear, hadamard_smooth
+    from topograph.nn.moe import MixtureOfExperts
+else:  # pragma: no cover - fallback-only import path
+    BitLinear = QuantizedLinear = _UnavailableLayer
+
+    def hadamard_smooth(x, bits):
+        return x
+
+    MixtureOfExperts = _UnavailableLayer
 
 _ACTIVATION_MAP = {
     Activation.RELU: nn.ReLU,
@@ -403,6 +440,8 @@ def compile_genome(
     layer_norm: bool = True,
 ) -> EvolvedModel:
     """Factory: compile a Genome into a trainable EvolvedModel."""
+    if not MLX_AVAILABLE:
+        raise RuntimeError("MLX compiler backend is unavailable; use runtime.backend='numpy-fallback'.")
     if task == "language_modeling":
         return CausalLanguageModel(
             genome,
