@@ -244,6 +244,7 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Occupied Niches: `{budget_meta.get('map_elites_occupied_niches', 0)}`",
         f"- Parent Selection: `{budget_meta.get('parent_selection_strategy', 'unknown')}`",
         f"- Mutation Pressure: `{budget_meta.get('mutation_pressure', 'unknown')}`",
+        f"- Hierarchy Policy: `{budget_meta.get('hierarchy_selection_policy', 'unknown')}`",
     ]
     if context["status_path"].exists():
         lines.append(f"- Status Artifact: `{context['status_path'].name}`")

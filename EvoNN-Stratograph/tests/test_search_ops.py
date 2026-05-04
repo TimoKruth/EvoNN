@@ -3,7 +3,7 @@ import random
 from stratograph.benchmarks import get_benchmark
 from stratograph.genome import HierarchicalGenome
 from stratograph.genome.models import MacroNodeGene
-from stratograph.pipeline.coordinator import _next_population
+from stratograph.pipeline.coordinator import _next_population, _select_parent_pool
 from stratograph.pipeline.evaluator import EvaluationRecord
 from stratograph.search import crossover_genomes, descriptor, mutate_genome, novelty_score
 from stratograph.search.operators import MAX_MACRO_NODES
@@ -148,3 +148,51 @@ def test_next_population_shared_mode_keeps_high_reuse_leader_in_parent_pool(monk
     )
 
     assert any("high_reuse" in parents for parents in selected_parents)
+
+
+def test_shared_parent_pool_keeps_benchmark_reuse_and_niche_elites() -> None:
+    base = _seed("moons")
+    high_reuse = base.model_copy(update={"genome_id": "high_reuse"})
+
+    medium_reuse_nodes = [node.model_copy() for node in base.macro_nodes]
+    medium_reuse_nodes[-1] = MacroNodeGene(
+        node_id=medium_reuse_nodes[-1].node_id,
+        cell_id="cell_alt",
+        input_width=medium_reuse_nodes[-1].input_width,
+        output_width=medium_reuse_nodes[-1].output_width,
+        role=medium_reuse_nodes[-1].role,
+    )
+    shared_cell = next(iter(base.cell_library.values()))
+    medium_reuse_cells = dict(base.cell_library)
+    medium_reuse_cells["cell_alt"] = shared_cell.model_copy(update={"cell_id": "cell_alt", "shared": False}, deep=True)
+    medium_reuse = base.model_copy(
+        update={"genome_id": "medium_reuse", "macro_nodes": medium_reuse_nodes, "cell_library": medium_reuse_cells}
+    )
+
+    low_reuse_nodes = [
+        MacroNodeGene(
+            node_id=node.node_id,
+            cell_id=f"cell_low_{index}",
+            input_width=node.input_width,
+            output_width=node.output_width,
+            role=node.role,
+        )
+        for index, node in enumerate(base.macro_nodes)
+    ]
+    low_reuse_cells = {
+        f"cell_low_{index}": shared_cell.model_copy(update={"cell_id": f"cell_low_{index}", "shared": False}, deep=True)
+        for index, _ in enumerate(base.macro_nodes)
+    }
+    benchmark_leader = base.model_copy(
+        update={"genome_id": "benchmark_leader", "macro_nodes": low_reuse_nodes, "cell_library": low_reuse_cells}
+    )
+
+    scored = [
+        (benchmark_leader, EvaluationRecord(0.98, 0.98, 10, 1.0, "", benchmark_leader.genome_id, "ok"), 0.01),
+        (medium_reuse, EvaluationRecord(0.93, 0.93, 10, 1.0, "", medium_reuse.genome_id, "ok"), 0.50),
+        (high_reuse, EvaluationRecord(0.80, 0.80, 10, 1.0, "", high_reuse.genome_id, "ok"), 0.20),
+    ]
+
+    parents = _select_parent_pool(scored, population_size=4, architecture_mode="two_level_shared")
+
+    assert [parent.genome_id for parent in parents] == ["benchmark_leader", "high_reuse", "medium_reuse"]

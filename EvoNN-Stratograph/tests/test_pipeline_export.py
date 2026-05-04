@@ -137,6 +137,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert f"- Effective Training Epochs: `{budget_meta['effective_training_epochs']}`" in report
     assert f"- Wall Clock Seconds: `{budget_meta['wall_clock_seconds']:.3f}`" in report
     assert f"- Architecture Mode: `{budget_meta['architecture_mode']}`" in report
+    assert f"- Hierarchy Policy: `{budget_meta['hierarchy_selection_policy']}`" in report
     assert "## Hierarchy Summary" in report
     assert "| Property | Value |" in report
     assert "| Representative Genome | `" in report
@@ -429,15 +430,27 @@ def test_budget_metadata_counts_actual_scheduled_slots_on_partial_resume(repo_ro
     run_dir = tmp_path / "partial_run"
 
     run_evolution(partial_config, run_dir=run_dir, config_path=config_path)
+    first_checkpoint = json.loads((run_dir / "checkpoint.json").read_text(encoding="utf-8"))
+    assert first_checkpoint["evaluation_count"] == 8
+    assert first_checkpoint["failed_evaluations"] == 0
+
+    # Simulate a process that checkpointed completed work but died before final
+    # budget metadata could be trusted by a later resume.
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.conn.execute("DELETE FROM budget_meta WHERE run_id = ?", [run_dir.name])
+
     run_evolution(partial_config, run_dir=run_dir, config_path=config_path, resume=True)
 
     with RunStore(run_dir / "metrics.duckdb") as store:
         budget_meta = store.load_budget_metadata(run_dir.name)
+    status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
 
     assert budget_meta["evaluation_count"] == 8
     assert budget_meta["configured_evaluation_slots"] == 8
     assert budget_meta["completed_benchmark_count"] == 1
     assert budget_meta["benchmark_load_failures"] == 0
+    assert status["evaluation_count"] == 8
+    assert status["failed_evaluations"] == 0
 
 
 def test_official_lane_configs_encode_exact_budget_targets(repo_root) -> None:
@@ -532,6 +545,7 @@ def test_failed_candidate_evaluations_are_counted_in_budget_metadata(repo_root, 
     assert status["remaining_count"] == 0
     assert "- Parent Selection: `benchmark_leader_plus_reuse_and_niche_elites`" in report
     assert "- Mutation Pressure: `contrasting_elite_crossover_every_third_else_elite_mutation`" in report
+    assert "- Hierarchy Policy: `shared_variants_preserve_reuse_and_niche_diversity`" in report
 
 
 

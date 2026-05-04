@@ -66,6 +66,7 @@ def run_evolution(
     )
     variant_policy = _variant_policy(architecture_mode)
     completed_benchmarks: set[str] = set()
+    checkpoint: dict[str, object] = {}
     if resume and checkpoint_path.exists():
         checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
         completed_benchmarks = set(checkpoint.get("completed_benchmarks", []))
@@ -82,10 +83,11 @@ def run_evolution(
     novelty_scores: list[float] = []
     occupied_niches: set[tuple[int, int, int, int]] = set()
     prior_budget_meta = store.load_budget_metadata(run_id) if resume else {}
-    scheduled_evaluation_slots = int(prior_budget_meta.get("evaluation_count", 0) or 0)
-    failed_evaluations = int(prior_budget_meta.get("failed_evaluations", 0) or 0)
-    invalid_evaluations = int(prior_budget_meta.get("invalid_evaluations", 0) or 0)
-    benchmark_load_failures = int(prior_budget_meta.get("benchmark_load_failures", 0) or 0)
+    prior_progress = prior_budget_meta or checkpoint
+    scheduled_evaluation_slots = int(prior_progress.get("evaluation_count", 0) or 0)
+    failed_evaluations = int(prior_progress.get("failed_evaluations", 0) or 0)
+    invalid_evaluations = int(prior_progress.get("invalid_evaluations", 0) or 0)
+    benchmark_load_failures = int(prior_progress.get("benchmark_load_failures", 0) or 0)
     _write_status(
         status_path,
         run_id=run_id,
@@ -93,6 +95,10 @@ def run_evolution(
         total_benchmarks=len(benchmark_names),
         completed_benchmarks=sorted(completed_benchmarks),
         state="running",
+        evaluation_count=scheduled_evaluation_slots,
+        failed_evaluations=failed_evaluations,
+        invalid_evaluations=invalid_evaluations,
+        benchmark_load_failures=benchmark_load_failures,
     )
     for benchmark_name in benchmark_names:
         if benchmark_name in completed_benchmarks:
@@ -147,6 +153,10 @@ def run_evolution(
                 architecture_mode=architecture_mode,
                 completed_benchmarks=sorted(completed_benchmarks),
                 total_benchmarks=len(benchmark_names),
+                evaluation_count=scheduled_evaluation_slots,
+                failed_evaluations=failed_evaluations,
+                invalid_evaluations=invalid_evaluations,
+                benchmark_load_failures=benchmark_load_failures,
             )
             _write_status(
                 status_path,
@@ -155,6 +165,10 @@ def run_evolution(
                 total_benchmarks=len(benchmark_names),
                 completed_benchmarks=sorted(completed_benchmarks),
                 state="running",
+                evaluation_count=scheduled_evaluation_slots,
+                failed_evaluations=failed_evaluations,
+                invalid_evaluations=invalid_evaluations,
+                benchmark_load_failures=benchmark_load_failures,
             )
             continue
         benchmark_archive: list[tuple[float, float, float, float]] = []
@@ -269,6 +283,10 @@ def run_evolution(
             architecture_mode=architecture_mode,
             completed_benchmarks=sorted(completed_benchmarks),
             total_benchmarks=len(benchmark_names),
+            evaluation_count=scheduled_evaluation_slots,
+            failed_evaluations=failed_evaluations,
+            invalid_evaluations=invalid_evaluations,
+            benchmark_load_failures=benchmark_load_failures,
         )
         _write_status(
             status_path,
@@ -277,6 +295,10 @@ def run_evolution(
             total_benchmarks=len(benchmark_names),
             completed_benchmarks=sorted(completed_benchmarks),
             state="running",
+            evaluation_count=scheduled_evaluation_slots,
+            failed_evaluations=failed_evaluations,
+            invalid_evaluations=invalid_evaluations,
+            benchmark_load_failures=benchmark_load_failures,
         )
 
     wall_clock_seconds = time.perf_counter() - started
@@ -329,6 +351,10 @@ def run_evolution(
         total_benchmarks=len(benchmark_names),
         completed_benchmarks=sorted(completed_benchmarks),
         state="completed",
+        evaluation_count=scheduled_evaluation_slots,
+        failed_evaluations=failed_evaluations,
+        invalid_evaluations=invalid_evaluations,
+        benchmark_load_failures=benchmark_load_failures,
     )
     store.close()
     write_report(run_dir)
@@ -512,7 +538,8 @@ def _select_parent_pool(
     population_size: int,
     architecture_mode: str,
 ) -> list[HierarchicalGenome]:
-    elite_target = max(2, min(len(scored), population_size // 2 or 1))
+    minimum_elites = 3 if architecture_mode.startswith("two_level_shared") and population_size >= 4 else 2
+    elite_target = min(len(scored), max(minimum_elites, population_size // 2 or 1))
     if elite_target <= 0:
         return []
 
@@ -727,6 +754,10 @@ def _write_checkpoint(
     architecture_mode: str,
     completed_benchmarks: list[str],
     total_benchmarks: int,
+    evaluation_count: int = 0,
+    failed_evaluations: int = 0,
+    invalid_evaluations: int = 0,
+    benchmark_load_failures: int = 0,
 ) -> None:
     path.write_text(
         json.dumps(
@@ -737,6 +768,10 @@ def _write_checkpoint(
                 "completed_count": len(completed_benchmarks),
                 "remaining_count": max(0, total_benchmarks - len(completed_benchmarks)),
                 "total_benchmarks": total_benchmarks,
+                "evaluation_count": evaluation_count,
+                "failed_evaluations": failed_evaluations,
+                "invalid_evaluations": invalid_evaluations,
+                "benchmark_load_failures": benchmark_load_failures,
             },
             indent=2,
         ),
@@ -752,6 +787,10 @@ def _write_status(
     total_benchmarks: int,
     completed_benchmarks: list[str],
     state: str,
+    evaluation_count: int = 0,
+    failed_evaluations: int = 0,
+    invalid_evaluations: int = 0,
+    benchmark_load_failures: int = 0,
 ) -> None:
     path.write_text(
         json.dumps(
@@ -763,6 +802,10 @@ def _write_status(
                 "completed_benchmarks": completed_benchmarks,
                 "completed_count": len(completed_benchmarks),
                 "remaining_count": max(0, total_benchmarks - len(completed_benchmarks)),
+                "evaluation_count": evaluation_count,
+                "failed_evaluations": failed_evaluations,
+                "invalid_evaluations": invalid_evaluations,
+                "benchmark_load_failures": benchmark_load_failures,
             },
             indent=2,
         ),
