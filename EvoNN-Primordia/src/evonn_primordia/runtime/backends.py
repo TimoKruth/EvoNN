@@ -17,6 +17,12 @@ from sklearn.preprocessing import StandardScaler
 from evonn_primordia.config import EvolutionConfig, RunConfig
 from evonn_primordia.runtime.training import EvaluationResult, _compute_metric
 
+FALLBACK_LIMITATIONS = (
+    "numpy-fallback is a correctness-first Primordia path for CI, Linux, smoke, "
+    "and contract validation; it is not expected to match MLX run quality."
+)
+RUNTIME_POLICY_NAME = "primordia_runtime_policy_v1"
+
 try:  # pragma: no cover - exercised on MLX-capable hosts
     import mlx
 except Exception:  # pragma: no cover - covered on non-MLX hosts
@@ -35,6 +41,31 @@ class RuntimeBindings:
     runtime_backend: str
     runtime_version: str | None
     precision_mode: str = "fp32"
+
+
+@dataclass(frozen=True)
+class RuntimeExecutionPolicy:
+    name: str = RUNTIME_POLICY_NAME
+    fallback_classifier: str = "sklearn_family_estimator"
+    fallback_regressor: str = "sklearn_family_estimator"
+    fallback_language_model: str = "smoothed_unigram_perplexity"
+    primitive_search_policy: str = "family_diverse_elite_archive_with_weighted_parent_sampling"
+    seed_selection_policy: str = "benchmark_winners_plus_family_representatives"
+
+    def as_metadata(self, *, resolved_backend: str) -> dict[str, str]:
+        return {
+            "runtime_policy_name": self.name,
+            "runtime_backend": resolved_backend,
+            "fallback_classifier": self.fallback_classifier,
+            "fallback_regressor": self.fallback_regressor,
+            "fallback_language_model": self.fallback_language_model,
+            "primitive_search_policy": self.primitive_search_policy,
+            "seed_selection_policy": self.seed_selection_policy,
+        }
+
+
+def runtime_execution_policy() -> RuntimeExecutionPolicy:
+    return RuntimeExecutionPolicy()
 
 
 def resolve_runtime_bindings(config: RunConfig) -> RuntimeBindings:
