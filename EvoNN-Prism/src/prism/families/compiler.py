@@ -4,12 +4,23 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-
-import mlx.core as mx
-import mlx.nn as nn
+from typing import Any
 
 from prism.genome import ModelGenome, _sanitize_for_family
-from prism.families.models import FAMILY_CLASSES
+from prism.runtime.backends import resolve_runtime_backend
+
+try:
+    import mlx.core as mx
+    import mlx.nn as nn
+
+    from prism.families.models import FAMILY_CLASSES
+
+    MLX_AVAILABLE = True
+except ImportError:
+    mx = None
+    nn = None
+    FAMILY_CLASSES = {}
+    MLX_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
 # Family -> supported modalities
@@ -38,7 +49,7 @@ FAMILY_MODALITY: dict[str, list[str]] = {
 class CompiledModel:
     """Result of compiling a genome: the model, its family name, and parameter count."""
 
-    model: nn.Module
+    model: Any
     family: str
     parameter_count: int
 
@@ -87,6 +98,8 @@ def compile_genome(
         ValueError: If the family is unknown, incompatible with the modality,
                      or the genome is invalid.
     """
+    if not MLX_AVAILABLE:
+        raise RuntimeError("Prism MLX compiler backend is unavailable; use runtime.backend='numpy-fallback'.")
     genome = prepare_genome_for_compile(genome, input_shape, output_dim, modality, task)
     family = genome.family
 
@@ -125,7 +138,7 @@ def is_genome_compatible(
 ) -> bool:
     """Return whether a genome family is compatible with the requested workload."""
     family = genome.family
-    if family not in FAMILY_CLASSES:
+    if family not in FAMILY_MODALITY:
         return False
     if task == "language_modeling" and family not in {"embedding", "attention", "sparse_attention"}:
         return False
@@ -140,7 +153,7 @@ def prepare_genome_for_compile(
     task: str = "classification",
 ) -> ModelGenome:
     family = genome.family
-    if family not in FAMILY_CLASSES:
+    if family not in FAMILY_MODALITY:
         raise ValueError(f"Unknown model family: {family!r}")
     if task == "language_modeling" and family not in {"embedding", "attention", "sparse_attention"}:
         raise ValueError(f"Family {family!r} does not support language_modeling.")
@@ -173,12 +186,14 @@ def prepare_genome_for_compile(
 
 
 def _dry_run_guard(
-    model: nn.Module,
+    model: Any,
     input_shape: list[int],
     output_dim: int,
     modality: str,
     task: str,
 ) -> None:
+    if resolve_runtime_backend().resolved_backend != "mlx":
+        raise RuntimeError("Prism MLX dry-run backend is unavailable.")
     sample = _dummy_input(input_shape, modality, task)
     output = model(sample)
     mx.eval(output)

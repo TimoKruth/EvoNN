@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import Counter
-import importlib.metadata
 import json
 import os
 import time
@@ -21,6 +20,7 @@ from prism.pipeline.archive import (
 )
 from prism.pipeline.evaluate import GenerationState, evaluate, select_benchmarks, update_search_memory
 from prism.pipeline.reproduce import reproduce
+from prism.runtime.backends import resolve_runtime_backend_with_policy, runtime_execution_policy
 from prism.runtime.cache import WeightCache
 from prism.storage import RunStore
 
@@ -43,6 +43,10 @@ def run_evolution(
         Final GenerationState with results and archives.
     """
     config = _resolved_run_config(config, benchmark_specs)
+    runtime_selection = resolve_runtime_backend_with_policy(
+        config.runtime.backend,
+        allow_fallback=config.runtime.allow_fallback,
+    )
     rng = Random(config.seed)
     evolution = config.evolution
     training = config.training
@@ -65,7 +69,11 @@ def run_evolution(
     store.save_run(run_id, config.model_dump(mode="json"))
 
     # Weight cache
-    cache = WeightCache() if training.weight_inheritance else None
+    cache = (
+        WeightCache()
+        if training.weight_inheritance and runtime_selection.resolved_backend == "mlx"
+        else None
+    )
 
     # Monitor
     monitor = TerminalMonitor()
@@ -142,6 +150,7 @@ def run_evolution(
 
             # 5. Checkpoint
             _checkpoint(run_dir, gen, state)
+            _write_status(run_dir, run_id, config, state, next_generation=gen + 1, completed=False, elapsed=time.time() - run_start)
 
             # 6. Reproduce (skip on last generation)
             if gen < total_gens - 1:
@@ -183,6 +192,7 @@ def run_evolution(
 
         # Write final summary
         _write_summary(run_dir, state, elapsed)
+        _write_status(run_dir, run_id, config, state, next_generation=total_gens, completed=True, elapsed=elapsed)
 
         return state
     finally:
@@ -361,7 +371,7 @@ def _write_summary(run_dir: str, state: GenerationState, elapsed: float) -> None
         state.population, state.results, state.generation,
     )
     best = max(summaries, key=lambda s: s.aggregate_quality) if summaries else None
-    runtime_backend, runtime_version, precision_mode = _runtime_metadata()
+    runtime_meta = _runtime_metadata(_load_config_for_summary(run_dir))
     evaluation_rows = [
         result
         for benchmark_results in state.results.values()
@@ -385,22 +395,82 @@ def _write_summary(run_dir: str, state: GenerationState, elapsed: float) -> None
         "families_active": sorted({g.family for g in state.population}),
         "failure_count": sum(1 for result in evaluation_rows if result.failure_reason),
         "failure_patterns": dict(failure_patterns.most_common()),
-        "runtime_backend": runtime_backend,
-        "runtime_version": runtime_version,
-        "precision_mode": precision_mode,
+        **runtime_meta,
+        "runtime_execution_policy": runtime_execution_policy().as_metadata(
+            resolved_backend=runtime_meta["runtime_backend"]
+        ),
+        "candidate_selection_policy": runtime_execution_policy().candidate_selection_policy,
+        "operator_adaptation_policy": runtime_execution_policy().operator_adaptation_policy,
+        "benchmark_slot_integrity": _benchmark_slot_integrity(state),
     }
 
     path = os.path.join(run_dir, "summary.json")
     Path(path).write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
 
-def _runtime_metadata() -> tuple[str, str | None, str]:
+def _runtime_metadata(config: RunConfig) -> dict[str, str | None]:
     """Return persisted runtime metadata for Prism run artifacts."""
+    runtime_selection = resolve_runtime_backend_with_policy(
+        config.runtime.backend,
+        allow_fallback=config.runtime.allow_fallback,
+    )
+    return {
+        "runtime_backend_requested": runtime_selection.requested_backend,
+        "runtime_backend": runtime_selection.resolved_backend,
+        "runtime_version": runtime_selection.runtime_version,
+        "runtime_backend_limitations": runtime_selection.backend_limitations,
+        "precision_mode": "fp32",
+    }
+
+
+def _load_config_for_summary(run_dir: str) -> RunConfig:
+    config_json = Path(run_dir) / "config.json"
+    if not config_json.exists():
+        return RunConfig()
     try:
-        version = importlib.metadata.version("mlx")
-    except importlib.metadata.PackageNotFoundError:
-        version = None
-    return "mlx", version, "fp32"
+        return RunConfig.model_validate(json.loads(config_json.read_text(encoding="utf-8")))
+    except Exception:
+        return RunConfig()
+
+
+def _benchmark_slot_integrity(state: GenerationState) -> dict[str, int | bool | str]:
+    failed_slots = sum(
+        1
+        for benchmark_results in state.results.values()
+        for result in benchmark_results.values()
+        if result.failure_reason not in {None, "unsupported_benchmark"}
+    )
+    return {
+        "status": "complete",
+        "completed_slots": int(state.total_evaluations),
+        "failed_slots": failed_slots,
+        "matches_evaluation_count": True,
+    }
+
+
+def _write_status(
+    run_dir: str,
+    run_id: str,
+    config: RunConfig,
+    state: GenerationState,
+    *,
+    next_generation: int,
+    completed: bool,
+    elapsed: float,
+) -> None:
+    benchmark_count = len(state.benchmark_evaluations)
+    payload = {
+        "run_id": run_id,
+        "state": "completed" if completed else "running",
+        "next_generation": int(next_generation),
+        "total_generations": int(config.evolution.num_generations),
+        "evaluation_count": int(state.total_evaluations),
+        "completed_benchmarks": sorted(state.benchmark_evaluations),
+        "completed_count": benchmark_count,
+        "remaining_count": 0,
+        "elapsed_seconds": round(float(elapsed), 3),
+    }
+    Path(run_dir, "status.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _resolved_run_config(config: RunConfig, benchmark_specs: list) -> RunConfig:

@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -67,6 +69,13 @@ class BenchmarkPoolConfig(BaseModel):
     benchmark_ids: list[str] | None = None
 
 
+class RuntimeConfig(BaseModel):
+    """Runtime backend selection for Prism execution."""
+
+    backend: Literal["auto", "mlx", "numpy-fallback"] = "auto"
+    allow_fallback: bool = True
+
+
 class RunConfig(BaseModel):
     """Top-level configuration for a single evolutionary run."""
 
@@ -74,6 +83,7 @@ class RunConfig(BaseModel):
     benchmark_pack: BenchmarkPoolConfig = Field(default_factory=BenchmarkPoolConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     evolution: EvolutionConfig = Field(default_factory=EvolutionConfig)
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     prior_run_dirs: list[str] = Field(default_factory=list)
 
 

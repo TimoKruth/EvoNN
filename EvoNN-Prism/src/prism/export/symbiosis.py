@@ -223,6 +223,26 @@ def export_symbiosis_contract(
 
     # 8. Write manifest.json and results.json
     manifest_payload = manifest.model_dump(mode="json")
+    manifest_payload.setdefault("device", {})["framework_requested"] = runtime_meta.get(
+        "runtime_backend_requested",
+        runtime_meta["runtime_backend"],
+    )
+    manifest_payload.setdefault("device", {})["framework_limitations"] = runtime_meta.get(
+        "runtime_backend_limitations",
+        "",
+    )
+    manifest_payload.setdefault("budget", {})["runtime_execution_policy"] = runtime_meta.get(
+        "runtime_execution_policy"
+    )
+    manifest_payload.setdefault("budget", {})["benchmark_slot_integrity"] = run_summary.get(
+        "benchmark_slot_integrity"
+    )
+    manifest_payload.setdefault("budget", {})["candidate_selection_policy"] = run_summary.get(
+        "candidate_selection_policy"
+    )
+    manifest_payload.setdefault("budget", {})["operator_adaptation_policy"] = run_summary.get(
+        "operator_adaptation_policy"
+    )
     result_payloads = [result.model_dump(mode="json") for result in results]
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
@@ -370,20 +390,41 @@ def _load_run_summary(run_dir: Path) -> dict[str, Any]:
 
 def _load_runtime_metadata(run_dir: Path) -> dict[str, str | None]:
     summary = _load_run_summary(run_dir)
-    return {
+    metadata = {
+        "runtime_backend_requested": summary.get("runtime_backend_requested")
+        or summary.get("runtime_backend")
+        or "unknown",
         "runtime_backend": summary.get("runtime_backend") or "unknown",
         "runtime_version": summary.get("runtime_version") or "unknown",
+        "runtime_backend_limitations": summary.get("runtime_backend_limitations") or "",
         "precision_mode": summary.get("precision_mode") or "fp32",
+        "runtime_execution_policy": summary.get("runtime_execution_policy"),
     }
+    if not summary:
+        return {
+            "runtime_backend": "unknown",
+            "runtime_version": "unknown",
+            "precision_mode": "fp32",
+        }
+    return metadata
 
 
 def _resolved_runtime_metadata(run_dir: Path) -> dict[str, str]:
     runtime_meta = _load_runtime_metadata(run_dir)
-    return {
+    metadata = {
         "runtime_backend": runtime_meta["runtime_backend"] or "unknown",
         "runtime_version": runtime_meta["runtime_version"] or "unknown",
         "precision_mode": runtime_meta["precision_mode"] or "fp32",
     }
+    for field in [
+        "runtime_backend_requested",
+        "runtime_backend_limitations",
+        "runtime_execution_policy",
+    ]:
+        value = runtime_meta.get(field)
+        if value is not None and value != "":
+            metadata[field] = value
+    return metadata
 
 
 def _load_run_config(run_dir: Path) -> RunConfig:
@@ -485,6 +526,8 @@ def _write_summary_json(
     runtime_defaults = {
         "framework": "mlx",
         "framework_version": _MLX_VERSION or "unknown",
+        "framework_requested": "mlx",
+        "framework_limitations": "",
         "precision_mode": "fp32",
     }
 
@@ -498,8 +541,14 @@ def _write_summary_json(
         "epochs_per_candidate": config.training.epochs,
         "population_size": config.evolution.population_size,
         "runtime_backend": device.get("framework") or runtime_defaults["framework"],
+        "runtime_backend_requested": device.get("framework_requested") or runtime_defaults["framework_requested"],
         "runtime_version": device.get("framework_version") or runtime_defaults["framework_version"],
+        "runtime_backend_limitations": device.get("framework_limitations") or runtime_defaults["framework_limitations"],
         "precision_mode": device.get("precision_mode") or runtime_defaults["precision_mode"],
+        "runtime_execution_policy": budget.get("runtime_execution_policy"),
+        "benchmark_slot_integrity": budget.get("benchmark_slot_integrity"),
+        "candidate_selection_policy": budget.get("candidate_selection_policy"),
+        "operator_adaptation_policy": budget.get("operator_adaptation_policy"),
         **core,
         "operator_mix": _operator_mix(lineage_records or []),
         "family_benchmark_wins": _family_benchmark_wins(best_per_benchmark or {}, genomes),

@@ -61,8 +61,21 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     sections.append(f"| Genomes Evolved | {len(genomes)} |")
     sections.append(f"| Benchmarks | {len(best_per_benchmark)} |")
     sections.append(f"| Runtime | {runtime_meta['runtime_backend']} |")
+    if runtime_meta.get("runtime_backend_requested"):
+        sections.append(f"| Runtime Requested | {runtime_meta['runtime_backend_requested']} |")
     sections.append(f"| Runtime Version | {runtime_meta['runtime_version']} |")
+    if runtime_meta.get("runtime_backend_limitations"):
+        sections.append(f"| Runtime Limitations | {runtime_meta['runtime_backend_limitations']} |")
     sections.append(f"| Precision Mode | {runtime_meta['precision_mode']} |")
+    runtime_policy = runtime_meta.get("runtime_execution_policy")
+    if isinstance(runtime_policy, dict):
+        sections.append(f"| Runtime Policy | {runtime_policy.get('runtime_policy_name', 'unknown')} |")
+    if runtime_meta.get("benchmark_slot_integrity"):
+        sections.append(f"| Benchmark Slot Integrity | {runtime_meta['benchmark_slot_integrity']} |")
+    if runtime_meta.get("candidate_selection_policy"):
+        sections.append(f"| Candidate Selection | {runtime_meta['candidate_selection_policy']} |")
+    if runtime_meta.get("operator_adaptation_policy"):
+        sections.append(f"| Operator Adaptation | {runtime_meta['operator_adaptation_policy']} |")
     if runtime_meta.get("wall_clock_seconds") is not None:
         sections.append(f"| Wall Clock Seconds | {float(runtime_meta['wall_clock_seconds']):.3f} |")
     sections.append("")
@@ -365,12 +378,25 @@ def _load_runtime_metadata(run_dir: Path) -> dict[str, Any]:
             summary = {}
     else:
         summary = {}
-    return {
+    metadata = {
         "runtime_backend": str(summary.get("runtime_backend") or "unknown"),
         "runtime_version": str(summary.get("runtime_version") or "unknown"),
         "precision_mode": str(summary.get("precision_mode") or "fp32"),
         "wall_clock_seconds": summary.get("wall_clock_seconds", summary.get("elapsed_seconds")),
     }
+    optional_fields = [
+        "runtime_backend_requested",
+        "runtime_backend_limitations",
+        "runtime_execution_policy",
+        "benchmark_slot_integrity",
+        "candidate_selection_policy",
+        "operator_adaptation_policy",
+    ]
+    for field in optional_fields:
+        value = summary.get(field)
+        if value is not None and value != "":
+            metadata[field] = value
+    return metadata
 
 
 def _select_best(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -14,7 +15,7 @@ from rich.table import Table
 
 from prism.benchmarks.datasets import get_benchmark, list_benchmarks
 from prism.benchmarks.parity import get_canonical_id, load_parity_pack, resolve_pack_path
-from prism.config import load_config
+from prism.config import RunConfig, load_config
 
 console = Console()
 app = typer.Typer(name="prism", help="Family-based evolutionary NAS")
@@ -74,9 +75,18 @@ def evolve(
     config: str = typer.Option(..., "--config", "-c", help="Path to config YAML"),
     run_dir: Optional[str] = typer.Option(None, "--run-dir", help="Run output directory"),
     resume: bool = typer.Option(False, "--resume", help="Resume from checkpoint"),
+    runtime_backend: str | None = typer.Option(
+        None,
+        "--runtime-backend",
+        help="Override runtime.backend: auto, mlx, or numpy-fallback",
+    ),
 ) -> None:
     """Run evolution."""
     cfg = load_config(config)
+    if runtime_backend is not None:
+        payload = cfg.model_dump(mode="json")
+        payload.setdefault("runtime", {})["backend"] = runtime_backend
+        cfg = RunConfig.model_validate(payload)
 
     if run_dir is None:
         run_dir = str(Path("runs") / f"evolve-{cfg.seed}-{uuid.uuid4().hex[:6]}")
@@ -97,6 +107,7 @@ def evolve(
     console.print(f"  Run dir: {run_path}")
     console.print(f"  Seed: {cfg.seed}")
     console.print(f"  Pack: {cfg.benchmark_pack.pack_name}")
+    console.print(f"  Runtime backend: {cfg.runtime.backend}")
     console.print(
         f"  Population: {cfg.evolution.population_size} | "
         f"Generations: {cfg.evolution.num_generations}"
@@ -195,8 +206,22 @@ def inspect(
         _format_status_mix(evaluations),
     )
     table.add_row("Runtime", runtime_meta["runtime_backend"])
+    if runtime_meta.get("runtime_backend_requested"):
+        table.add_row("Runtime Requested", runtime_meta["runtime_backend_requested"])
     table.add_row("Runtime Version", runtime_meta["runtime_version"])
+    if runtime_meta.get("runtime_backend_limitations"):
+        table.add_row("Runtime Limitations", runtime_meta["runtime_backend_limitations"])
     table.add_row("Precision Mode", runtime_meta["precision_mode"])
+    if runtime_meta.get("runtime_execution_policy"):
+        policy = runtime_meta["runtime_execution_policy"]
+        if isinstance(policy, dict):
+            table.add_row("Runtime Policy", str(policy.get("runtime_policy_name") or policy.get("name")))
+    if runtime_meta.get("benchmark_slot_integrity"):
+        table.add_row("Benchmark Slot Integrity", json.dumps(runtime_meta["benchmark_slot_integrity"]))
+    if runtime_meta.get("candidate_selection_policy"):
+        table.add_row("Candidate Selection", str(runtime_meta["candidate_selection_policy"]))
+    if runtime_meta.get("operator_adaptation_policy"):
+        table.add_row("Operator Adaptation", str(runtime_meta["operator_adaptation_policy"]))
     if runtime_meta.get("wall_clock_seconds") is not None:
         table.add_row("Wall Clock Seconds", f"{float(runtime_meta['wall_clock_seconds']):.3f}")
 
