@@ -25,6 +25,7 @@ from topograph.operators.mutate import (
     mutate_width,
 )
 from topograph.pipeline.evaluate import GenerationState
+from topograph.pipeline.archive import compute_behavior
 from topograph.pipeline.schedule import MutationScheduler
 from topograph.pipeline.select import non_dominated_sort, rank_based_select
 
@@ -182,7 +183,37 @@ def _select_survivors(
             survivors.append(_clone_genome(state.population[idx]))
             added.add(idx)
 
+    diversity_target = min(
+        pop_size,
+        max(len(survivors), elite_count) + max(1, pop_size // 8),
+    )
+    for idx in _topology_diverse_indices(state, ranked_indices):
+        if len(survivors) >= diversity_target:
+            break
+        if idx not in added:
+            survivors.append(_clone_genome(state.population[idx]))
+            added.add(idx)
+
     return survivors
+
+
+def _topology_diverse_indices(state: GenerationState, ranked_indices: list[int]) -> list[int]:
+    if not state.population:
+        return []
+    candidates: list[tuple[float, int]] = []
+    for idx in ranked_indices:
+        genome = state.population[idx]
+        behavior = compute_behavior(genome)
+        topology_score = (
+            float(behavior[0]) * 0.20
+            + float(behavior[2]) * 0.25
+            + float(behavior[6]) * 0.20
+            + float(len({layer.operator for layer in genome.enabled_layers})) * 0.15
+        )
+        if state.fitnesses and idx < len(state.fitnesses) and state.fitnesses[idx] != float("inf"):
+            topology_score += 1.0 / (1.0 + max(0.0, float(state.fitnesses[idx])))
+        candidates.append((topology_score, idx))
+    return [idx for _, idx in sorted(candidates, reverse=True)]
 
 
 def _apply_mutations(
@@ -219,6 +250,18 @@ def _apply_mutations(
                 allowed_activation_bits=allowed_activation_bits,
             )
             applied.append(op_name)
+
+    if not applied and rng.random() < 0.5:
+        op_name = rng.choice(["add_connection", "add_residual", "operator_type", "width"])
+        genome = _dispatch_mutation(
+            genome,
+            op_name,
+            innovation_counter,
+            rng,
+            allowed_weight_bits=allowed_weight_bits,
+            allowed_activation_bits=allowed_activation_bits,
+        )
+        applied.append(op_name)
 
     # Hyperparameter mutations (independent of scheduled rates)
     if genome.learning_rate is not None and rng.random() < 0.3:

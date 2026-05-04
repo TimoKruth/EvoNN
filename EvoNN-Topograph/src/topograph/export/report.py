@@ -213,7 +213,14 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     ):
         lines.append(f"- **{label}:** {value}")
     lines.append(f"- **Runtime:** {budget.get('runtime_backend', 'unknown')}")
+    if budget.get("runtime_backend_requested"):
+        lines.append(f"- **Runtime Requested:** {budget['runtime_backend_requested']}")
     lines.append(f"- **Runtime Version:** {budget.get('runtime_version') or 'unknown'}")
+    if budget.get("runtime_backend_limitations"):
+        lines.append(f"- **Runtime Limitations:** {budget['runtime_backend_limitations']}")
+    runtime_policy = budget.get("runtime_execution_policy")
+    if isinstance(runtime_policy, dict) and runtime_policy.get("name"):
+        lines.append(f"- **Runtime Policy:** {runtime_policy['name']}")
     lines.append(f"- **Precision Mode:** {budget.get('precision_mode') or 'unknown'}")
     if budget.get("wall_clock_seconds"):
         lines.append(f"- **Wall Clock:** {budget['wall_clock_seconds']:.1f}s")
@@ -244,6 +251,12 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
             f"{name}={count}" for name, count in budget["worker_clamp_reason_counts"].items()
         )
         lines.append(f"- **Worker Clamp Reasons:** {clamp_counts}")
+    if budget.get("benchmark_slot_integrity"):
+        lines.append(f"- **Benchmark Slot Integrity:** {budget['benchmark_slot_integrity']}")
+    if budget.get("topology_selection_policy"):
+        lines.append(f"- **Topology Selection:** {budget['topology_selection_policy']}")
+    if budget.get("mutation_pressure_policy"):
+        lines.append(f"- **Mutation Pressure:** {budget['mutation_pressure_policy']}")
     if budget.get("benchmark_elite_families"):
         family_counts = ", ".join(
             f"{family}={count}" for family, count in budget["benchmark_elite_families"].items()

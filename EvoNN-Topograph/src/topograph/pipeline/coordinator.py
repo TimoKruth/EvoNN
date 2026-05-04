@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from collections import Counter
-import importlib.metadata
 import json
 import math
 import os
@@ -39,16 +38,10 @@ from topograph.pipeline.evaluate import (
 )
 from topograph.pipeline.reproduce import PendingMutationOutcome, reproduce
 from topograph.pipeline.schedule import MutationScheduler
+from topograph.runtime.backends import resolve_runtime_backend_with_policy, runtime_execution_policy
 from topograph.storage import RunStore
 
 _MAP_ELITES_TOTAL_NICHES = 6**4
-
-
-def _runtime_metadata() -> tuple[str, str | None]:
-    try:
-        return "mlx", importlib.metadata.version("mlx")
-    except importlib.metadata.PackageNotFoundError:
-        return "mlx", None
 
 
 def run_evolution(
@@ -63,6 +56,10 @@ def run_evolution(
     run_id = "current"
     monitor = TerminalMonitor()
     scheduler = MutationScheduler(config.evolution.mutation_rates)
+    runtime_selection = resolve_runtime_backend_with_policy(
+        config.runtime.backend,
+        allow_fallback=config.runtime.allow_fallback,
+    )
 
     store: RunStore | None = None
     if run_dir:
@@ -78,7 +75,7 @@ def run_evolution(
             config.training.parallel_workers,
             runtime_limits=_parallel_runtime_limits(config),
         )
-        if config.training.parallel_workers != 1
+        if config.training.parallel_workers != 1 and runtime_selection.resolved_backend == "mlx"
         else None
     )
 
@@ -343,6 +340,17 @@ def run_evolution(
             if store:
                 _checkpoint_generation(store, run_id, gen, state, innovation_counter)
 
+            if run_dir is not None:
+                _write_status_artifact(
+                    run_dir=run_dir,
+                    run_id=run_id,
+                    config=config,
+                    state=state,
+                    next_generation=gen + 1,
+                    completed=False,
+                    elapsed_seconds=elapsed_before_resume + (time.time() - run_start),
+                )
+
             should_stop = (
                 config.early_stopping is not None
                 and config.early_stopping.enabled
@@ -453,6 +461,16 @@ def run_evolution(
                 map_elites_insertions=map_elites_insertions,
                 completed=True,
             )
+            if run_dir is not None:
+                _write_status_artifact(
+                    run_dir=run_dir,
+                    run_id=run_id,
+                    config=config,
+                    state=state,
+                    next_generation=completed_generations,
+                    completed=True,
+                    elapsed_seconds=elapsed,
+                )
         return state
     except KeyboardInterrupt:
         elapsed = elapsed_before_resume + (time.time() - run_start)
@@ -481,6 +499,16 @@ def run_evolution(
             monitor.on_info(
                 f"Interrupted at generation {state.generation}; resume snapshot saved."
             )
+            if run_dir is not None:
+                _write_status_artifact(
+                    run_dir=run_dir,
+                    run_id=run_id,
+                    config=config,
+                    state=state,
+                    next_generation=state.generation,
+                    completed=False,
+                    elapsed_seconds=elapsed,
+                )
         raise
     finally:
         if parallel_eval is not None:
@@ -1031,7 +1059,10 @@ def _save_budget_metadata(
         default=1,
     )
     occupied = len(map_elites_archive) if map_elites_archive is not None else 0
-    runtime_backend, runtime_version = _runtime_metadata()
+    runtime_selection = resolve_runtime_backend_with_policy(
+        config.runtime.backend,
+        allow_fallback=config.runtime.allow_fallback,
+    )
     # Compare lanes budget against total candidate slots, not only fresh trains.
     # Weight inheritance can legitimately reuse prior weights while still
     # consuming a scheduled evaluation slot.
@@ -1042,8 +1073,13 @@ def _save_budget_metadata(
     metadata = {
         "evaluation_count": accounted_evaluation_count,
         "wall_clock_seconds": round(elapsed, 2),
-        "runtime_backend": runtime_backend,
-        "runtime_version": runtime_version,
+        "runtime_backend_requested": runtime_selection.requested_backend,
+        "runtime_backend": runtime_selection.resolved_backend,
+        "runtime_version": runtime_selection.runtime_version,
+        "runtime_backend_limitations": runtime_selection.backend_limitations,
+        "runtime_execution_policy": runtime_execution_policy().as_metadata(
+            resolved_backend=runtime_selection.resolved_backend
+        ),
         "precision_mode": "mixed" if config.quantization_schedule else "fp16",
         "total_generations": completed_generations,
         "population_size": config.evolution.population_size,
@@ -1078,6 +1114,16 @@ def _save_budget_metadata(
             if (reused_count + trained_count) > 0
             else None
         ),
+        "benchmark_slot_plan": _benchmark_slot_plan(
+            timing_rows,
+            configured_slots_per_benchmark=config.evolution.population_size,
+        ),
+        "benchmark_slot_integrity": _benchmark_slot_integrity(
+            timing_rows,
+            accounted_evaluation_count=accounted_evaluation_count,
+        ),
+        "topology_selection_policy": runtime_execution_policy().topology_selection_policy,
+        "mutation_pressure_policy": runtime_execution_policy().mutation_pressure_policy,
         "evals_per_second": (
             round(accounted_evaluation_count / elapsed, 6) if elapsed > 0 else None
         ),
@@ -1112,6 +1158,75 @@ def _worker_clamp_reason_counts(timing_rows: list[dict[str, object]]) -> dict[st
         for row in timing_rows
     )
     return dict(sorted(counts.items()))
+
+
+def _benchmark_slot_plan(
+    timing_rows: list[dict[str, object]],
+    *,
+    configured_slots_per_benchmark: int,
+) -> list[dict[str, object]]:
+    return [
+        {
+            "generation": int(row["generation"]),
+            "benchmark_name": str(row["benchmark_name"]),
+            "configured_slots": int(configured_slots_per_benchmark),
+            "completed_slots": int(row.get("trained_count", 0)) + int(row.get("reused_count", 0)),
+            "trained_slots": int(row.get("trained_count", 0)),
+            "reused_slots": int(row.get("reused_count", 0)),
+            "failed_slots": int(row.get("failed_count", 0)),
+            "state": "complete",
+        }
+        for row in sorted(timing_rows, key=lambda item: (int(item["generation"]), int(item["benchmark_order"])))
+    ]
+
+
+def _benchmark_slot_integrity(
+    timing_rows: list[dict[str, object]],
+    *,
+    accounted_evaluation_count: int,
+) -> dict[str, int | bool | str]:
+    completed_slots = sum(int(row.get("trained_count", 0)) + int(row.get("reused_count", 0)) for row in timing_rows)
+    failed_slots = sum(int(row.get("failed_count", 0)) for row in timing_rows)
+    matches = completed_slots == int(accounted_evaluation_count)
+    return {
+        "status": "complete" if matches else "mismatch",
+        "completed_slots": completed_slots,
+        "failed_slots": failed_slots,
+        "matches_evaluation_count": matches,
+    }
+
+
+def _write_status_artifact(
+    *,
+    run_dir: str | os.PathLike[str],
+    run_id: str,
+    config: RunConfig,
+    state: GenerationState,
+    next_generation: int,
+    completed: bool,
+    elapsed_seconds: float,
+) -> None:
+    path = Path(run_dir) / "status.json"
+    completed_benchmarks = sorted(state.raw_losses)
+    payload = {
+        "run_id": run_id,
+        "state": "completed" if completed else "running",
+        "next_generation": int(next_generation),
+        "total_generations": int(config.evolution.num_generations),
+        "evaluation_count": int(state.total_evaluations),
+        "completed_benchmarks": completed_benchmarks,
+        "completed_count": len(completed_benchmarks),
+        "remaining_count": max(0, _configured_benchmark_count(config) - len(completed_benchmarks)),
+        "elapsed_seconds": round(float(elapsed_seconds), 3),
+        "active_benchmark_family": state.active_benchmark_family,
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _configured_benchmark_count(config: RunConfig) -> int:
+    if config.benchmark_pool is not None:
+        return len(resolve_benchmark_pool_names(config.benchmark_pool))
+    return 1
 
 
 def _sampled_benchmark_order_by_generation(

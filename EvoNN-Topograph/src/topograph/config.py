@@ -91,6 +91,14 @@ class TrainingConfig(BaseModel):
         return int(v)
 
 
+# --- Runtime ---
+
+
+class RuntimeConfig(BaseModel):
+    backend: Literal["auto", "mlx", "numpy-fallback"] = "auto"
+    allow_fallback: bool = True
+
+
 # --- Early stopping ---
 
 
@@ -191,6 +199,7 @@ class RunConfig(BaseModel):
 
     evolution: EvolutionConfig = EvolutionConfig()
     training: TrainingConfig = TrainingConfig()
+    runtime: RuntimeConfig = RuntimeConfig()
     early_stopping: EarlyStoppingConfig | None = None
     quantization_schedule: list[QuantizationPhase] | None = None
     benchmark_pool: BenchmarkPoolConfig | None = None

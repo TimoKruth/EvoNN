@@ -62,6 +62,9 @@ def test_load_config_reads_yaml_and_validates_rotation_interval(tmp_path: Path):
     assert cfg.benchmark == "iris"
     assert cfg.training.epochs == 7
     assert cfg.benchmark_pool.rotation_interval == 2
+    assert RunConfig.model_validate(
+        {"runtime": {"backend": "numpy-fallback", "allow_fallback": False}}
+    ).runtime.backend == "numpy-fallback"
 
     with pytest.raises(ValueError):
         RunConfig.model_validate({"benchmark_pool": {"benchmarks": ["moons"], "rotation_interval": 0}})
@@ -203,7 +206,14 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
 
     cached_budget = sym._budget_manifest(
         cfg,
-        {"evaluation_count": 24, "cache_trained_count": 18, "cache_reused_count": 6},
+        {
+            "evaluation_count": 24,
+            "cache_trained_count": 18,
+            "cache_reused_count": 6,
+            "benchmark_slot_integrity": {"status": "complete"},
+            "topology_selection_policy": "fitness_plus_topology_diversity_elites",
+            "mutation_pressure_policy": "scheduled_topology_mutation_when_rates_do_not_fire",
+        },
         latest_gen=2,
         population_size=4,
     )
@@ -211,6 +221,9 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     assert cached_budget["cached_evaluations"] == 6
     assert cached_budget["actual_evaluations"] + cached_budget["cached_evaluations"] == 24
     assert cached_budget["partial_run"] is False
+    assert cached_budget["benchmark_slot_integrity"] == {"status": "complete"}
+    assert cached_budget["topology_selection_policy"] == "fitness_plus_topology_diversity_elites"
+    assert cached_budget["mutation_pressure_policy"] == "scheduled_topology_mutation_when_rates_do_not_fire"
 
     telemetry_none = sym._search_telemetry(RunConfig(training={"multi_fidelity": False}), {})
     assert telemetry_none is None
@@ -226,6 +239,11 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     )
     assert telemetry["qd_enabled"] is True
     assert telemetry["map_elites_fill_ratio"] == 0.5
+    telemetry_policy = sym._search_telemetry(
+        RunConfig(training={"multi_fidelity": False}),
+        {"topology_selection_policy": "fitness_plus_topology_diversity_elites"},
+    )
+    assert telemetry_policy["topology_selection_policy"] == "fitness_plus_topology_diversity_elites"
 
     rep = SimpleNamespace(
         enabled_layers=[],
@@ -377,7 +395,9 @@ def test_export_symbiosis_uses_recorded_runtime_metadata_in_manifest_and_summary
         "budget": {"evaluation_count": 4, "population_size": 2},
         "device": {
             "framework": "numpy-fallback",
+            "framework_requested": "auto",
             "framework_version": "fallback-1.2.3",
+            "framework_limitations": "correctness fallback",
             "precision_mode": "bf16",
         },
     }
@@ -400,7 +420,9 @@ def test_export_symbiosis_uses_recorded_runtime_metadata_in_manifest_and_summary
 
     summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["runtime_backend"] == "numpy-fallback"
+    assert summary["runtime_backend_requested"] == "auto"
     assert summary["runtime_version"] == "fallback-1.2.3"
+    assert summary["runtime_backend_limitations"] == "correctness fallback"
     assert summary["precision_mode"] == "bf16"
     assert summary["failure_patterns"] == {"failed": 1}
 
@@ -717,6 +739,7 @@ def test_cli_evolve_uses_coordinator(monkeypatch, tmp_path: Path):
         called["memory_limit"] = config.training.parallel_memory_fraction_limit
         called["reserved_mem"] = config.training.parallel_reserved_system_memory_bytes
         called["thread_limit"] = config.training.parallel_worker_thread_limit
+        called["runtime_backend"] = config.runtime.backend
         return GenerationState(generation=0, population=[])
 
     monkeypatch.setattr("topograph.pipeline.coordinator.run_evolution", fake_run_evolution)
@@ -743,6 +766,8 @@ def test_cli_evolve_uses_coordinator(monkeypatch, tmp_path: Path):
             "123456",
             "--parallel-worker-thread-limit",
             "2",
+            "--runtime-backend",
+            "numpy-fallback",
         ],
     )
     assert result.exit_code == 0
@@ -753,6 +778,7 @@ def test_cli_evolve_uses_coordinator(monkeypatch, tmp_path: Path):
     assert called["memory_limit"] == 0.4
     assert called["reserved_mem"] == 123456
     assert called["thread_limit"] == 2
+    assert called["runtime_backend"] == "numpy-fallback"
 
 
 def test_run_evolution_resumes_from_saved_snapshot(tmp_path: Path, monkeypatch):
