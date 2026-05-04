@@ -48,6 +48,7 @@ def write_report(run_dir: str | Path) -> Path:
         "",
     ]
     optional_missing = budget_meta.get("optional_missing_by_group") or {}
+    baseline_floor_evidence = budget_meta.get("baseline_floor_evidence") or {}
     if optional_missing:
         lines.extend(
             [
@@ -59,6 +60,29 @@ def write_report(run_dir: str | Path) -> Path:
         )
         for group, names in sorted(optional_missing.items()):
             lines.append(f"| {group} | {', '.join(sorted(names))} |")
+        lines.append("")
+
+    if baseline_floor_evidence:
+        lines.extend(
+            [
+                "## Baseline Floor Evidence",
+                "",
+                f"- Successful winner benchmarks: `{baseline_floor_evidence.get('successful_winner_count', 0)}`",
+                f"- Failed winner benchmarks: `{baseline_floor_evidence.get('failed_winner_count', 0)}`",
+                "",
+                "| Slice | Counts |",
+                "|---|---|",
+            ]
+        )
+        for label, key in [
+            ("Groups", "contender_trials_by_group"),
+            ("Families", "contender_trials_by_family"),
+            ("Backends", "contender_trials_by_backend"),
+            ("Budget modes", "contender_trials_by_budget_mode"),
+            ("Winner families", "winning_contenders_by_family"),
+        ]:
+            counts = baseline_floor_evidence.get(key) or {}
+            lines.append(f"| {label} | {_format_counts(counts)} |")
         lines.append("")
 
     lines.extend(
@@ -109,3 +133,9 @@ def write_report(run_dir: str | Path) -> Path:
     output_path = run_dir / "report.md"
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return output_path
+
+
+def _format_counts(counts: object) -> str:
+    if not isinstance(counts, dict) or not counts:
+        return "-"
+    return ", ".join(f"{key}: {value}" for key, value in sorted(counts.items()))

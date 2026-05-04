@@ -22,7 +22,7 @@ from evonn_shared.contracts import (
     ResultRecord,
     RunManifest,
 )
-from evonn_shared.manifests import benchmark_signature, fairness_manifest, write_json
+from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
 
 
 def export_symbiosis_contract(
@@ -202,15 +202,16 @@ def _resolve_native_name(entry, *, available_results: dict[str, dict[str, Any]])
 def _build_contract_summary(
     *, run: dict[str, Any], manifest: RunManifest, results: list[ResultRecord], budget_meta: dict[str, Any]
 ) -> dict[str, Any]:
-    successful = [record for record in results if record.status == "ok"]
-    metric_values = [float(record.metric_value) for record in successful if record.metric_value is not None]
-    parameter_counts = [int(record.parameter_count) for record in successful if record.parameter_count is not None]
-    qualities = [float(record.quality) for record in successful if record.quality is not None]
     failed = [record for record in results if record.status != "ok"]
-    failure_patterns: dict[str, int] = {}
-    for record in failed:
-        label = record.failure_reason or record.status or "unknown"
-        failure_patterns[label] = failure_patterns.get(label, 0) + 1
+    result_payloads = [record.model_dump(mode="json") for record in results]
+    core = summary_core_from_results(
+        results=result_payloads,
+        parameter_counts=[
+            int(record.parameter_count)
+            for record in results
+            if record.status == "ok" and record.parameter_count is not None
+        ],
+    )
     return {
         "system": "contenders",
         "run_id": manifest.run_id,
@@ -228,14 +229,12 @@ def _build_contract_summary(
         "runtime_backend": manifest.device.framework,
         "runtime_version": manifest.device.framework_version,
         "precision_mode": manifest.device.precision_mode,
-        "best_fitness": max(metric_values) if metric_values else None,
-        "median_parameter_count": _median_int(parameter_counts),
-        "median_benchmark_quality": _median_float(qualities),
-        "failure_count": len(failed),
-        "failure_patterns": failure_patterns,
-        "benchmarks_evaluated": len(results),
+        **core,
+        "successful_benchmarks": len(results) - len(failed),
         "optional_missing_by_group": budget_meta.get("optional_missing_by_group") or {},
         "optional_missing_count": int(budget_meta.get("optional_missing_count", 0)),
+        "backend_dispatch": budget_meta.get("backend_dispatch") or {},
+        "baseline_floor_evidence": budget_meta.get("baseline_floor_evidence") or {},
         "baseline_coverage": (
             manifest.baseline_coverage.model_dump(mode="json")
             if manifest.baseline_coverage is not None

@@ -2,6 +2,7 @@
 
 from evonn_contenders.contenders import (
     ContenderSpec,
+    backend_dispatch_metadata,
     benchmark_group,
     choose_best,
     contender_names_for_config,
@@ -12,6 +13,7 @@ from evonn_contenders.contenders import (
 
 __all__ = [
     "ContenderSpec",
+    "backend_dispatch_metadata",
     "benchmark_group",
     "choose_best",
     "contender_names_for_config",

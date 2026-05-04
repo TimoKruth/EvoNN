@@ -5,7 +5,7 @@ import pytest
 from evonn_contenders.benchmarks import get_benchmark
 from evonn_contenders.benchmarks.parity import ParityBenchmark, fallback_native_id
 from evonn_contenders.config import RunConfig
-from evonn_contenders.contender_pool import evaluate_contender, resolve_contenders
+from evonn_contenders.contender_pool import backend_dispatch_metadata, evaluate_contender, resolve_contenders
 from evonn_contenders.contenders.torch_models import build_cnn
 
 
@@ -102,6 +102,16 @@ def test_new_contender_names_resolve() -> None:
     assert resolve_contenders("tabular", ["linear_svc", "xgb_small", "lgbm_small", "catboost_small"])
     assert resolve_contenders("image", ["cnn_small"])
     assert resolve_contenders("language_modeling", ["transformer_lm_tiny"])
+
+
+def test_backend_dispatch_metadata_covers_configured_backends() -> None:
+    dispatch = backend_dispatch_metadata()
+
+    assert dispatch["sklearn_classifier"]["runner"] == "_run_classifier_backend"
+    assert dispatch["boosted_classifier"]["runner"] == "_run_classifier_backend"
+    assert dispatch["ngram_lm"]["runner"] == "_run_ngram_backend"
+    assert dispatch["torch_cnn"]["runtime_layer"] == "optional"
+    assert dispatch["torch_transformer_lm"]["runtime_layer"] == "optional"
 
 
 @pytest.mark.skipif(importlib.util.find_spec("xgboost") is None, reason="xgboost not installed")
