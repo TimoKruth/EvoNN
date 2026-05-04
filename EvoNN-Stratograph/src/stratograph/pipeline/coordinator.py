@@ -28,7 +28,7 @@ from stratograph.pipeline.evaluator import (
     TrainingArtifact,
     evaluate_candidate_with_state,
 )
-from stratograph.runtime.backends import resolve_runtime_backend_with_policy
+from stratograph.runtime.backends import resolve_runtime_backend_with_policy, runtime_execution_policy
 from stratograph.search import crossover_genomes, descriptor, mutate_genome, niche_key, novelty_score
 from stratograph.search.operators import MOTIF_LIBRARY
 from stratograph.storage import RunStore
@@ -66,6 +66,7 @@ def run_evolution(
     )
     variant_policy = _variant_policy(architecture_mode)
     completed_benchmarks: set[str] = set()
+    checkpoint: dict[str, object] = {}
     if resume and checkpoint_path.exists():
         checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
         completed_benchmarks = set(checkpoint.get("completed_benchmarks", []))
@@ -79,11 +80,20 @@ def run_evolution(
     )
 
     benchmark_names = config.benchmark_pool.benchmarks
+    configured_slots_per_benchmark = config.evolution.population_size * config.evolution.generations
     novelty_scores: list[float] = []
     occupied_niches: set[tuple[int, int, int, int]] = set()
     prior_budget_meta = store.load_budget_metadata(run_id) if resume else {}
-    scheduled_evaluation_slots = int(prior_budget_meta.get("evaluation_count", 0) or 0)
-    benchmark_load_failures = int(prior_budget_meta.get("benchmark_load_failures", 0) or 0)
+    prior_progress = prior_budget_meta or checkpoint
+    benchmark_slot_plan = _restore_benchmark_slot_plan(
+        prior_progress.get("benchmark_slot_plan"),
+        benchmark_names=benchmark_names,
+        configured_slots_per_benchmark=configured_slots_per_benchmark,
+    )
+    scheduled_evaluation_slots = int(prior_progress.get("evaluation_count", 0) or 0)
+    failed_evaluations = int(prior_progress.get("failed_evaluations", 0) or 0)
+    invalid_evaluations = int(prior_progress.get("invalid_evaluations", 0) or 0)
+    benchmark_load_failures = int(prior_progress.get("benchmark_load_failures", 0) or 0)
     _write_status(
         status_path,
         run_id=run_id,
@@ -91,6 +101,11 @@ def run_evolution(
         total_benchmarks=len(benchmark_names),
         completed_benchmarks=sorted(completed_benchmarks),
         state="running",
+        evaluation_count=scheduled_evaluation_slots,
+        failed_evaluations=failed_evaluations,
+        invalid_evaluations=invalid_evaluations,
+        benchmark_load_failures=benchmark_load_failures,
+        benchmark_slot_plan=benchmark_slot_plan,
     )
     for benchmark_name in benchmark_names:
         if benchmark_name in completed_benchmarks:
@@ -102,6 +117,7 @@ def run_evolution(
             data = spec.load_data(seed=config.seed)
         except Exception as exc:
             benchmark_load_failures += 1
+            invalid_evaluations += 1
             failed_genome = _make_candidate(
                 benchmark_name=benchmark_name,
                 task=spec.task,
@@ -137,8 +153,44 @@ def run_evolution(
                     "failure_reason": str(exc),
                 },
             )
+            completed_benchmarks.add(benchmark_name)
+            _update_benchmark_slot_plan(
+                benchmark_slot_plan,
+                benchmark_name=benchmark_name,
+                state="load_failed",
+                completed_slots=0,
+                failed_slots=0,
+                invalid_slots=1,
+            )
+            _write_checkpoint(
+                checkpoint_path,
+                run_id=run_id,
+                architecture_mode=architecture_mode,
+                completed_benchmarks=sorted(completed_benchmarks),
+                total_benchmarks=len(benchmark_names),
+                evaluation_count=scheduled_evaluation_slots,
+                failed_evaluations=failed_evaluations,
+                invalid_evaluations=invalid_evaluations,
+                benchmark_load_failures=benchmark_load_failures,
+                benchmark_slot_plan=benchmark_slot_plan,
+            )
+            _write_status(
+                status_path,
+                run_id=run_id,
+                architecture_mode=architecture_mode,
+                total_benchmarks=len(benchmark_names),
+                completed_benchmarks=sorted(completed_benchmarks),
+                state="running",
+                evaluation_count=scheduled_evaluation_slots,
+                failed_evaluations=failed_evaluations,
+                invalid_evaluations=invalid_evaluations,
+                benchmark_load_failures=benchmark_load_failures,
+                benchmark_slot_plan=benchmark_slot_plan,
+            )
             continue
         benchmark_archive: list[tuple[float, float, float, float]] = []
+        benchmark_started_slots = scheduled_evaluation_slots
+        benchmark_started_failed = failed_evaluations
         population = [
             _enforce_architecture_mode(
                 _make_candidate(
@@ -185,6 +237,8 @@ def run_evolution(
                         failure_reason=str(exc),
                     )
                     trained_states[genome.genome_id] = None
+                if result.status != "ok":
+                    failed_evaluations += 1
                 desc = descriptor(genome)
                 score = novelty_score(desc, benchmark_archive)
                 benchmark_archive.append(desc)
@@ -242,12 +296,25 @@ def run_evolution(
         )
         _write_best_genome(run_dir, benchmark_name, best_genome, best_result, architecture_mode)
         completed_benchmarks.add(benchmark_name)
+        _update_benchmark_slot_plan(
+            benchmark_slot_plan,
+            benchmark_name=benchmark_name,
+            state="complete",
+            completed_slots=scheduled_evaluation_slots - benchmark_started_slots,
+            failed_slots=failed_evaluations - benchmark_started_failed,
+            invalid_slots=0,
+        )
         _write_checkpoint(
             checkpoint_path,
             run_id=run_id,
             architecture_mode=architecture_mode,
             completed_benchmarks=sorted(completed_benchmarks),
             total_benchmarks=len(benchmark_names),
+            evaluation_count=scheduled_evaluation_slots,
+            failed_evaluations=failed_evaluations,
+            invalid_evaluations=invalid_evaluations,
+            benchmark_load_failures=benchmark_load_failures,
+            benchmark_slot_plan=benchmark_slot_plan,
         )
         _write_status(
             status_path,
@@ -256,9 +323,15 @@ def run_evolution(
             total_benchmarks=len(benchmark_names),
             completed_benchmarks=sorted(completed_benchmarks),
             state="running",
+            evaluation_count=scheduled_evaluation_slots,
+            failed_evaluations=failed_evaluations,
+            invalid_evaluations=invalid_evaluations,
+            benchmark_load_failures=benchmark_load_failures,
+            benchmark_slot_plan=benchmark_slot_plan,
         )
 
     wall_clock_seconds = time.perf_counter() - started
+    partial_run = len(completed_benchmarks) < len(benchmark_names)
     store.save_budget_metadata(
         run_id=run_id,
         payload={
@@ -268,9 +341,9 @@ def run_evolution(
             ),
             "actual_evaluations": scheduled_evaluation_slots,
             "cached_evaluations": 0,
-            "failed_evaluations": 0,
-            "invalid_evaluations": 0,
-            "partial_run": False,
+            "failed_evaluations": failed_evaluations,
+            "invalid_evaluations": invalid_evaluations,
+            "partial_run": partial_run,
             "evaluation_semantics": (
                 "one candidate evaluation counted for each genome evaluated on each benchmark; "
                 "evaluation_count = population_size * generations * benchmark_count"
@@ -282,12 +355,23 @@ def run_evolution(
             "runtime_backend": runtime_selection.resolved_backend,
             "runtime_version": runtime_selection.runtime_version,
             "runtime_backend_limitations": runtime_selection.backend_limitations,
+            "runtime_execution_policy": runtime_execution_policy().as_metadata(
+                resolved_backend=runtime_selection.resolved_backend
+            ),
             "precision_mode": PRECISION_MODE,
             "architecture_mode": architecture_mode,
             "benchmark_load_failures": benchmark_load_failures,
             "completed_benchmark_count": len(completed_benchmarks),
+            "benchmark_slot_plan": benchmark_slot_plan,
+            "benchmark_slot_integrity": _benchmark_slot_integrity(
+                benchmark_slot_plan,
+                scheduled_evaluation_slots=scheduled_evaluation_slots,
+            ),
             "allow_clone_mutation": variant_policy["allow_clone_mutation"],
             "motif_bias": variant_policy["motif_bias"],
+            "parent_selection_strategy": _parent_selection_strategy(),
+            "mutation_pressure": _mutation_pressure_strategy(),
+            "hierarchy_selection_policy": _hierarchy_selection_policy(architecture_mode),
             "novelty_archive_final_size": len(novelty_scores),
             "novelty_score_mean": (sum(novelty_scores) / len(novelty_scores)) if novelty_scores else 0.0,
             "novelty_score_max": max(novelty_scores, default=0.0),
@@ -297,8 +381,6 @@ def run_evolution(
             "qd_enabled": True,
         },
     )
-    store.close()
-    write_report(run_dir)
     _write_status(
         status_path,
         run_id=run_id,
@@ -306,7 +388,14 @@ def run_evolution(
         total_benchmarks=len(benchmark_names),
         completed_benchmarks=sorted(completed_benchmarks),
         state="completed",
+        evaluation_count=scheduled_evaluation_slots,
+        failed_evaluations=failed_evaluations,
+        invalid_evaluations=invalid_evaluations,
+        benchmark_load_failures=benchmark_load_failures,
+        benchmark_slot_plan=benchmark_slot_plan,
     )
+    store.close()
+    write_report(run_dir)
     return run_dir
 
 
@@ -436,10 +525,10 @@ def _next_population(
 ) -> tuple[list[HierarchicalGenome], dict[str, TrainingArtifact | None]]:
     scored = sorted(
         evaluated,
-        key=lambda item: _selection_key(item[1], item[2]),
+        key=lambda item: _selection_key(item[1], item[2], item[0], architecture_mode),
         reverse=True,
     )
-    elites = [item[0] for item in scored[: max(2, min(len(scored), population_size // 2 or 1))]]
+    elites = _select_parent_pool(scored, population_size=population_size, architecture_mode=architecture_mode)
     rng = random.Random(seed * 100_000 + generation * 97 + len(benchmark_name))
     next_population: list[HierarchicalGenome] = []
     next_states: dict[str, TrainingArtifact | None] = {}
@@ -447,7 +536,7 @@ def _next_population(
         candidate_id = f"{benchmark_name}_seed_{seed}_gen_{generation+1}_cand_{index}"
         if len(elites) >= 2 and index % 3 == 0:
             left = elites[index % len(elites)]
-            right = elites[(index + 1) % len(elites)]
+            right = _select_contrasting_elite(left, elites)
             child = crossover_genomes(
                 left,
                 right,
@@ -455,6 +544,12 @@ def _next_population(
                 candidate_id=candidate_id,
                 allow_clone_mutation=allow_clone_mutation,
                 motif_bias=motif_bias,
+                preferred_mutation_modes=_offspring_mutation_modes(
+                    index,
+                    architecture_mode=architecture_mode,
+                    allow_clone_mutation=allow_clone_mutation,
+                    motif_bias=motif_bias,
+                ),
             )
             inherited_state = trained_states.get(left.genome_id) or trained_states.get(right.genome_id)
         else:
@@ -473,6 +568,12 @@ def _next_population(
                 candidate_id=candidate_id,
                 allow_clone_mutation=allow_clone_mutation,
                 motif_bias=motif_bias,
+                preferred_modes=_offspring_mutation_modes(
+                    index,
+                    architecture_mode=architecture_mode,
+                    allow_clone_mutation=allow_clone_mutation,
+                    motif_bias=motif_bias,
+                ),
             )
             inherited_state = trained_states.get(parent.genome_id)
         child = _enforce_architecture_mode(child, architecture_mode)
@@ -481,10 +582,118 @@ def _next_population(
     return next_population, next_states
 
 
-def _selection_key(result: EvaluationRecord, novelty: float) -> float:
+def _select_parent_pool(
+    scored: list[tuple[HierarchicalGenome, EvaluationRecord, float]],
+    *,
+    population_size: int,
+    architecture_mode: str,
+) -> list[HierarchicalGenome]:
+    minimum_elites = 3 if architecture_mode.startswith("two_level_shared") and population_size >= 4 else 2
+    elite_target = min(len(scored), max(minimum_elites, population_size // 2 or 1))
+    if elite_target <= 0:
+        return []
+
+    chosen: list[HierarchicalGenome] = []
+    chosen_ids: set[str] = set()
+
+    def add_candidate(genome: HierarchicalGenome | None) -> None:
+        if genome is None or genome.genome_id in chosen_ids or len(chosen) >= elite_target:
+            return
+        chosen.append(genome)
+        chosen_ids.add(genome.genome_id)
+
+    add_candidate(scored[0][0] if scored else None)
+
+    if architecture_mode.startswith("two_level_shared"):
+        reuse_leader = max(
+            (genome for genome, record, _ in scored if record.status == "ok"),
+            key=lambda genome: (genome.reuse_ratio, genome.macro_depth, -len(genome.cell_library)),
+            default=None,
+        )
+        add_candidate(reuse_leader)
+
+    niche_leaders: dict[tuple[int, int, int, int], tuple[HierarchicalGenome, EvaluationRecord, float]] = {}
+    for genome, record, novelty in scored:
+        niche = niche_key(descriptor(genome))
+        current = niche_leaders.get(niche)
+        if current is None or _selection_key(record, novelty, genome, architecture_mode) > _selection_key(
+            current[1], current[2], current[0], architecture_mode
+        ):
+            niche_leaders[niche] = (genome, record, novelty)
+    for genome, _, _ in sorted(
+        niche_leaders.values(),
+        key=lambda item: _selection_key(item[1], item[2], item[0], architecture_mode),
+        reverse=True,
+    ):
+        add_candidate(genome)
+
+    for genome, _, _ in scored:
+        add_candidate(genome)
+    return chosen
+
+
+def _select_contrasting_elite(anchor: HierarchicalGenome, elites: list[HierarchicalGenome]) -> HierarchicalGenome:
+    anchor_desc = descriptor(anchor)
+    best_partner = anchor
+    best_distance = float("-inf")
+    for candidate in elites:
+        if candidate.genome_id == anchor.genome_id:
+            continue
+        distance = sum((left - right) ** 2 for left, right in zip(anchor_desc, descriptor(candidate)))
+        if distance > best_distance:
+            best_distance = distance
+            best_partner = candidate
+    return best_partner
+
+
+def _selection_key(
+    result: EvaluationRecord,
+    novelty: float,
+    genome: HierarchicalGenome | None = None,
+    architecture_mode: str = "",
+) -> float:
     if result.status != "ok":
         return float("-inf")
-    return result.quality + novelty * 0.05
+    hierarchy_bonus = 0.0
+    if genome is not None and architecture_mode.startswith("two_level_shared"):
+        hierarchy_bonus = min(0.035, genome.reuse_ratio * 0.025 + genome.macro_depth * 0.0015)
+    return result.quality + novelty * 0.05 + hierarchy_bonus
+
+
+def _offspring_mutation_modes(
+    index: int,
+    *,
+    architecture_mode: str,
+    allow_clone_mutation: bool,
+    motif_bias: bool,
+) -> tuple[str, ...] | None:
+    if not architecture_mode.startswith("two_level_shared"):
+        return None
+    if index % 4 == 1 and allow_clone_mutation:
+        return ("specialize_cell", "clone_cell")
+    if index % 4 == 2 and motif_bias:
+        return ("motif_rewrite", "activation")
+    if index % 4 == 3:
+        return ("add_skip_edge", "rewire_macro")
+    return ("add_macro", "add_skip_edge")
+
+
+def _parent_selection_strategy() -> str:
+    return "benchmark_leader_plus_reuse_and_niche_elites"
+
+
+def _mutation_pressure_strategy() -> str:
+    return "contrasting_elite_crossover_with_scheduled_reuse_motif_and_topology_mutation"
+
+
+def _hierarchy_selection_policy(architecture_mode: str) -> str:
+    if architecture_mode.startswith("two_level_shared"):
+        return "shared_variants_preserve_reuse_and_niche_diversity"
+    if architecture_mode == "two_level_unshared":
+        return "unshared_cells_per_macro_node"
+    if architecture_mode == "flat_macro":
+        return "flat_macro_linear_cells"
+    return "unknown"
 
 
 def _artifact_compatible(genome: HierarchicalGenome, artifact: TrainingArtifact | None) -> bool:
@@ -616,6 +825,67 @@ def _enforce_architecture_mode(genome: HierarchicalGenome, architecture_mode: st
     return genome
 
 
+def _restore_benchmark_slot_plan(
+    payload: object,
+    *,
+    benchmark_names: list[str],
+    configured_slots_per_benchmark: int,
+) -> list[dict[str, int | str]]:
+    existing = {
+        str(item.get("benchmark_name")): dict(item)
+        for item in (payload or [])
+        if isinstance(item, dict) and item.get("benchmark_name")
+    }
+    plan: list[dict[str, int | str]] = []
+    for benchmark_name in benchmark_names:
+        item = existing.get(benchmark_name, {})
+        plan.append(
+            {
+                "benchmark_name": benchmark_name,
+                "configured_slots": int(item.get("configured_slots", configured_slots_per_benchmark) or 0),
+                "completed_slots": int(item.get("completed_slots", 0) or 0),
+                "failed_slots": int(item.get("failed_slots", 0) or 0),
+                "invalid_slots": int(item.get("invalid_slots", 0) or 0),
+                "state": str(item.get("state", "pending")),
+            }
+        )
+    return plan
+
+
+def _update_benchmark_slot_plan(
+    plan: list[dict[str, int | str]],
+    *,
+    benchmark_name: str,
+    state: str,
+    completed_slots: int,
+    failed_slots: int,
+    invalid_slots: int,
+) -> None:
+    for item in plan:
+        if item["benchmark_name"] == benchmark_name:
+            item["state"] = state
+            item["completed_slots"] = int(completed_slots)
+            item["failed_slots"] = int(failed_slots)
+            item["invalid_slots"] = int(invalid_slots)
+            return
+
+
+def _benchmark_slot_integrity(
+    plan: list[dict[str, int | str]],
+    *,
+    scheduled_evaluation_slots: int,
+) -> dict[str, int | bool]:
+    completed_slots = sum(int(item.get("completed_slots", 0) or 0) for item in plan)
+    failed_slots = sum(int(item.get("failed_slots", 0) or 0) for item in plan)
+    invalid_slots = sum(int(item.get("invalid_slots", 0) or 0) for item in plan)
+    return {
+        "completed_slots": completed_slots,
+        "failed_slots": failed_slots,
+        "invalid_slots": invalid_slots,
+        "matches_evaluation_count": completed_slots == scheduled_evaluation_slots,
+    }
+
+
 def _write_checkpoint(
     path: Path,
     *,
@@ -623,6 +893,11 @@ def _write_checkpoint(
     architecture_mode: str,
     completed_benchmarks: list[str],
     total_benchmarks: int,
+    evaluation_count: int = 0,
+    failed_evaluations: int = 0,
+    invalid_evaluations: int = 0,
+    benchmark_load_failures: int = 0,
+    benchmark_slot_plan: list[dict[str, int | str]] | None = None,
 ) -> None:
     path.write_text(
         json.dumps(
@@ -633,6 +908,11 @@ def _write_checkpoint(
                 "completed_count": len(completed_benchmarks),
                 "remaining_count": max(0, total_benchmarks - len(completed_benchmarks)),
                 "total_benchmarks": total_benchmarks,
+                "evaluation_count": evaluation_count,
+                "failed_evaluations": failed_evaluations,
+                "invalid_evaluations": invalid_evaluations,
+                "benchmark_load_failures": benchmark_load_failures,
+                "benchmark_slot_plan": benchmark_slot_plan or [],
             },
             indent=2,
         ),
@@ -648,6 +928,11 @@ def _write_status(
     total_benchmarks: int,
     completed_benchmarks: list[str],
     state: str,
+    evaluation_count: int = 0,
+    failed_evaluations: int = 0,
+    invalid_evaluations: int = 0,
+    benchmark_load_failures: int = 0,
+    benchmark_slot_plan: list[dict[str, int | str]] | None = None,
 ) -> None:
     path.write_text(
         json.dumps(
@@ -659,6 +944,11 @@ def _write_status(
                 "completed_benchmarks": completed_benchmarks,
                 "completed_count": len(completed_benchmarks),
                 "remaining_count": max(0, total_benchmarks - len(completed_benchmarks)),
+                "evaluation_count": evaluation_count,
+                "failed_evaluations": failed_evaluations,
+                "invalid_evaluations": invalid_evaluations,
+                "benchmark_load_failures": benchmark_load_failures,
+                "benchmark_slot_plan": benchmark_slot_plan or [],
             },
             indent=2,
         ),

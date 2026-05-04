@@ -18,7 +18,7 @@ from sklearn.preprocessing import StandardScaler
 from stratograph.benchmarks.spec import BenchmarkSpec
 from stratograph.genome import HierarchicalGenome
 from stratograph.runtime import compile_genome
-from stratograph.runtime.backends import resolve_runtime_backend
+from stratograph.runtime.backends import resolve_runtime_backend, runtime_execution_policy
 
 try:  # pragma: no cover - exercised on MLX-capable hosts
     import mlx
@@ -345,7 +345,7 @@ def _predict_classification_mlx(
         y_train,
         test_size=0.2 if len(y_train) >= 40 else 0.25,
         random_state=42,
-        stratify=y_train,
+        stratify=_safe_stratify_labels(y_train),
     )
     scaler = StandardScaler(with_mean=True, with_std=True)
     fit_x_s = scaler.fit_transform(fit_x).astype(np.float32)
@@ -370,7 +370,7 @@ def _predict_classification_mlx(
 
     best_snapshot = extract_weights(model)
     best_score = float("-inf")
-    train_steps = max(6 if spec.source == "image" else 10, epochs * (6 if spec.source == "image" else 10))
+    train_steps = _classifier_train_steps(spec, epochs)
 
     for epoch_index in range(train_steps):
         for batch_x, batch_y in _iter_batches(fit_x_s, fit_y_i, batch_size=max(16, batch_size), seed=epoch_index):
@@ -422,12 +422,13 @@ def _evaluate_language_modeling_mlx(
     val_repr = val_encoded.reshape(-1, val_encoded.shape[-1])
     train_targets = y_train.reshape(-1).astype(np.int32)
     val_targets = y_val.reshape(-1).astype(np.int32)
-    if len(train_repr) > 24_576:
-        train_repr = train_repr[:24_576]
-        train_targets = train_targets[:24_576]
-    if len(val_repr) > 8_192:
-        val_repr = val_repr[:8_192]
-        val_targets = val_targets[:8_192]
+    policy = runtime_execution_policy()
+    if len(train_repr) > policy.lm_train_token_cap:
+        train_repr = train_repr[: policy.lm_train_token_cap]
+        train_targets = train_targets[: policy.lm_train_token_cap]
+    if len(val_repr) > policy.lm_val_token_cap:
+        val_repr = val_repr[: policy.lm_val_token_cap]
+        val_targets = val_targets[: policy.lm_val_token_cap]
 
     feature_dim = int(train_repr.shape[1])
     vocab_size = int(max(train_targets.max(initial=0), val_targets.max(initial=0), genome.output_dim - 1) + 1)
@@ -443,7 +444,7 @@ def _evaluate_language_modeling_mlx(
 
     best_snapshot = extract_weights(model)
     best_loss = float("inf")
-    train_steps = max(8, epochs * 10)
+    train_steps = _lm_train_steps(epochs)
 
     for epoch_index in range(train_steps):
         for batch_x, batch_y in _iter_batches(train_repr, train_targets, batch_size=max(64, batch_size * 2), seed=epoch_index):
@@ -549,7 +550,7 @@ def _predict_classification_numpy(
         y_train,
         test_size=0.2 if len(y_train) >= 40 else 0.25,
         random_state=42,
-        stratify=y_train,
+        stratify=_safe_stratify_labels(y_train),
     )
     scaler = StandardScaler(with_mean=True, with_std=True)
     fit_x_s = scaler.fit_transform(fit_x).astype(np.float32)
@@ -570,7 +571,7 @@ def _predict_classification_numpy(
     )
     best_params = _copy_params_numpy(params)
     best_score = float("-inf")
-    train_steps = max(6 if spec.source == "image" else 10, epochs * (6 if spec.source == "image" else 10))
+    train_steps = _classifier_train_steps(spec, epochs)
     step_lr = max(0.0025, learning_rate * (4.0 if spec.source == "image" else 6.0))
 
     for epoch_index in range(train_steps):
@@ -627,12 +628,13 @@ def _evaluate_language_modeling_numpy(
     val_repr = val_encoded.reshape(-1, val_encoded.shape[-1])
     train_targets = y_train.reshape(-1).astype(np.int64)
     val_targets = y_val.reshape(-1).astype(np.int64)
-    if len(train_repr) > 24_576:
-        train_repr = train_repr[:24_576]
-        train_targets = train_targets[:24_576]
-    if len(val_repr) > 8_192:
-        val_repr = val_repr[:8_192]
-        val_targets = val_targets[:8_192]
+    policy = runtime_execution_policy()
+    if len(train_repr) > policy.lm_train_token_cap:
+        train_repr = train_repr[: policy.lm_train_token_cap]
+        train_targets = train_targets[: policy.lm_train_token_cap]
+    if len(val_repr) > policy.lm_val_token_cap:
+        val_repr = val_repr[: policy.lm_val_token_cap]
+        val_targets = val_targets[: policy.lm_val_token_cap]
 
     feature_dim = int(train_repr.shape[1])
     vocab_size = int(max(train_targets.max(initial=0), val_targets.max(initial=0), genome.output_dim - 1) + 1)
@@ -644,7 +646,7 @@ def _evaluate_language_modeling_numpy(
     )
     best_params = _copy_params_numpy(params)
     best_loss = float("inf")
-    train_steps = max(8, epochs * 10)
+    train_steps = _lm_train_steps(epochs)
     step_lr = max(0.002, learning_rate * 10.0)
 
     for epoch_index in range(train_steps):
@@ -865,6 +867,26 @@ def _classifier_hidden_dim(spec: BenchmarkSpec, genome: HierarchicalGenome, feat
     return max(16, min(hidden_cap, base + depth_bonus, target))
 
 
+def _classifier_train_steps(spec: BenchmarkSpec, epochs: int) -> int:
+    policy = runtime_execution_policy()
+    floor = policy.image_classifier_step_floor if spec.source == "image" else policy.classifier_step_floor
+    return max(floor, epochs * floor)
+
+
+def _lm_train_steps(epochs: int) -> int:
+    policy = runtime_execution_policy()
+    return max(policy.lm_step_floor, epochs * 10)
+
+
+def _safe_stratify_labels(labels: np.ndarray) -> np.ndarray | None:
+    values, counts = np.unique(labels, return_counts=True)
+    if len(values) <= 1:
+        return None
+    if int(counts.min()) < 2:
+        return None
+    return labels
+
+
 def _iter_batches(
     x: np.ndarray,
     y: np.ndarray,
@@ -883,10 +905,11 @@ def _cap_data(
     spec: BenchmarkSpec,
     data: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    policy = runtime_execution_policy()
     x_train, y_train, x_val, y_val = data
     if spec.task == "language_modeling":
-        train_cap = min(len(x_train), spec.max_train_samples or 2048)
-        val_cap = min(len(x_val), spec.max_val_samples or 512)
+        train_cap = min(len(x_train), spec.max_train_samples or policy.lm_default_train_cap)
+        val_cap = min(len(x_val), spec.max_val_samples or policy.lm_default_val_cap)
         return (
             x_train[:train_cap],
             y_train[:train_cap],
@@ -895,17 +918,40 @@ def _cap_data(
         )
 
     if spec.source == "image":
-        train_cap = 768
-        val_cap = 384
+        train_cap = policy.image_train_cap
+        val_cap = policy.image_val_cap
     elif spec.source == "openml":
-        train_cap = 2048
-        val_cap = 1024
+        train_cap = policy.openml_train_cap
+        val_cap = policy.openml_val_cap
     else:
-        train_cap = 1024
-        val_cap = 512
+        train_cap = policy.classification_train_cap
+        val_cap = policy.classification_val_cap
+    if spec.task == "classification":
+        train_index = _balanced_prefix_indices(y_train, min(len(y_train), train_cap))
+        val_index = _balanced_prefix_indices(y_val, min(len(y_val), val_cap))
+        return x_train[train_index], y_train[train_index], x_val[val_index], y_val[val_index]
     return (
         x_train[: min(len(x_train), train_cap)],
         y_train[: min(len(y_train), train_cap)],
         x_val[: min(len(x_val), val_cap)],
         y_val[: min(len(y_val), val_cap)],
     )
+
+
+def _balanced_prefix_indices(labels: np.ndarray, cap: int) -> np.ndarray:
+    """Return deterministic class-balanced capped indices without changing budget semantics."""
+    if cap >= len(labels):
+        return np.arange(len(labels))
+    classes = np.unique(labels)
+    if len(classes) <= 1:
+        return np.arange(cap)
+    per_class = max(1, cap // len(classes))
+    selected: list[int] = []
+    leftovers: list[int] = []
+    for label in classes:
+        indices = np.flatnonzero(labels == label)
+        selected.extend(indices[:per_class].tolist())
+        leftovers.extend(indices[per_class:].tolist())
+    if len(selected) < cap:
+        selected.extend(leftovers[: cap - len(selected)])
+    return np.asarray(sorted(selected[:cap]), dtype=np.int64)

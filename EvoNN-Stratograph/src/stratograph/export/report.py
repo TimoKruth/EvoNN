@@ -12,12 +12,14 @@ from stratograph.storage import RunStore
 
 def load_runtime_metadata(budget_meta: dict[str, Any]) -> dict[str, str]:
     """Normalize persisted runtime metadata for CLI/report/export surfaces."""
+    runtime_policy = budget_meta.get("runtime_execution_policy") or {}
     return {
         "requested_runtime_backend": str(budget_meta.get("runtime_backend_requested") or "auto"),
         "runtime_backend": str(budget_meta.get("runtime_backend") or "unknown"),
         "runtime_version": str(budget_meta.get("runtime_version") or "unknown"),
         "precision_mode": str(budget_meta.get("precision_mode") or "fp32"),
         "runtime_backend_limitations": str(budget_meta.get("runtime_backend_limitations") or ""),
+        "runtime_policy_name": str(runtime_policy.get("runtime_policy_name") or "unknown"),
     }
 
 
@@ -55,6 +57,8 @@ def load_report_context(run_dir: str | Path) -> dict[str, Any]:
             best_by_benchmark[benchmark_name] = record
     best_results = sorted(best_by_benchmark.values(), key=quality_key, reverse=True)
     representative_genome = _select_representative_genome(genomes, best_results)
+    hierarchy_leaders = summarize_hierarchy_leaders(genomes, representative_genome=representative_genome)
+    hierarchy_evidence = summarize_hierarchy_evidence(genomes)
 
     return {
         "run_dir": run_dir,
@@ -71,6 +75,8 @@ def load_report_context(run_dir: str | Path) -> dict[str, Any]:
         "skipped_results": skipped_results,
         "best_results": best_results,
         "representative_genome": representative_genome,
+        "hierarchy_leaders": hierarchy_leaders,
+        "hierarchy_evidence": hierarchy_evidence,
     }
 
 
@@ -94,18 +100,115 @@ def _select_representative_genome(
         payload_record = genomes_by_id.get(str(genome_id))
         if payload_record is None:
             continue
-        try:
-            return dict_to_genome(payload_record["payload"])
-        except Exception:
-            continue
+        decoded = _decode_genome_payload(payload_record)
+        if decoded is not None:
+            return decoded
 
     for record in genomes:
-        try:
-            return dict_to_genome(record["payload"])
-        except Exception:
-            continue
+        decoded = _decode_genome_payload(record)
+        if decoded is not None:
+            return decoded
 
     return None
+
+
+def _decode_genome_payload(record: dict[str, Any]) -> Any | None:
+    try:
+        return dict_to_genome(record["payload"])
+    except Exception:
+        return None
+
+
+def summarize_hierarchy_leaders(
+    genomes: list[dict[str, Any]],
+    *,
+    representative_genome: Any | None = None,
+) -> dict[str, dict[str, Any]]:
+    decoded: list[Any] = []
+    for record in genomes:
+        genome = _decode_genome_payload(record)
+        if genome is not None:
+            decoded.append(genome)
+    if representative_genome is not None and all(genome.genome_id != representative_genome.genome_id for genome in decoded):
+        decoded.append(representative_genome)
+    if not decoded:
+        return {}
+
+    def _leader_payload(genome: Any, value: float | int, notes: str) -> dict[str, Any]:
+        return {
+            "genome_id": genome.genome_id,
+            "value": float(value) if isinstance(value, float) else value,
+            "notes": notes,
+        }
+
+    highest_reuse = max(decoded, key=lambda genome: (genome.reuse_ratio, genome.macro_depth, -len(genome.cell_library)))
+    deepest_macro = max(decoded, key=lambda genome: (genome.macro_depth, genome.reuse_ratio, len(genome.macro_nodes)))
+    largest_cell_library = max(decoded, key=lambda genome: (len(genome.cell_library), genome.reuse_ratio, genome.macro_depth))
+
+    leaders = {
+        "highest_reuse": _leader_payload(
+            highest_reuse,
+            highest_reuse.reuse_ratio,
+            f"cell_library={len(highest_reuse.cell_library)} macro_depth={highest_reuse.macro_depth}",
+        ),
+        "deepest_macro": _leader_payload(
+            deepest_macro,
+            deepest_macro.macro_depth,
+            f"reuse_ratio={deepest_macro.reuse_ratio:.4f} macro_nodes={len(deepest_macro.macro_nodes)}",
+        ),
+        "largest_cell_library": _leader_payload(
+            largest_cell_library,
+            len(largest_cell_library.cell_library),
+            f"reuse_ratio={largest_cell_library.reuse_ratio:.4f} avg_cell_depth={largest_cell_library.average_cell_depth:.2f}",
+        ),
+    }
+    if representative_genome is not None:
+        leaders["representative"] = _leader_payload(
+            representative_genome,
+            representative_genome.reuse_ratio,
+            f"macro_depth={representative_genome.macro_depth} avg_cell_depth={representative_genome.average_cell_depth:.2f}",
+        )
+    return leaders
+
+
+def summarize_hierarchy_evidence(genomes: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize hierarchy-specific signals across stored winner genomes."""
+    decoded = [genome for record in genomes if (genome := _decode_genome_payload(record)) is not None]
+    if not decoded:
+        return {
+            "genome_count": 0,
+            "mean_reuse_ratio": 0.0,
+            "max_reuse_ratio": 0.0,
+            "mean_macro_depth": 0.0,
+            "mean_cell_library_size": 0.0,
+            "unique_motif_count": 0,
+            "repeated_motif_count": 0,
+        }
+
+    motif_counts: Counter[str] = Counter()
+    for genome in decoded:
+        used_cell_ids = {node.cell_id for node in genome.macro_nodes}
+        for cell_id in used_cell_ids:
+            cell = genome.cell_library[cell_id]
+            motif_counts[_cell_signature(cell)] += 1
+
+    return {
+        "genome_count": len(decoded),
+        "mean_reuse_ratio": sum(genome.reuse_ratio for genome in decoded) / len(decoded),
+        "max_reuse_ratio": max(genome.reuse_ratio for genome in decoded),
+        "mean_macro_depth": sum(genome.macro_depth for genome in decoded) / len(decoded),
+        "mean_cell_library_size": sum(len(genome.cell_library) for genome in decoded) / len(decoded),
+        "unique_motif_count": len(motif_counts),
+        "repeated_motif_count": sum(1 for count in motif_counts.values() if count > 1),
+    }
+
+
+def _cell_signature(cell: Any) -> str:
+    node_sig = ",".join(f"{node.kind.value}:{node.activation.value}:{node.width}" for node in cell.nodes)
+    edge_sig = ",".join(
+        f"{edge.source}->{edge.target}" for edge in sorted(cell.edges, key=lambda item: (item.source, item.target))
+    )
+    return f"{node_sig}|{edge_sig}"
 
 
 
@@ -159,6 +262,8 @@ def write_report(run_dir: str | Path) -> Path:
     skipped_results = context["skipped_results"]
     best_results = context["best_results"]
     representative_genome = context["representative_genome"]
+    hierarchy_leaders = context["hierarchy_leaders"]
+    hierarchy_evidence = context["hierarchy_evidence"]
     failure_patterns = summarize_failure_patterns(non_ok_results)
 
     lines = [
@@ -171,6 +276,7 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Runtime: `{runtime_meta['runtime_backend']}`",
         f"- Requested Runtime: `{runtime_meta['requested_runtime_backend']}`",
         f"- Runtime Version: `{runtime_meta['runtime_version']}`",
+        f"- Runtime Policy: `{runtime_meta['runtime_policy_name']}`",
         f"- Precision Mode: `{runtime_meta['precision_mode']}`",
         f"- Architecture Mode: `{budget_meta.get('architecture_mode', 'unknown')}`",
         f"- Benchmarks: `{len(results)}`",
@@ -184,6 +290,8 @@ def write_report(run_dir: str | Path) -> Path:
         f"- Occupied Niches: `{budget_meta.get('map_elites_occupied_niches', 0)}`",
         f"- Parent Selection: `{budget_meta.get('parent_selection_strategy', 'unknown')}`",
         f"- Mutation Pressure: `{budget_meta.get('mutation_pressure', 'unknown')}`",
+        f"- Hierarchy Policy: `{budget_meta.get('hierarchy_selection_policy', 'unknown')}`",
+        f"- Slot Integrity: `{(budget_meta.get('benchmark_slot_integrity') or {}).get('matches_evaluation_count', 'unknown')}`",
     ]
     if context["status_path"].exists():
         lines.append(f"- Status Artifact: `{context['status_path'].name}`")
@@ -206,6 +314,52 @@ def write_report(run_dir: str | Path) -> Path:
             f"| Avg Cell Depth | `{representative_genome.average_cell_depth:.2f}` |",
             f"| Reuse Ratio | `{representative_genome.reuse_ratio:.4f}` |",
         ])
+    if hierarchy_leaders:
+        lines.extend([
+            "",
+            "## Hierarchy Leaders",
+            "",
+            "| Leader Type | Genome | Value | Notes |",
+            "|---|---|---:|---|",
+        ])
+        for leader_type, payload in hierarchy_leaders.items():
+            leader_value = payload.get("value")
+            rendered_value = f"{float(leader_value):.4f}" if isinstance(leader_value, float) else str(leader_value)
+            lines.append(
+                f"| {leader_type} | `{payload.get('genome_id', 'unknown')}` | {rendered_value} | {_escape_markdown_cell(payload.get('notes') or '')} |"
+            )
+    lines.extend([
+        "",
+        "## Hierarchy Evidence",
+        "",
+        "| Signal | Value |",
+        "|---|---:|",
+        f"| Winner Genomes | {hierarchy_evidence['genome_count']} |",
+        f"| Mean Reuse Ratio | {hierarchy_evidence['mean_reuse_ratio']:.4f} |",
+        f"| Max Reuse Ratio | {hierarchy_evidence['max_reuse_ratio']:.4f} |",
+        f"| Mean Macro Depth | {hierarchy_evidence['mean_macro_depth']:.2f} |",
+        f"| Mean Cell Library Size | {hierarchy_evidence['mean_cell_library_size']:.2f} |",
+        f"| Unique Motifs | {hierarchy_evidence['unique_motif_count']} |",
+        f"| Repeated Motifs | {hierarchy_evidence['repeated_motif_count']} |",
+    ])
+    slot_plan = budget_meta.get("benchmark_slot_plan") or status_payload.get("benchmark_slot_plan") or []
+    if slot_plan:
+        lines.extend([
+            "",
+            "## Benchmark Slot Plan",
+            "",
+            "| Benchmark | State | Configured | Completed | Failed | Invalid |",
+            "|---|---|---:|---:|---:|---:|",
+        ])
+        for item in slot_plan:
+            lines.append(
+                f"| {_escape_markdown_cell(item.get('benchmark_name', 'unknown'))} | "
+                f"{_escape_markdown_cell(item.get('state', 'unknown'))} | "
+                f"{int(item.get('configured_slots', 0) or 0)} | "
+                f"{int(item.get('completed_slots', 0) or 0)} | "
+                f"{int(item.get('failed_slots', 0) or 0)} | "
+                f"{int(item.get('invalid_slots', 0) or 0)} |"
+            )
     lines.extend([
         "",
         "## Benchmarks",

@@ -56,6 +56,10 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     run_dir = tmp_path / "prototype_run"
     run_evolution(config, run_dir=run_dir, config_path=config_path)
 
+    direct_report = (run_dir / "report.md").read_text(encoding="utf-8")
+    direct_status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+    assert f"- Run State: `{direct_status['state']}`" in direct_report
+
     store = RunStore(run_dir / "metrics.duckdb")
     runs = store.load_runs()
     results = store.load_results(run_dir.name)
@@ -75,6 +79,9 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert budget_meta["invalid_evaluations"] == 0
     assert budget_meta["partial_run"] is False
     assert "candidate evaluation" in budget_meta["evaluation_semantics"]
+    assert budget_meta["runtime_execution_policy"]["runtime_policy_name"] == "bounded_hierarchy_runtime_v2"
+    assert budget_meta["benchmark_slot_integrity"]["matches_evaluation_count"] is True
+    assert len(budget_meta["benchmark_slot_plan"]) == 2
 
     manifest_path, results_path = export_symbiosis_contract(
         run_dir,
@@ -100,6 +107,13 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert summary["failure_count"] == sum(1 for record in exported_results if record["status"] != "ok")
     assert "failure_patterns" in summary
     assert "hierarchy_summary" in summary
+    assert "hierarchy_leaders" in summary
+    assert "highest_reuse" in summary["hierarchy_leaders"]
+    assert "deepest_macro" in summary["hierarchy_leaders"]
+    assert summary["hierarchy_leaders"]["highest_reuse"]["genome_id"]
+    assert summary["runtime_policy_name"] == "bounded_hierarchy_runtime_v2"
+    assert summary["benchmark_slot_integrity"]["matches_evaluation_count"] is True
+    assert summary["hierarchy_evidence"]["genome_count"] >= 1
     assert manifest["artifacts"]["config_snapshot"] == "config.yaml"
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
@@ -109,8 +123,10 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["budget"]["failed_evaluations"] == 0
     assert manifest["budget"]["invalid_evaluations"] == 0
     assert manifest["budget"]["partial_run"] is False
+    assert manifest["budget"]["benchmark_slot_integrity"]["matches_evaluation_count"] is True
     assert "candidate evaluation" in manifest["budget"]["evaluation_semantics"]
     assert manifest["search_telemetry"]["architecture_mode"] == budget_meta["architecture_mode"]
+    assert manifest["search_telemetry"]["hierarchy_evidence"]["genome_count"] >= 1
     assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
     assert manifest["device"]["framework_version"] == (budget_meta["runtime_version"] or "unknown")
     assert manifest["device"]["precision_mode"] == budget_meta["precision_mode"]
@@ -119,6 +135,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert f"- Runtime: `{budget_meta['runtime_backend']}`" in report
     expected_version = budget_meta["runtime_version"] or "unknown"
     assert f"- Runtime Version: `{expected_version}`" in report
+    assert "- Runtime Policy: `bounded_hierarchy_runtime_v2`" in report
     assert f"- Precision Mode: `{budget_meta['precision_mode']}`" in report
     assert f"- Created At: `{budget_meta['created_at']}`" in report
     assert f"- Run State: `{status['state']}`" in report
@@ -129,6 +146,8 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert f"- Effective Training Epochs: `{budget_meta['effective_training_epochs']}`" in report
     assert f"- Wall Clock Seconds: `{budget_meta['wall_clock_seconds']:.3f}`" in report
     assert f"- Architecture Mode: `{budget_meta['architecture_mode']}`" in report
+    assert f"- Hierarchy Policy: `{budget_meta['hierarchy_selection_policy']}`" in report
+    assert "- Slot Integrity: `True`" in report
     assert "## Hierarchy Summary" in report
     assert "| Property | Value |" in report
     assert "| Representative Genome | `" in report
@@ -136,6 +155,12 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert "| Macro Depth | `" in report
     assert "| Avg Cell Depth | `" in report
     assert "| Reuse Ratio | `" in report
+    assert "## Hierarchy Leaders" in report
+    assert "| Leader Type | Genome | Value | Notes |" in report
+    assert "| highest_reuse | `" in report
+    assert "| deepest_macro | `" in report
+    assert "## Hierarchy Evidence" in report
+    assert "## Benchmark Slot Plan" in report
     assert "## Benchmarks" in report
     assert "## Best Benchmarks" in report
     assert "## Failure Patterns" in report
@@ -169,12 +194,19 @@ def test_inspect_command_surfaces_rich_run_summary(repo_root, tmp_path) -> None:
     assert "Created At" in result.stdout
     assert "Run State" in result.stdout
     assert "Runtime Version" in result.stdout
+    assert "Runtime Policy" in result.stdout
     assert "Precision Mode" in result.stdout
     assert "Wall Clock Seconds" in result.stdout
     assert "Completed Benchmarks" in result.stdout
     assert "Remaining Benchmarks" in result.stdout
     assert "Status Artifact" in result.stdout
     assert "Occupied Niches" in result.stdout
+    assert "Parent Selection" in result.stdout
+    assert "Mutation Pressure" in result.stdout
+    assert "Hierarchy Policy" in result.stdout
+    assert "Slot Integrity" in result.stdout
+    assert "Mean Reuse Ratio" in result.stdout
+    assert "Unique Motifs" in result.stdout
     assert "Representative Genome" in result.stdout
     assert "Cell Library Size" in result.stdout
     assert "Macro Depth" in result.stdout
@@ -390,6 +422,8 @@ def test_report_context_selects_representative_hierarchy_genome(tmp_path) -> Non
     assert context["representative_genome"].genome_id == "g2"
     assert context["representative_genome"].macro_depth == 3
     assert context["representative_genome"].reuse_ratio == 0.5
+    assert context["hierarchy_leaders"]["highest_reuse"]["genome_id"] == "g2"
+    assert context["hierarchy_leaders"]["deepest_macro"]["genome_id"] == "g2"
 
 
 def test_build_execution_ladder(tmp_path) -> None:
@@ -412,15 +446,30 @@ def test_budget_metadata_counts_actual_scheduled_slots_on_partial_resume(repo_ro
     run_dir = tmp_path / "partial_run"
 
     run_evolution(partial_config, run_dir=run_dir, config_path=config_path)
+    first_checkpoint = json.loads((run_dir / "checkpoint.json").read_text(encoding="utf-8"))
+    assert first_checkpoint["evaluation_count"] == 8
+    assert first_checkpoint["failed_evaluations"] == 0
+
+    # Simulate a process that checkpointed completed work but died before final
+    # budget metadata could be trusted by a later resume.
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.conn.execute("DELETE FROM budget_meta WHERE run_id = ?", [run_dir.name])
+
     run_evolution(partial_config, run_dir=run_dir, config_path=config_path, resume=True)
 
     with RunStore(run_dir / "metrics.duckdb") as store:
         budget_meta = store.load_budget_metadata(run_dir.name)
+    status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
 
     assert budget_meta["evaluation_count"] == 8
     assert budget_meta["configured_evaluation_slots"] == 8
     assert budget_meta["completed_benchmark_count"] == 1
     assert budget_meta["benchmark_load_failures"] == 0
+    assert budget_meta["benchmark_slot_integrity"]["matches_evaluation_count"] is True
+    assert budget_meta["benchmark_slot_plan"][0]["completed_slots"] == 8
+    assert status["evaluation_count"] == 8
+    assert status["failed_evaluations"] == 0
+    assert status["benchmark_slot_plan"][0]["completed_slots"] == 8
 
 
 def test_official_lane_configs_encode_exact_budget_targets(repo_root) -> None:
@@ -466,3 +515,114 @@ def test_regression_benchmarks_complete_successfully_in_runtime(repo_root, tmp_p
     assert {row["status"] for row in results} == {"ok"}
     assert budget_meta["evaluation_count"] == 2
     assert budget_meta["benchmark_load_failures"] == 0
+
+
+def test_failed_candidate_evaluations_are_counted_in_budget_metadata(repo_root, tmp_path, monkeypatch) -> None:
+    base_config = load_config(repo_root / "configs" / "tier1_core_eval64.yaml")
+    config = base_config.model_copy(
+        update={
+            "run_name": "failed_eval_accounting",
+            "benchmark_pool": BenchmarkPoolConfig(name="failed_eval_accounting", benchmarks=["moons"]),
+            "evolution": base_config.evolution.model_copy(update={"population_size": 2, "generations": 2}),
+        }
+    )
+    config_path = tmp_path / "failed_eval_accounting.yaml"
+    config_path.write_text(
+        yaml.safe_dump(config.model_dump(mode="python"), sort_keys=False),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "failed_eval_accounting"
+
+    def _always_fail(*args, **kwargs):
+        raise RuntimeError("forced evaluation failure")
+
+    monkeypatch.setattr("stratograph.pipeline.coordinator.evaluate_candidate_with_state", _always_fail)
+
+    run_evolution(config, run_dir=run_dir, config_path=config_path)
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        results = store.load_results(run_dir.name)
+        budget_meta = store.load_budget_metadata(run_dir.name)
+
+    status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+    report = (run_dir / "report.md").read_text(encoding="utf-8")
+
+    assert len(results) == 1
+    assert results[0]["status"] == "failed"
+    assert results[0]["failure_reason"] == "forced evaluation failure"
+    assert budget_meta["evaluation_count"] == 4
+    assert budget_meta["actual_evaluations"] == 4
+    assert budget_meta["failed_evaluations"] == 4
+    assert budget_meta["invalid_evaluations"] == 0
+    assert budget_meta["partial_run"] is False
+    assert budget_meta["completed_benchmark_count"] == 1
+    assert budget_meta["parent_selection_strategy"] == "benchmark_leader_plus_reuse_and_niche_elites"
+    assert (
+        budget_meta["mutation_pressure"]
+        == "contrasting_elite_crossover_with_scheduled_reuse_motif_and_topology_mutation"
+    )
+    assert budget_meta["hierarchy_selection_policy"] == "shared_variants_preserve_reuse_and_niche_diversity"
+    assert status["state"] == "completed"
+    assert status["completed_count"] == 1
+    assert status["remaining_count"] == 0
+    assert "- Parent Selection: `benchmark_leader_plus_reuse_and_niche_elites`" in report
+    assert (
+        "- Mutation Pressure: `contrasting_elite_crossover_with_scheduled_reuse_motif_and_topology_mutation`"
+        in report
+    )
+    assert "- Hierarchy Policy: `shared_variants_preserve_reuse_and_niche_diversity`" in report
+
+
+
+def test_benchmark_load_failures_mark_run_complete_and_invalid(repo_root, tmp_path, monkeypatch) -> None:
+    base_config = load_config(repo_root / "configs" / "tier1_core_eval64.yaml")
+    config = base_config.model_copy(
+        update={
+            "run_name": "load_failure_accounting",
+            "benchmark_pool": BenchmarkPoolConfig(name="load_failure_accounting", benchmarks=["moons"]),
+            "evolution": base_config.evolution.model_copy(update={"population_size": 2, "generations": 2}),
+        }
+    )
+    config_path = tmp_path / "load_failure_accounting.yaml"
+    config_path.write_text(
+        yaml.safe_dump(config.model_dump(mode="python"), sort_keys=False),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "load_failure_accounting"
+
+    class BrokenSpec:
+        name = "moons"
+        task = "classification"
+        model_input_dim = 2
+        model_output_dim = 2
+        metric_name = "accuracy"
+        metric_direction = "max"
+
+        def load_data(self, seed):
+            raise RuntimeError("forced load failure")
+
+    monkeypatch.setattr("stratograph.pipeline.coordinator.get_benchmark", lambda name: BrokenSpec())
+
+    run_evolution(config, run_dir=run_dir, config_path=config_path)
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        results = store.load_results(run_dir.name)
+        budget_meta = store.load_budget_metadata(run_dir.name)
+
+    status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+    checkpoint = json.loads((run_dir / "checkpoint.json").read_text(encoding="utf-8"))
+
+    assert len(results) == 1
+    assert results[0]["status"] == "failed"
+    assert results[0]["failure_reason"] == "forced load failure"
+    assert budget_meta["evaluation_count"] == 0
+    assert budget_meta["actual_evaluations"] == 0
+    assert budget_meta["failed_evaluations"] == 0
+    assert budget_meta["invalid_evaluations"] == 1
+    assert budget_meta["benchmark_load_failures"] == 1
+    assert budget_meta["completed_benchmark_count"] == 1
+    assert status["state"] == "completed"
+    assert status["completed_count"] == 1
+    assert status["remaining_count"] == 0
+    assert checkpoint["completed_count"] == 1
+    assert checkpoint["remaining_count"] == 0

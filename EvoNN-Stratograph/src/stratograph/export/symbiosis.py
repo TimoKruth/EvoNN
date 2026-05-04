@@ -123,6 +123,8 @@ def export_symbiosis_contract(
             "invalid_evaluations": budget_meta.get("invalid_evaluations"),
             "partial_run": bool(budget_meta.get("partial_run", False)),
             "evaluation_semantics": budget_meta.get("evaluation_semantics"),
+            "benchmark_slot_plan": budget_meta.get("benchmark_slot_plan"),
+            "benchmark_slot_integrity": budget_meta.get("benchmark_slot_integrity"),
         },
         "device": {
             "device_name": platform.machine(),
@@ -152,6 +154,7 @@ def export_symbiosis_contract(
             "parent_selection_strategy": budget_meta.get("parent_selection_strategy"),
             "mutation_pressure": budget_meta.get("mutation_pressure"),
             "hierarchy_selection_policy": budget_meta.get("hierarchy_selection_policy"),
+            "hierarchy_evidence": report_context.get("hierarchy_evidence", {}),
         },
         "fairness": fairness_manifest(
             pack_name=pack.name,
@@ -226,6 +229,8 @@ def _write_contract_summary_json(
     runtime_meta = load_runtime_metadata(report_context.get("budget_meta", {}))
     status_payload = report_context.get("status", {})
     representative_genome = report_context.get("representative_genome")
+    hierarchy_leaders = report_context.get("hierarchy_leaders", {})
+    hierarchy_evidence = report_context.get("hierarchy_evidence", {})
     non_ok_results = report_context.get("non_ok_results", [])
 
     summary: dict[str, Any] = {
@@ -244,6 +249,7 @@ def _write_contract_summary_json(
         "runtime_version": device.get("framework_version") or "unknown",
         "precision_mode": device.get("precision_mode", "unknown"),
         "runtime_backend_limitations": runtime_meta["runtime_backend_limitations"] or None,
+        "runtime_policy_name": runtime_meta["runtime_policy_name"],
         **core,
         "failure_patterns": dict(summarize_failure_patterns(non_ok_results)),
         "completed_benchmarks": status_payload.get("completed_count", len(results)),
@@ -253,6 +259,8 @@ def _write_contract_summary_json(
         "parent_selection_strategy": manifest.get("search_telemetry", {}).get("parent_selection_strategy"),
         "mutation_pressure": manifest.get("search_telemetry", {}).get("mutation_pressure"),
         "hierarchy_selection_policy": manifest.get("search_telemetry", {}).get("hierarchy_selection_policy"),
+        "benchmark_slot_integrity": budget.get("benchmark_slot_integrity"),
+        "hierarchy_evidence": hierarchy_evidence,
     }
     if representative_genome is not None:
         summary["hierarchy_summary"] = {
@@ -264,6 +272,8 @@ def _write_contract_summary_json(
             "avg_cell_depth": float(representative_genome.average_cell_depth),
             "reuse_ratio": float(representative_genome.reuse_ratio),
         }
+    if hierarchy_leaders:
+        summary["hierarchy_leaders"] = hierarchy_leaders
     write_json(output_dir / "summary.json", summary)
 
 

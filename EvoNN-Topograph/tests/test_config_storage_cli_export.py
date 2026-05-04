@@ -201,6 +201,17 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     assert budget["partial_run"] is False
     assert "scheduled candidate-benchmark slot" in budget["evaluation_semantics"]
 
+    cached_budget = sym._budget_manifest(
+        cfg,
+        {"evaluation_count": 24, "cache_trained_count": 18, "cache_reused_count": 6},
+        latest_gen=2,
+        population_size=4,
+    )
+    assert cached_budget["actual_evaluations"] == 18
+    assert cached_budget["cached_evaluations"] == 6
+    assert cached_budget["actual_evaluations"] + cached_budget["cached_evaluations"] == 24
+    assert cached_budget["partial_run"] is False
+
     telemetry_none = sym._search_telemetry(RunConfig(training={"multi_fidelity": False}), {})
     assert telemetry_none is None
 
