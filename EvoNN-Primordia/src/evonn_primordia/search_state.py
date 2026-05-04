@@ -25,7 +25,26 @@ class EliteArchive:
 
     def elites(self, total_budget: int) -> list[dict[str, Any]]:
         keep = max(1, int(round(max(1, total_budget) * self.elite_fraction)))
-        return list(self.records[:keep])
+        selected: list[dict[str, Any]] = []
+        selected_ids: set[str] = set()
+
+        def add(record: dict[str, Any]) -> None:
+            genome_id = str(record.get("genome_id") or "")
+            if genome_id and genome_id in selected_ids:
+                return
+            selected.append(record)
+            if genome_id:
+                selected_ids.add(genome_id)
+
+        for record in sorted(self.family_best_records().values(), key=self._record_priority, reverse=True):
+            if len(selected) >= keep:
+                break
+            add(record)
+        for record in self.records:
+            if len(selected) >= keep:
+                break
+            add(record)
+        return selected[:keep]
 
     def benchmark_best_record(self) -> dict[str, Any] | None:
         return self.records[0] if self.records else None

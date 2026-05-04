@@ -92,8 +92,20 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_column("Metric", style="cyan")
     overview.add_column("Value", style="green")
     overview.add_row("Runtime", runtime_meta["runtime"])
+    overview.add_row("Runtime Requested", runtime_meta["runtime_backend_requested"])
     overview.add_row("Runtime Version", runtime_meta["runtime_version"])
     overview.add_row("Precision Mode", runtime_meta["precision_mode"])
+    if runtime_meta.get("runtime_backend_limitations"):
+        overview.add_row("Runtime Limitations", runtime_meta["runtime_backend_limitations"])
+    runtime_policy = runtime_meta.get("runtime_execution_policy")
+    if isinstance(runtime_policy, dict):
+        overview.add_row("Runtime Policy", str(runtime_policy.get("runtime_policy_name", "unknown")))
+    if summary.get("benchmark_slot_integrity"):
+        overview.add_row("Benchmark Slot Integrity", json.dumps(summary["benchmark_slot_integrity"]))
+    if summary.get("primitive_search_policy"):
+        overview.add_row("Primitive Search Policy", str(summary["primitive_search_policy"]))
+    if summary.get("seed_selection_policy"):
+        overview.add_row("Seed Selection Policy", str(summary["seed_selection_policy"]))
     overview.add_row("Evaluation Count", str(summary.get("evaluation_count", 0)))
     overview.add_row("Target Evaluations", str(summary.get("target_evaluation_count", "n/a")))
     overview.add_row("Benchmarks", str(summary.get("benchmark_count", 0)))

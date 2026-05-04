@@ -17,12 +17,17 @@ def _render_markdown_cell(value: Any, missing: str = "—") -> str:
     return _escape_markdown_cell(value)
 
 
-def load_runtime_metadata(summary: dict[str, Any]) -> dict[str, str]:
+def load_runtime_metadata(summary: dict[str, Any]) -> dict[str, Any]:
     """Return normalized runtime metadata from run summary artifacts."""
 
     return {
         "runtime": str(summary.get("runtime") or "unknown"),
+        "runtime_backend_requested": str(
+            summary.get("runtime_backend_requested") or summary.get("runtime") or "unknown"
+        ),
         "runtime_version": str(summary.get("runtime_version") or "unknown"),
+        "runtime_backend_limitations": str(summary.get("runtime_backend_limitations") or ""),
+        "runtime_execution_policy": summary.get("runtime_execution_policy"),
         "precision_mode": str(summary.get("precision_mode") or "fp32"),
     }
 
@@ -229,6 +234,7 @@ def write_report(run_dir: str | Path) -> Path:
             "",
             f"- Run ID: `{summary.get('run_id', run_dir.name)}`",
             f"- Runtime: `{runtime_meta['runtime']}`",
+            f"- Runtime Requested: `{runtime_meta['runtime_backend_requested']}`",
             f"- Runtime Version: `{runtime_meta['runtime_version']}`",
             f"- Precision Mode: `{runtime_meta['precision_mode']}`",
             f"- Evaluations: `{summary.get('evaluation_count', 0)}`",
@@ -237,6 +243,8 @@ def write_report(run_dir: str | Path) -> Path:
             f"- Completed Benchmarks: `{len(summary.get('completed_benchmarks') or [])}`",
             f"- Budget Policy: `{summary.get('budget_policy_name', 'unknown')}`",
             f"- Selection Mode: `{summary.get('selection_mode', 'metric_only')}`",
+            f"- Primitive Search Policy: `{summary.get('primitive_search_policy', 'unknown')}`",
+            f"- Seed Selection Policy: `{summary.get('seed_selection_policy', 'unknown')}`",
             f"- Wall Clock Seconds: `{float(summary.get('wall_clock_seconds', 0.0)):.3f}`",
             "",
             "## Search Policy",
@@ -245,6 +253,11 @@ def write_report(run_dir: str | Path) -> Path:
             "|---|---|",
         ]
         search_policy = summary.get("search_policy") or {}
+        runtime_policy = summary.get("runtime_execution_policy")
+        if isinstance(runtime_policy, dict):
+            lines.append("| runtime_policy_name | {} |".format(_render_markdown_cell(runtime_policy.get("runtime_policy_name"))))
+        if runtime_meta.get("runtime_backend_limitations"):
+            lines.append("| runtime_backend_limitations | {} |".format(_render_markdown_cell(runtime_meta["runtime_backend_limitations"])))
         for key in [
             "population_size",
             "elite_fraction",

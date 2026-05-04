@@ -141,6 +141,11 @@ def export_symbiosis_contract(
             "failed_evaluations": int(summary.get("failed_evaluations", 0)),
             "invalid_evaluations": int(summary.get("skipped_evaluations", 0)),
             "partial_run": partial_run,
+            "benchmark_slot_plan": summary.get("benchmark_slot_plan"),
+            "benchmark_slot_integrity": summary.get("benchmark_slot_integrity"),
+            "runtime_execution_policy": summary.get("runtime_execution_policy"),
+            "primitive_search_policy": summary.get("primitive_search_policy"),
+            "seed_selection_policy": summary.get("seed_selection_policy"),
             "evaluation_semantics": (
                 "one primitive family-benchmark trial counts as one evaluation; "
                 "failed trials still count and no cached evaluations are exported separately"
@@ -151,6 +156,8 @@ def export_symbiosis_contract(
             "precision_mode": runtime_meta["precision_mode"],
             "framework": runtime_meta["runtime"],
             "framework_version": runtime_meta["runtime_version"],
+            "framework_requested": runtime_meta["runtime_backend_requested"],
+            "framework_limitations": runtime_meta["runtime_backend_limitations"],
         },
         "artifacts": {
             "config_snapshot": "config.yaml",
@@ -172,6 +179,10 @@ def export_symbiosis_contract(
             "successful_evaluations": int(summary.get("successful_evaluations", 0)),
             "failed_evaluations": int(summary.get("failed_evaluations", 0)),
             "wall_clock_seconds": summary.get("wall_clock_seconds"),
+            "runtime_execution_policy": summary.get("runtime_execution_policy"),
+            "primitive_search_policy": summary.get("primitive_search_policy"),
+            "seed_selection_policy": summary.get("seed_selection_policy"),
+            "benchmark_slot_integrity": summary.get("benchmark_slot_integrity"),
         },
         "fairness": fairness_manifest(
             pack_name=pack.name,
@@ -252,9 +263,17 @@ def _build_compare_summary(
         "epochs_per_candidate": int(summary.get("epochs_per_candidate", 0)),
         "population_size": evaluation_count,
         "runtime_backend": summary.get("runtime", "unknown"),
+        "runtime_backend_requested": summary.get(
+            "runtime_backend_requested", summary.get("runtime", "unknown")
+        ),
         "runtime_version": summary.get("runtime_version") or "unknown",
+        "runtime_backend_limitations": summary.get("runtime_backend_limitations") or "",
+        "runtime_execution_policy": summary.get("runtime_execution_policy"),
         "precision_mode": summary.get("precision_mode", "unknown"),
         "selection_mode": summary.get("selection_mode", "metric_only"),
+        "primitive_search_policy": summary.get("primitive_search_policy"),
+        "seed_selection_policy": summary.get("seed_selection_policy"),
+        "benchmark_slot_integrity": summary.get("benchmark_slot_integrity"),
         **core,
         "wall_clock_seconds": summary.get("wall_clock_seconds"),
         "primitive_usage": summary.get("primitive_usage", {}),

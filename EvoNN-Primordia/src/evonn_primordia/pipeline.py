@@ -18,7 +18,12 @@ from evonn_primordia.export.seeding import build_seed_candidates
 from evonn_primordia.genome import ModelGenome
 from evonn_primordia.objectives import candidate_signature, search_score
 from evonn_primordia.runtime import backends as runtime_backends
-from evonn_primordia.runtime.backends import RuntimeBindings, resolve_runtime_bindings
+from evonn_primordia.runtime.backends import (
+    FALLBACK_LIMITATIONS,
+    RuntimeBindings,
+    resolve_runtime_bindings,
+    runtime_execution_policy,
+)
 from evonn_primordia.search_state import CandidateSeed, EliteArchive
 from evonn_primordia.status import load_checkpoint, write_checkpoint, write_status
 
@@ -40,6 +45,7 @@ def run_search(
     runtime_backend = getattr(runtime, "runtime_backend", "unknown")
     runtime_version = getattr(runtime, "runtime_version", None)
     precision_mode = getattr(runtime, "precision_mode", PRECISION_MODE)
+    runtime_policy = runtime_execution_policy()
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     if config_path is not None:
@@ -206,7 +212,12 @@ def run_search(
     summary = {
         "system": "primordia",
         "runtime": runtime_backend,
+        "runtime_backend_requested": config.runtime.backend,
         "runtime_version": runtime_version,
+        "runtime_backend_limitations": (
+            FALLBACK_LIMITATIONS if runtime_backend == "numpy-fallback" else None
+        ),
+        "runtime_execution_policy": runtime_policy.as_metadata(resolved_backend=runtime_backend),
         "precision_mode": precision_mode,
         "run_id": run_id,
         "run_name": run_name,
@@ -226,6 +237,8 @@ def run_search(
         "epochs_per_candidate": config.training.epochs_per_candidate,
         "budget_policy_name": BUDGET_POLICY_NAME,
         "selection_mode": config.search.selection_mode,
+        "primitive_search_policy": runtime_policy.primitive_search_policy,
+        "seed_selection_policy": runtime_policy.seed_selection_policy,
         "search_policy": {
             "population_size": config.search.population_size,
             "elite_fraction": config.search.elite_fraction,
@@ -236,6 +249,12 @@ def run_search(
             "max_candidates_per_benchmark": config.search.max_candidates_per_benchmark,
         },
         "benchmark_slot_plan": benchmark_slot_plan,
+        "benchmark_slot_integrity": _benchmark_slot_integrity(
+            benchmark_slot_plan=benchmark_slot_plan,
+            actual_evaluations=len(executed_records),
+            target_evaluation_count=target_evals,
+            failed_evaluations=failure_count,
+        ),
         "benchmark_leaders": benchmark_leaders,
         "family_leaders": family_leaders,
         "primitive_usage": dict(sorted(primitive_usage.items(), key=lambda item: (-item[1], item[0]))),
@@ -583,6 +602,24 @@ def _load_runtime_bindings(config: RunConfig | None = None) -> RuntimeBindings:
     if config is None:
         config = SimpleNamespace(runtime=SimpleNamespace(backend="auto", allow_fallback=True))
     return resolve_runtime_bindings(config)
+
+
+def _benchmark_slot_integrity(
+    *,
+    benchmark_slot_plan: list[dict[str, Any]],
+    actual_evaluations: int,
+    target_evaluation_count: int,
+    failed_evaluations: int,
+) -> dict[str, int | bool | str]:
+    planned_slots = sum(int(row.get("effective_slots", 0)) for row in benchmark_slot_plan)
+    matches = planned_slots == int(actual_evaluations) == int(target_evaluation_count)
+    return {
+        "status": "complete" if matches else "mismatch",
+        "planned_slots": planned_slots,
+        "completed_slots": int(actual_evaluations),
+        "failed_slots": int(failed_evaluations),
+        "matches_evaluation_count": matches,
+    }
 
 
 def _serialize_genome_payload(genome: Any) -> dict[str, Any]:
