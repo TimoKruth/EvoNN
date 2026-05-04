@@ -104,10 +104,26 @@ class FairMatrixSummary:
     pack_name: str
     systems: tuple[str, ...]
     lane: LaneMetadata | None
+    decision: "LaneDecisionSummary"
     fair_rows: list[MatrixBudgetRow]
     reference_rows: list[MatrixBudgetRow]
     parity_rows: list[PairParityRow]
     trend_rows: list[MatrixTrendRow]
+
+
+@dataclass(frozen=True)
+class LaneDecisionSummary:
+    operating_state: str
+    recommended_action: str
+    decision_grade: str
+    repeatability_ready: bool
+    blockers: tuple[str, ...]
+    notes: tuple[str, ...]
+    leading_systems: tuple[str, ...]
+    winner_counts: dict[str, int]
+    ties: int
+    evaluated_budgets: tuple[int, ...]
+    reference_only_budgets: tuple[int, ...]
 
 
 def summarize_matrix_case(
@@ -169,17 +185,66 @@ def build_matrix_summary(
     trend_rows: list[MatrixTrendRow] | None = None,
     systems: tuple[str, ...] = SYSTEM_ORDER,
 ) -> FairMatrixSummary:
+    fair = sorted(fair_rows, key=lambda row: (row.budget, row.seed))
+    reference = sorted(reference_rows, key=lambda row: (row.budget, row.seed))
     return FairMatrixSummary(
         pack_name=pack_name,
         systems=systems,
         lane=lane,
-        fair_rows=sorted(fair_rows, key=lambda row: (row.budget, row.seed)),
-        reference_rows=sorted(reference_rows, key=lambda row: (row.budget, row.seed)),
+        decision=_build_lane_decision(lane=lane, fair_rows=fair, reference_rows=reference, systems=systems),
+        fair_rows=fair,
+        reference_rows=reference,
         parity_rows=sorted(parity_rows, key=lambda row: (row.budget, row.seed, row.pair_label)),
         trend_rows=sorted(
             trend_rows or [],
             key=lambda row: (row.budget, row.seed, row.system, row.benchmark_id),
         ),
+    )
+
+
+def _build_lane_decision(
+    *,
+    lane: LaneMetadata | None,
+    fair_rows: list[MatrixBudgetRow],
+    reference_rows: list[MatrixBudgetRow],
+    systems: tuple[str, ...],
+) -> LaneDecisionSummary:
+    operating_state = lane.operating_state if lane is not None else ("contract-fair" if fair_rows else "reference-only")
+    repeatability_ready = lane.repeatability_ready if lane is not None else False
+    notes = lane.acceptance_notes if lane is not None and lane.acceptance_notes else ()
+    selected_row = fair_rows[-1] if fair_rows else (reference_rows[-1] if reference_rows else None)
+    winner_counts = {system: 0 for system in systems}
+    ties = 0
+    if selected_row is not None:
+        winner_counts.update({system: int(selected_row.wins.get(system, 0)) for system in systems})
+        ties = int(selected_row.ties)
+    max_wins = max(winner_counts.values(), default=0)
+    leading_systems = tuple(system for system, wins in winner_counts.items() if wins == max_wins and wins > 0)
+    if operating_state == "trusted-extended":
+        recommended_action = "use_for_cross_engine_decision"
+        decision_grade = "decision-grade"
+    elif operating_state == "trusted-core":
+        recommended_action = "use_core_systems_only"
+        decision_grade = "core-decision-grade"
+    elif operating_state in {"contract-fair", "portable-contract-fair"}:
+        recommended_action = "compare_with_caveats"
+        decision_grade = "fair-but-not-trusted"
+    else:
+        recommended_action = "do_not_use_for_decision"
+        decision_grade = "reference-only"
+    blockers = () if decision_grade in {"decision-grade", "core-decision-grade"} else notes
+    return LaneDecisionSummary(
+        operating_state=operating_state,
+        recommended_action=recommended_action,
+        decision_grade=decision_grade,
+        repeatability_ready=repeatability_ready,
+        blockers=tuple(blockers),
+        notes=tuple(notes),
+        leading_systems=leading_systems,
+        winner_counts=winner_counts,
+        ties=ties,
+        evaluated_budgets=tuple(row.budget for row in fair_rows),
+        reference_only_budgets=tuple(row.budget for row in reference_rows),
     )
 
 
