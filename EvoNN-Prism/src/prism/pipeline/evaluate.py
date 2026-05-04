@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from math import log1p
 from random import Random
@@ -11,8 +12,11 @@ import numpy as np
 from prism.genome import ModelGenome
 from prism.storage import RunStore
 from prism.runtime.cache import WeightCache
+from prism.runtime.backends import resolve_runtime_backend_with_policy
 from prism.runtime.training import EvaluationResult, train_and_evaluate
 from prism.families.compiler import is_genome_compatible
+
+_RUNTIME_CONFIG: ContextVar[object | None] = ContextVar("prism_runtime_config", default=None)
 
 
 @dataclass
@@ -77,65 +81,69 @@ def evaluate(
     priority_scores = _benchmark_priority_scores(state, benchmark_specs)
     genome_profiles = _genome_profiles(state)
 
-    for genome in state.population:
-        genome_results = state.results.get(genome.genome_id, {})
-        parent_ids = state.parent_ids.get(genome.genome_id, [])
-
-        if store is not None and run_id is not None:
-            store.save_genome(run_id, genome)
-
-        for spec in benchmark_specs:
-            benchmark_id = spec.id if hasattr(spec, "id") else spec.name
-
-            if benchmark_id in genome_results:
-                continue
-
-            benchmark_scale = _benchmark_epoch_multiplier(
-                benchmark_id,
-                priority_scores,
-                training.benchmark_epoch_min_scale,
-                training.benchmark_epoch_max_scale,
-            )
-            genome_scale = _genome_epoch_multiplier(
-                genome,
-                genome_profiles,
-                state.generation,
-                evolution,
-                training.efficiency_epoch_min_scale,
-                training.efficiency_epoch_max_scale,
-            )
-
-            result = _evaluate_single(
-                genome=genome,
-                spec=spec,
-                training=training,
-                epoch_scale=epoch_scale * benchmark_scale * genome_scale,
-                cache=cache,
-                parent_ids=parent_ids,
-            )
-
-            genome_results[benchmark_id] = result
-            if result.failure_reason == "unsupported_benchmark":
-                continue
-            state.total_evaluations += 1
-            _record_benchmark_result(state, benchmark_id, result)
+    runtime_token = _RUNTIME_CONFIG.set(getattr(config, "runtime", None))
+    try:
+        for genome in state.population:
+            genome_results = state.results.get(genome.genome_id, {})
+            parent_ids = state.parent_ids.get(genome.genome_id, [])
 
             if store is not None and run_id is not None:
-                store.save_evaluation(
-                    run_id,
-                    genome.genome_id,
-                    state.generation,
+                store.save_genome(run_id, genome)
+
+            for spec in benchmark_specs:
+                benchmark_id = spec.id if hasattr(spec, "id") else spec.name
+
+                if benchmark_id in genome_results:
+                    continue
+
+                benchmark_scale = _benchmark_epoch_multiplier(
                     benchmark_id,
-                    result.metric_name,
-                    result.metric_value,
-                    result.quality,
-                    result.parameter_count,
-                    result.train_seconds,
-                    result.failure_reason,
-                    result.inherited_from,
+                    priority_scores,
+                    training.benchmark_epoch_min_scale,
+                    training.benchmark_epoch_max_scale,
+                )
+                genome_scale = _genome_epoch_multiplier(
+                    genome,
+                    genome_profiles,
+                    state.generation,
+                    evolution,
+                    training.efficiency_epoch_min_scale,
+                    training.efficiency_epoch_max_scale,
                 )
 
-        state.results[genome.genome_id] = genome_results
+                result = _evaluate_single(
+                    genome=genome,
+                    spec=spec,
+                    training=training,
+                    epoch_scale=epoch_scale * benchmark_scale * genome_scale,
+                    cache=cache,
+                    parent_ids=parent_ids,
+                )
+
+                genome_results[benchmark_id] = result
+                if result.failure_reason == "unsupported_benchmark":
+                    continue
+                state.total_evaluations += 1
+                _record_benchmark_result(state, benchmark_id, result)
+
+                if store is not None and run_id is not None:
+                    store.save_evaluation(
+                        run_id,
+                        genome.genome_id,
+                        state.generation,
+                        benchmark_id,
+                        result.metric_name,
+                        result.metric_value,
+                        result.quality,
+                        result.parameter_count,
+                        result.train_seconds,
+                        result.failure_reason,
+                        result.inherited_from,
+                    )
+
+            state.results[genome.genome_id] = genome_results
+    finally:
+        _RUNTIME_CONFIG.reset(runtime_token)
 
     return state
 
@@ -197,6 +205,21 @@ def _evaluate_single(
     # Load data before compile so LM output_dim can expand to observed token range.
     X_train, y_train, X_val, y_val = _load_data(spec, seed=42)
     output_dim = _resolve_output_dim(spec, X_train, y_train)
+    runtime_config = _RUNTIME_CONFIG.get()
+    runtime_selection = resolve_runtime_backend_with_policy(
+        getattr(runtime_config, "backend", "auto"),
+        allow_fallback=getattr(runtime_config, "allow_fallback", True),
+    )
+    if runtime_selection.resolved_backend == "numpy-fallback":
+        return _evaluate_single_numpy_fallback(
+            genome=genome,
+            X_train=X_train,
+            y_train=y_train,
+            X_val=X_val,
+            y_val=y_val,
+            task=task,
+            output_dim=output_dim,
+        )
 
     try:
         compiled = compile_genome(genome, input_shape, output_dim, modality, task=task)
@@ -255,6 +278,118 @@ def _evaluate_single(
     result.inherited_from = inherited_from
 
     return result
+
+
+def _evaluate_single_numpy_fallback(
+    *,
+    genome: ModelGenome,
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    task: str,
+    output_dim: int,
+) -> EvaluationResult:
+    import time
+
+    start = time.perf_counter()
+    try:
+        if task == "regression":
+            predictions = _fallback_regression(X_train, y_train, X_val)
+        elif task == "language_modeling":
+            predictions = _fallback_language_probs(y_train, X_val, output_dim)
+        else:
+            predictions = _fallback_classification(X_train, y_train, X_val, output_dim)
+        metric_name, metric_value, quality = _compute_fallback_metric(task, y_val, predictions)
+        return EvaluationResult(
+            metric_name=metric_name,
+            metric_value=metric_value,
+            quality=quality,
+            parameter_count=max(1, int(genome.parameter_estimate)),
+            train_seconds=time.perf_counter() - start,
+        )
+    except Exception as exc:
+        return EvaluationResult(
+            metric_name=_default_metric_name(task),
+            metric_value=float("nan"),
+            quality=float("-inf"),
+            parameter_count=0,
+            train_seconds=time.perf_counter() - start,
+            failure_reason=f"numpy_fallback_error:{type(exc).__name__}",
+        )
+
+
+def _fallback_classification(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    output_dim: int,
+) -> np.ndarray:
+    train, val = _standardize_pair(X_train, X_val)
+    labels = y_train.ravel().astype(int)
+    classes = np.unique(labels)
+    centroids = []
+    for cls in classes:
+        rows = train[labels == cls]
+        centroids.append(np.mean(rows, axis=0) if rows.size else np.zeros(train.shape[1]))
+    centroid_array = np.vstack(centroids)
+    distances = np.sum((val[:, None, :] - centroid_array[None, :, :]) ** 2, axis=2)
+    nearest = classes[np.argmin(distances, axis=1)]
+    logits = np.full((val.shape[0], max(output_dim, int(classes.max()) + 1)), -8.0)
+    logits[np.arange(val.shape[0]), nearest] = 8.0
+    return logits
+
+
+def _fallback_regression(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray) -> np.ndarray:
+    train, val = _standardize_pair(X_train, X_val)
+    design = np.c_[train, np.ones(train.shape[0])]
+    reg = 1e-3 * np.eye(design.shape[1])
+    weights = np.linalg.pinv(design.T @ design + reg) @ design.T @ y_train.reshape(-1, 1)
+    return (np.c_[val, np.ones(val.shape[0])] @ weights).reshape(-1)
+
+
+def _fallback_language_probs(
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    output_dim: int,
+) -> np.ndarray:
+    tokens = y_train.reshape(-1).astype(int)
+    vocab = max(int(output_dim), int(tokens.max()) + 1 if tokens.size else 1)
+    counts = np.bincount(np.clip(tokens, 0, vocab - 1), minlength=vocab).astype(float) + 1.0
+    probs = counts / counts.sum()
+    return np.tile(probs, (X_val.size, 1)).reshape(*X_val.shape, vocab)
+
+
+def _standardize_pair(X_train: np.ndarray, X_val: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    train = X_train.reshape(X_train.shape[0], -1).astype(float)
+    val = X_val.reshape(X_val.shape[0], -1).astype(float)
+    mean = np.mean(train, axis=0, keepdims=True)
+    std = np.std(train, axis=0, keepdims=True)
+    std = np.where(std < 1e-8, 1.0, std)
+    return (train - mean) / std, (val - mean) / std
+
+
+def _compute_fallback_metric(
+    task: str,
+    y_true: np.ndarray,
+    predictions: np.ndarray,
+) -> tuple[str, float, float]:
+    if task == "classification":
+        labels = y_true.ravel().astype(int)
+        pred_labels = np.argmax(predictions, axis=1)
+        accuracy = float(np.mean(pred_labels == labels))
+        return "accuracy", accuracy, accuracy
+    if task == "language_modeling":
+        probs = np.clip(predictions.reshape(-1, predictions.shape[-1]), 1e-8, 1.0)
+        targets = y_true.reshape(-1).astype(int)
+        targets = np.clip(targets, 0, probs.shape[-1] - 1)
+        cross_entropy = float(-np.mean(np.log(probs[np.arange(targets.shape[0]), targets])))
+        perplexity = float(np.exp(np.clip(cross_entropy, -20.0, 20.0)))
+        return "perplexity", perplexity, -perplexity
+    predicted = predictions.reshape(-1)
+    actual = y_true.reshape(-1)
+    mse = float(np.mean((predicted - actual) ** 2))
+    return "mse", mse, -mse
 
 
 def _resolve_output_dim(spec, X_train: np.ndarray, y_train: np.ndarray) -> int:
