@@ -121,11 +121,20 @@ def test_next_population_shared_mode_keeps_high_reuse_leader_in_parent_pool(monk
 
     selected_parents: list[tuple[str, ...]] = []
 
-    def fake_mutate(parent, *, rng, candidate_id, allow_clone_mutation=True, motif_bias=True):
+    def fake_mutate(parent, *, rng, candidate_id, allow_clone_mutation=True, motif_bias=True, preferred_modes=None):
         selected_parents.append(("mutate", parent.genome_id))
         return parent.model_copy(update={"genome_id": candidate_id})
 
-    def fake_crossover(left, right, *, rng, candidate_id, allow_clone_mutation=True, motif_bias=True):
+    def fake_crossover(
+        left,
+        right,
+        *,
+        rng,
+        candidate_id,
+        allow_clone_mutation=True,
+        motif_bias=True,
+        preferred_mutation_modes=None,
+    ):
         selected_parents.append(("crossover", left.genome_id, right.genome_id))
         return left.model_copy(update={"genome_id": candidate_id})
 

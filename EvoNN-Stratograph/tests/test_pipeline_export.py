@@ -79,6 +79,9 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert budget_meta["invalid_evaluations"] == 0
     assert budget_meta["partial_run"] is False
     assert "candidate evaluation" in budget_meta["evaluation_semantics"]
+    assert budget_meta["runtime_execution_policy"]["runtime_policy_name"] == "bounded_hierarchy_runtime_v2"
+    assert budget_meta["benchmark_slot_integrity"]["matches_evaluation_count"] is True
+    assert len(budget_meta["benchmark_slot_plan"]) == 2
 
     manifest_path, results_path = export_symbiosis_contract(
         run_dir,
@@ -108,6 +111,9 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert "highest_reuse" in summary["hierarchy_leaders"]
     assert "deepest_macro" in summary["hierarchy_leaders"]
     assert summary["hierarchy_leaders"]["highest_reuse"]["genome_id"]
+    assert summary["runtime_policy_name"] == "bounded_hierarchy_runtime_v2"
+    assert summary["benchmark_slot_integrity"]["matches_evaluation_count"] is True
+    assert summary["hierarchy_evidence"]["genome_count"] >= 1
     assert manifest["artifacts"]["config_snapshot"] == "config.yaml"
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
@@ -117,8 +123,10 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["budget"]["failed_evaluations"] == 0
     assert manifest["budget"]["invalid_evaluations"] == 0
     assert manifest["budget"]["partial_run"] is False
+    assert manifest["budget"]["benchmark_slot_integrity"]["matches_evaluation_count"] is True
     assert "candidate evaluation" in manifest["budget"]["evaluation_semantics"]
     assert manifest["search_telemetry"]["architecture_mode"] == budget_meta["architecture_mode"]
+    assert manifest["search_telemetry"]["hierarchy_evidence"]["genome_count"] >= 1
     assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
     assert manifest["device"]["framework_version"] == (budget_meta["runtime_version"] or "unknown")
     assert manifest["device"]["precision_mode"] == budget_meta["precision_mode"]
@@ -127,6 +135,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert f"- Runtime: `{budget_meta['runtime_backend']}`" in report
     expected_version = budget_meta["runtime_version"] or "unknown"
     assert f"- Runtime Version: `{expected_version}`" in report
+    assert "- Runtime Policy: `bounded_hierarchy_runtime_v2`" in report
     assert f"- Precision Mode: `{budget_meta['precision_mode']}`" in report
     assert f"- Created At: `{budget_meta['created_at']}`" in report
     assert f"- Run State: `{status['state']}`" in report
@@ -138,6 +147,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert f"- Wall Clock Seconds: `{budget_meta['wall_clock_seconds']:.3f}`" in report
     assert f"- Architecture Mode: `{budget_meta['architecture_mode']}`" in report
     assert f"- Hierarchy Policy: `{budget_meta['hierarchy_selection_policy']}`" in report
+    assert "- Slot Integrity: `True`" in report
     assert "## Hierarchy Summary" in report
     assert "| Property | Value |" in report
     assert "| Representative Genome | `" in report
@@ -149,6 +159,8 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert "| Leader Type | Genome | Value | Notes |" in report
     assert "| highest_reuse | `" in report
     assert "| deepest_macro | `" in report
+    assert "## Hierarchy Evidence" in report
+    assert "## Benchmark Slot Plan" in report
     assert "## Benchmarks" in report
     assert "## Best Benchmarks" in report
     assert "## Failure Patterns" in report
@@ -182,6 +194,7 @@ def test_inspect_command_surfaces_rich_run_summary(repo_root, tmp_path) -> None:
     assert "Created At" in result.stdout
     assert "Run State" in result.stdout
     assert "Runtime Version" in result.stdout
+    assert "Runtime Policy" in result.stdout
     assert "Precision Mode" in result.stdout
     assert "Wall Clock Seconds" in result.stdout
     assert "Completed Benchmarks" in result.stdout
@@ -191,6 +204,9 @@ def test_inspect_command_surfaces_rich_run_summary(repo_root, tmp_path) -> None:
     assert "Parent Selection" in result.stdout
     assert "Mutation Pressure" in result.stdout
     assert "Hierarchy Policy" in result.stdout
+    assert "Slot Integrity" in result.stdout
+    assert "Mean Reuse Ratio" in result.stdout
+    assert "Unique Motifs" in result.stdout
     assert "Representative Genome" in result.stdout
     assert "Cell Library Size" in result.stdout
     assert "Macro Depth" in result.stdout
@@ -449,8 +465,11 @@ def test_budget_metadata_counts_actual_scheduled_slots_on_partial_resume(repo_ro
     assert budget_meta["configured_evaluation_slots"] == 8
     assert budget_meta["completed_benchmark_count"] == 1
     assert budget_meta["benchmark_load_failures"] == 0
+    assert budget_meta["benchmark_slot_integrity"]["matches_evaluation_count"] is True
+    assert budget_meta["benchmark_slot_plan"][0]["completed_slots"] == 8
     assert status["evaluation_count"] == 8
     assert status["failed_evaluations"] == 0
+    assert status["benchmark_slot_plan"][0]["completed_slots"] == 8
 
 
 def test_official_lane_configs_encode_exact_budget_targets(repo_root) -> None:
@@ -538,13 +557,19 @@ def test_failed_candidate_evaluations_are_counted_in_budget_metadata(repo_root, 
     assert budget_meta["partial_run"] is False
     assert budget_meta["completed_benchmark_count"] == 1
     assert budget_meta["parent_selection_strategy"] == "benchmark_leader_plus_reuse_and_niche_elites"
-    assert budget_meta["mutation_pressure"] == "contrasting_elite_crossover_every_third_else_elite_mutation"
+    assert (
+        budget_meta["mutation_pressure"]
+        == "contrasting_elite_crossover_with_scheduled_reuse_motif_and_topology_mutation"
+    )
     assert budget_meta["hierarchy_selection_policy"] == "shared_variants_preserve_reuse_and_niche_diversity"
     assert status["state"] == "completed"
     assert status["completed_count"] == 1
     assert status["remaining_count"] == 0
     assert "- Parent Selection: `benchmark_leader_plus_reuse_and_niche_elites`" in report
-    assert "- Mutation Pressure: `contrasting_elite_crossover_every_third_else_elite_mutation`" in report
+    assert (
+        "- Mutation Pressure: `contrasting_elite_crossover_with_scheduled_reuse_motif_and_topology_mutation`"
+        in report
+    )
     assert "- Hierarchy Policy: `shared_variants_preserve_reuse_and_niche_diversity`" in report
 
 

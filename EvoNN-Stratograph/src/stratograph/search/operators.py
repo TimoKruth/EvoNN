@@ -75,6 +75,7 @@ def mutate_genome(
     candidate_id: str,
     allow_clone_mutation: bool = True,
     motif_bias: bool = True,
+    preferred_modes: tuple[str, ...] | None = None,
 ) -> HierarchicalGenome:
     """Return mutated copy of a hierarchical genome."""
     macro_nodes = [node.model_copy() for node in genome.macro_nodes]
@@ -85,7 +86,8 @@ def mutate_genome(
         modes.append("clone_cell")
     if motif_bias and genome.task != "regression":
         modes.append("motif_rewrite")
-    mode = rng.choice(modes)
+    candidate_modes = [mode for mode in (preferred_modes or ()) if mode in modes]
+    mode = rng.choice(candidate_modes or modes)
 
     if mode == "width":
         target = rng.choice(macro_nodes)
@@ -227,6 +229,7 @@ def crossover_genomes(
     candidate_id: str,
     allow_clone_mutation: bool = True,
     motif_bias: bool = True,
+    preferred_mutation_modes: tuple[str, ...] | None = None,
 ) -> HierarchicalGenome:
     """Combine two parent genomes into one child."""
     max_left = max(1, min(len(left.macro_nodes), MAX_MACRO_NODES - 1))
@@ -280,6 +283,7 @@ def crossover_genomes(
         candidate_id=candidate_id,
         allow_clone_mutation=allow_clone_mutation,
         motif_bias=motif_bias,
+        preferred_modes=preferred_mutation_modes,
     )
 
 

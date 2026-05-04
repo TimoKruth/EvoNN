@@ -110,6 +110,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     skipped_results = context["skipped_results"]
     best_results = context["best_results"]
     representative_genome = context["representative_genome"]
+    hierarchy_evidence = context["hierarchy_evidence"]
 
     overview = Table(title="Run Overview")
     overview.add_column("Metric", style="cyan")
@@ -123,6 +124,7 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_row("Runtime", runtime_meta["runtime_backend"])
     overview.add_row("Requested Runtime", runtime_meta["requested_runtime_backend"])
     overview.add_row("Runtime Version", runtime_meta["runtime_version"])
+    overview.add_row("Runtime Policy", runtime_meta["runtime_policy_name"])
     overview.add_row("Precision Mode", runtime_meta["precision_mode"])
     if runtime_meta["runtime_backend_limitations"]:
         overview.add_row("Runtime Limitations", runtime_meta["runtime_backend_limitations"])
@@ -140,6 +142,11 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
     overview.add_row("Parent Selection", str(budget_meta.get("parent_selection_strategy", "unknown")))
     overview.add_row("Mutation Pressure", str(budget_meta.get("mutation_pressure", "unknown")))
     overview.add_row("Hierarchy Policy", str(budget_meta.get("hierarchy_selection_policy", "unknown")))
+    slot_integrity = budget_meta.get("benchmark_slot_integrity") or {}
+    overview.add_row("Slot Integrity", str(slot_integrity.get("matches_evaluation_count", "unknown")))
+    overview.add_row("Mean Reuse Ratio", f"{float(hierarchy_evidence.get('mean_reuse_ratio', 0.0)):.4f}")
+    overview.add_row("Unique Motifs", str(hierarchy_evidence.get("unique_motif_count", 0)))
+    overview.add_row("Repeated Motifs", str(hierarchy_evidence.get("repeated_motif_count", 0)))
     if representative_genome is not None:
         overview.add_row("Representative Genome", str(representative_genome.genome_id))
         overview.add_row("Cell Library Size", str(len(representative_genome.cell_library)))

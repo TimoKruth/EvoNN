@@ -24,6 +24,8 @@ FALLBACK_LIMITATIONS = (
     "compatibility over MLX-quality parity or equivalent performance."
 )
 
+RUNTIME_POLICY_NAME = "bounded_hierarchy_runtime_v2"
+
 
 @dataclass(frozen=True)
 class RuntimeSelection:
@@ -33,9 +35,53 @@ class RuntimeSelection:
     backend_limitations: str | None = None
 
 
+@dataclass(frozen=True)
+class RuntimeExecutionPolicy:
+    """Portable runtime limits that should be visible in run artifacts."""
+
+    name: str = RUNTIME_POLICY_NAME
+    classification_train_cap: int = 1024
+    classification_val_cap: int = 512
+    openml_train_cap: int = 2048
+    openml_val_cap: int = 1024
+    image_train_cap: int = 768
+    image_val_cap: int = 384
+    lm_default_train_cap: int = 2048
+    lm_default_val_cap: int = 512
+    lm_train_token_cap: int = 24_576
+    lm_val_token_cap: int = 8_192
+    classifier_step_floor: int = 10
+    image_classifier_step_floor: int = 6
+    lm_step_floor: int = 8
+
+    def as_metadata(self, *, resolved_backend: str) -> dict[str, int | str]:
+        return {
+            "runtime_policy_name": self.name,
+            "runtime_backend": resolved_backend,
+            "classification_train_cap": self.classification_train_cap,
+            "classification_val_cap": self.classification_val_cap,
+            "openml_train_cap": self.openml_train_cap,
+            "openml_val_cap": self.openml_val_cap,
+            "image_train_cap": self.image_train_cap,
+            "image_val_cap": self.image_val_cap,
+            "lm_default_train_cap": self.lm_default_train_cap,
+            "lm_default_val_cap": self.lm_default_val_cap,
+            "lm_train_token_cap": self.lm_train_token_cap,
+            "lm_val_token_cap": self.lm_val_token_cap,
+            "classifier_step_floor": self.classifier_step_floor,
+            "image_classifier_step_floor": self.image_classifier_step_floor,
+            "lm_step_floor": self.lm_step_floor,
+        }
+
+
 def resolve_runtime_backend(requested_backend: RuntimeBackendName = "auto") -> RuntimeSelection:
     """Resolve requested backend to an executable backend on this host."""
     return _resolve_runtime_backend(requested_backend, allow_fallback=True)
+
+
+def runtime_execution_policy() -> RuntimeExecutionPolicy:
+    """Return the portable evaluator policy used by both MLX and fallback paths."""
+    return RuntimeExecutionPolicy()
 
 
 def _resolve_runtime_backend(
