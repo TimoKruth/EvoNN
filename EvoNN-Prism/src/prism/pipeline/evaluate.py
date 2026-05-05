@@ -10,6 +10,7 @@ from random import Random
 import numpy as np
 
 from prism.genome import ModelGenome
+from prism.runtime.benchmark_data_cache import BenchmarkData, BenchmarkDataCache
 from prism.storage import RunStore
 from prism.runtime.cache import WeightCache
 from prism.runtime.backends import resolve_runtime_backend_with_policy
@@ -44,6 +45,7 @@ def evaluate(
     config,
     benchmark_specs: list,
     cache: WeightCache | None = None,
+    data_cache: BenchmarkDataCache | None = None,
     store: RunStore | None = None,
     run_id: str | None = None,
 ) -> GenerationState:
@@ -118,6 +120,7 @@ def evaluate(
                     epoch_scale=epoch_scale * benchmark_scale * genome_scale,
                     cache=cache,
                     parent_ids=parent_ids,
+                    dataset=_load_data_if_available(spec, seed=42, data_cache=data_cache),
                 )
 
                 genome_results[benchmark_id] = result
@@ -185,6 +188,7 @@ def _evaluate_single(
     epoch_scale: float,
     cache: WeightCache | None,
     parent_ids: list[str] | None = None,
+    dataset: BenchmarkData | None = None,
 ) -> EvaluationResult:
     """Compile, optionally inherit weights, train, cache, return result."""
     from prism.families.compiler import compile_genome
@@ -203,7 +207,7 @@ def _evaluate_single(
             failure_reason="unsupported_benchmark",
         )
     # Load data before compile so LM output_dim can expand to observed token range.
-    X_train, y_train, X_val, y_val = _load_data(spec, seed=42)
+    X_train, y_train, X_val, y_val = dataset if dataset is not None else _load_data(spec, seed=42)
     output_dim = _resolve_output_dim(spec, X_train, y_train)
     runtime_config = _RUNTIME_CONFIG.get()
     runtime_selection = resolve_runtime_backend_with_policy(
@@ -429,16 +433,36 @@ def _multi_fidelity_scale(
     return schedule[bucket]
 
 
-def _load_data(spec, seed: int = 42):
+def _load_data(
+    spec,
+    seed: int = 42,
+    *,
+    data_cache: BenchmarkDataCache | None = None,
+):
     """Load train/val data from a benchmark spec.
 
     Supports specs with load_data() method or x_train/y_train attributes.
     """
+    if data_cache is not None:
+        return data_cache.resolve(spec, seed=seed)
     if hasattr(spec, "load_data"):
         return spec.load_data(seed=seed)
 
     # Fallback: assume spec has data attributes
     return spec.x_train, spec.y_train, spec.x_val, spec.y_val
+
+
+def _load_data_if_available(
+    spec,
+    seed: int = 42,
+    *,
+    data_cache: BenchmarkDataCache | None = None,
+) -> BenchmarkData | None:
+    if hasattr(spec, "load_data") or all(
+        hasattr(spec, attr) for attr in ("x_train", "y_train", "x_val", "y_val")
+    ):
+        return _load_data(spec, seed=seed, data_cache=data_cache)
+    return None
 
 
 def _default_metric_name(task: str) -> str:

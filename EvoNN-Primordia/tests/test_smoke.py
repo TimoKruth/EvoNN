@@ -13,7 +13,8 @@ from evonn_primordia.config import load_config
 from evonn_primordia.export.report import enrich_best_results, write_report
 from evonn_primordia.export.seeding import write_seed_candidates
 from evonn_primordia.export.symbiosis import export_symbiosis_contract
-from evonn_primordia.pipeline import run_search
+from evonn_primordia.genome import ModelGenome
+from evonn_primordia.pipeline import _bounded_runtime_genome, run_search
 from evonn_shared.contracts import ResultRecord, RunManifest
 
 
@@ -325,6 +326,26 @@ seed_policy:
     assert "budget_actual_evaluations_missing" not in validation_codes
     assert "budget_semantics_missing" not in validation_codes
     assert validation_report.ok
+
+
+def test_image_runtime_genome_bounds_high_cost_conv_candidates() -> None:
+    genome = ModelGenome(
+        family="lite_conv2d",
+        hidden_layers=[256, 192, 160, 128, 96, 64],
+        kernel_size=5,
+    )
+
+    bounded = _bounded_runtime_genome(genome, benchmark_group="image")
+
+    assert bounded.family == "lite_conv2d"
+    assert bounded.hidden_layers == [96, 96, 96, 96]
+    assert bounded.kernel_size == 3
+
+
+def test_runtime_genome_bounds_do_not_touch_tabular_candidates() -> None:
+    genome = ModelGenome(family="sparse_mlp", hidden_layers=[256, 192, 160])
+
+    assert _bounded_runtime_genome(genome, benchmark_group="tabular") is genome
 
 
 def test_named_lane_config_can_complete_regression_and_classification_surface(tmp_path: Path, monkeypatch) -> None:

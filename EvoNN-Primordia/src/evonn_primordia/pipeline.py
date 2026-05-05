@@ -487,6 +487,7 @@ def _evaluate_candidate(
     novelty_weight: float,
     complexity_penalty_weight: float,
 ) -> dict[str, Any]:
+    genome = _bounded_runtime_genome(genome, benchmark_group=benchmark_group)
     family = str(getattr(genome, "family", "unknown"))
     primitive_label = family if generation == 0 else f"{family}@r{generation + 1}"
 
@@ -595,6 +596,22 @@ def _evaluate_candidate(
     )
     record.update(score_fields)
     return record
+
+
+def _bounded_runtime_genome(genome: Any, *, benchmark_group: str) -> Any:
+    """Clamp high-cost image candidates without changing budget semantics."""
+    if benchmark_group != "image" or not isinstance(genome, ModelGenome):
+        return genome
+    if genome.family not in {"conv2d", "lite_conv2d"}:
+        return genome
+
+    max_width = 128 if genome.family == "conv2d" else 96
+    max_layers = 4
+    layers = [max(16, min(max_width, int(width))) for width in genome.hidden_layers[:max_layers]]
+    if not layers:
+        layers = [min(max_width, 64)]
+    kernel_size = 3 if int(genome.kernel_size) > 3 else int(genome.kernel_size)
+    return genome.model_copy(update={"hidden_layers": layers, "kernel_size": kernel_size})
 
 
 def _load_runtime_bindings(config: RunConfig | None = None) -> RuntimeBindings:

@@ -20,6 +20,7 @@ from prism.pipeline.archive import (
 )
 from prism.pipeline.evaluate import GenerationState, evaluate, select_benchmarks, update_search_memory
 from prism.pipeline.reproduce import reproduce
+from prism.runtime.benchmark_data_cache import BenchmarkDataCache
 from prism.runtime.backends import resolve_runtime_backend_with_policy, runtime_execution_policy
 from prism.runtime.cache import WeightCache
 from prism.storage import RunStore
@@ -74,6 +75,7 @@ def run_evolution(
         if training.weight_inheritance and runtime_selection.resolved_backend == "mlx"
         else None
     )
+    data_cache = BenchmarkDataCache()
 
     # Monitor
     monitor = TerminalMonitor()
@@ -116,6 +118,7 @@ def run_evolution(
                 config,
                 gen_benchmarks,
                 cache,
+                data_cache=data_cache,
                 store=store,
                 run_id=run_id,
             )

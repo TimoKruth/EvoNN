@@ -188,6 +188,52 @@ def test_evaluate_updates_history_for_multiple_genomes(monkeypatch):
     assert updated.benchmark_evaluations["moons"] == 2
 
 
+def test_evaluate_reuses_run_scoped_benchmark_data_cache(monkeypatch):
+    genomes = [_sample_genome("mlp"), _sample_genome("sparse_mlp")]
+    load_calls = 0
+
+    def load_data(seed=42):
+        nonlocal load_calls
+        load_calls += 1
+        return (
+            np.zeros((4, 2), dtype=np.float32),
+            np.zeros(4, dtype=np.int64),
+            np.zeros((2, 2), dtype=np.float32),
+            np.zeros(2, dtype=np.int64),
+        )
+
+    spec = SimpleNamespace(
+        id="moons",
+        name="moons",
+        modality="tabular",
+        task="classification",
+        input_shape=[2],
+        output_dim=2,
+        load_data=load_data,
+    )
+    state = GenerationState(
+        generation=0,
+        population=genomes,
+        parent_ids={genome.genome_id: [] for genome in genomes},
+    )
+
+    monkeypatch.setattr(
+        evaluate_mod,
+        "_evaluate_single",
+        lambda *args, **kwargs: EvaluationResult("accuracy", 0.8, 0.8, 10, 0.1),
+    )
+
+    updated = evaluate_mod.evaluate(
+        state,
+        RunConfig(),
+        [spec],
+        data_cache=evaluate_mod.BenchmarkDataCache(),
+    )
+
+    assert updated.total_evaluations == 2
+    assert load_calls == 1
+
+
 def test_evaluate_skips_unsupported_pairs_without_counting(monkeypatch):
     genome = _sample_genome("mlp")
     spec = _sample_spec(task="language_modeling")

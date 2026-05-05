@@ -320,7 +320,7 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
 
     monkeypatch.setattr(
         "prism.pipeline.evaluate._evaluate_single",
-        lambda genome, spec, training, epoch_scale, cache, parent_ids=None: EvaluationResult(
+        lambda genome, spec, training, epoch_scale, cache, parent_ids=None, dataset=None: EvaluationResult(
             metric_name="accuracy",
             metric_value=0.91,
             quality=0.91,
@@ -383,7 +383,7 @@ def test_run_evolution_rejects_duplicate_offspring_ids(monkeypatch, tmp_path: Pa
 
     monkeypatch.setattr(
         "prism.pipeline.evaluate._evaluate_single",
-        lambda genome, spec, training, epoch_scale, cache, parent_ids=None: EvaluationResult(
+        lambda genome, spec, training, epoch_scale, cache, parent_ids=None, dataset=None: EvaluationResult(
             metric_name="accuracy",
             metric_value=0.91,
             quality=0.91,
@@ -483,7 +483,7 @@ def test_coordinator_summary_persists_failure_patterns(monkeypatch, tmp_path: Pa
 
     monkeypatch.setattr(
         "prism.pipeline.evaluate._evaluate_single",
-        lambda genome, spec, training, epoch_scale, cache, parent_ids=None: EvaluationResult(
+        lambda genome, spec, training, epoch_scale, cache, parent_ids=None, dataset=None: EvaluationResult(
             metric_name="accuracy",
             metric_value=float("nan"),
             quality=float("nan"),
