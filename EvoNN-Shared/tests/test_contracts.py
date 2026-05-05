@@ -4,11 +4,15 @@ import pytest
 
 from evonn_shared.contracts import (
     ArtifactPaths,
+    ArtifactCompletenessEnvelope,
     BaselineCoverageEnvelope,
     BenchmarkEntry,
     BudgetEnvelope,
     DeviceInfo,
+    DiagnosticsEnvelope,
+    PerformanceEnvelope,
     ResultRecord,
+    RuntimeEnvelope,
     RunManifest,
     SeedingEnvelope,
 )
@@ -159,3 +163,22 @@ def test_seeding_envelope_rejects_missing_artifact_path_for_seeded_runs() -> Non
             seeding_ladder="direct",
             seed_source_system="primordia",
         )
+
+
+def test_output_quality_envelopes_accept_unavailable_measurements() -> None:
+    runtime = RuntimeEnvelope(runtime_backend="mlx", device_name="apple_silicon")
+    performance = PerformanceEnvelope(
+        wall_clock_seconds=None,
+        unavailable_fields=("wall_clock_seconds",),
+        notes=("wall_clock_seconds unavailable",),
+    )
+    diagnostics = DiagnosticsEnvelope(
+        status="needs-attention",
+        missing_l3_fields=("performance.wall_clock_seconds",),
+    )
+    artifacts = ArtifactCompletenessEnvelope(required_present=True)
+
+    assert runtime.runtime_backend == "mlx"
+    assert performance.unavailable_fields == ("wall_clock_seconds",)
+    assert diagnostics.status == "needs-attention"
+    assert artifacts.required_present is True

@@ -105,6 +105,75 @@ class DeviceInfo(BaseModel):
     framework_version: str | None = None
 
 
+class RuntimeEnvelope(BaseModel):
+    """Normalized runtime/backend metadata for output-quality and performance checks."""
+
+    model_config = ConfigDict(frozen=True)
+
+    runtime_backend_requested: str | None = None
+    runtime_backend: str | None = None
+    runtime_backend_limitations: str | None = None
+    device_name: str | None = None
+    framework: str | None = None
+    framework_version: str | None = None
+    precision_mode: str | None = None
+    hardware_class: str | None = None
+    worker_count: int | None = None
+    os: str | None = None
+    python_version: str | None = None
+
+
+class PerformanceEnvelope(BaseModel):
+    """Normalized performance metadata for comparable run artifacts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    wall_clock_seconds: float | None = None
+    benchmark_total_seconds: float | None = None
+    data_load_seconds: float | None = None
+    evaluation_seconds: float | None = None
+    export_seconds: float | None = None
+    train_seconds_total: float | None = None
+    train_seconds_mean: float | None = None
+    evals_per_second: float | None = None
+    quality_per_second: float | None = None
+    cache_hits: int | None = None
+    cache_misses: int | None = None
+    cache_reuse_count: int | None = None
+    cache_reuse_rate: float | None = None
+    requested_worker_count: int | None = None
+    resolved_worker_count: int | None = None
+    worker_clamp_reason: str | None = None
+    peak_memory_mb: float | None = None
+    unavailable_fields: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()
+
+
+class DiagnosticsEnvelope(BaseModel):
+    """Machine-readable output completeness and failure diagnostics."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: str
+    benchmark_status_counts: dict[str, int] = Field(default_factory=dict)
+    failure_reason_by_benchmark: dict[str, str] = Field(default_factory=dict)
+    missing_required_artifacts: tuple[str, ...] = ()
+    missing_l2_fields: tuple[str, ...] = ()
+    missing_l3_fields: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+
+class ArtifactCompletenessEnvelope(BaseModel):
+    """Normalized artifact presence summary for a run directory."""
+
+    model_config = ConfigDict(frozen=True)
+
+    required_present: bool
+    required_missing: tuple[str, ...] = ()
+    optional_present: tuple[str, ...] = ()
+    optional_missing: tuple[str, ...] = ()
+
+
 class ArtifactPaths(BaseModel):
     """Artifact references required for downstream comparison and analysis."""
 

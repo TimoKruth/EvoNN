@@ -60,6 +60,10 @@ Merge rule:
 
 - `EVONN_90_DAY_PLAN.md`
   - remains the current quarter execution source of truth
+- `SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md`
+  - cross-engine plan for bringing Prism, Topograph, Stratograph, Primordia,
+    and Contenders to comparable, measurable output quality before the
+    performance-optimization phase
 - `ROADMAP.md`
   - remains the long-horizon umbrella sequence
 - `SHARED_SUBSTRATE_FOUNDATION_PLAN.md`

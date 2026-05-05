@@ -18,6 +18,8 @@ challenger systems:
 Use the docs below in this order when deciding what is active versus historical:
 
 - `EVONN_90_DAY_PLAN.md`: current quarter execution source of truth
+- `SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md`: cross-engine output quality and
+  measurability plan
 - `.hermes/plans/README.md`: active branch-plan index for package and subsystem
   advancement work
 - `ROADMAP.md`: long-horizon umbrella sequencing
@@ -91,6 +93,8 @@ Engine-advancement PRs must also follow
 - [ROADMAP.md](./ROADMAP.md): long-horizon execution sequencing
 - [EVONN_90_DAY_PLAN.md](./EVONN_90_DAY_PLAN.md): current delivery window and
   active execution source of truth
+- [SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md](./SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md):
+  cross-engine plan for comparable, measurable output artifacts
 - [RESEARCH_DECISION_GATE.md](./RESEARCH_DECISION_GATE.md): decision categories,
   evidence bundle, and PR expectations for advancement claims
 - [.hermes/plans/README.md](./.hermes/plans/README.md): active package and

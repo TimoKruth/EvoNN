@@ -121,6 +121,7 @@ def export_symbiosis_contract(
             evaluation_count=evaluation_count,
             epochs_per_candidate=exported_epochs_per_candidate,
             effective_training_epochs=1,
+            wall_clock_seconds=_optional_float(budget_meta.get("wall_clock_seconds")),
             generations=1,
             population_size=evaluation_count,
             budget_policy_name=exported_budget_policy_name,
@@ -217,6 +218,7 @@ def _build_contract_summary(
         "run_id": manifest.run_id,
         "status": "ok" if not failed else "partial",
         "total_evaluations": manifest.budget.evaluation_count,
+        "wall_clock_seconds": manifest.budget.wall_clock_seconds,
         "actual_evaluations": manifest.budget.actual_evaluations,
         "cached_evaluations": manifest.budget.cached_evaluations,
         "failed_evaluations": manifest.budget.failed_evaluations,
@@ -261,6 +263,15 @@ def _median_float(values: list[float]) -> float | None:
 def _median_int(values: list[int]) -> int | None:
     median = _median_float([float(value) for value in values])
     return None if median is None else int(round(median))
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _export_budget_policy_name(name: Any) -> str:

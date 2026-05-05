@@ -4,11 +4,15 @@ from evonn_shared.benchmarks import BenchmarkDescriptor, MetricDirection, TaskKi
 from evonn_shared.budgets import BudgetContract
 from evonn_shared.contracts import (
     ArtifactPaths,
+    ArtifactCompletenessEnvelope,
     BenchmarkEntry,
     BudgetEnvelope,
     DeviceInfo,
+    DiagnosticsEnvelope,
     FairnessEnvelope,
+    PerformanceEnvelope,
     ResultRecord,
+    RuntimeEnvelope,
     RunManifest,
     SearchTelemetry,
 )
@@ -24,15 +28,19 @@ from evonn_shared.runs import RunCoordinates
 
 __all__ = [
     "ArtifactPaths",
+    "ArtifactCompletenessEnvelope",
     "BenchmarkDescriptor",
     "BenchmarkEntry",
     "BudgetContract",
     "BudgetEnvelope",
     "DeviceInfo",
+    "DiagnosticsEnvelope",
     "FairnessEnvelope",
     "MetricDirection",
+    "PerformanceEnvelope",
     "ResultRecord",
     "RunCoordinates",
+    "RuntimeEnvelope",
     "RunManifest",
     "SearchTelemetry",
     "TaskKind",

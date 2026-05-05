@@ -48,6 +48,7 @@ Root-level strategy docs:
 - `BENCHMARK_LADDER.md`
 - `BUDGET_CONTRACT.md`
 - `TELEMETRY_SPEC.md`
+- `SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md`
 - `SEEDING_LADDERS_IMPLEMENTATION_PLAN.md`
 
 ## Planning Hierarchy
@@ -55,10 +56,12 @@ Root-level strategy docs:
 When execution docs disagree, use this order:
 
 1. `EVONN_90_DAY_PLAN.md` for the active quarter
-2. `.hermes/plans/README.md` plus the referenced branch plans for package or
+2. `SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md` for cross-engine output quality and
+   measurability work
+3. `.hermes/plans/README.md` plus the referenced branch plans for package or
    subsystem advancement
-3. `ROADMAP.md` for long-horizon sequencing
-4. `VISION.md` for umbrella thesis and product/research framing
+4. `ROADMAP.md` for long-horizon sequencing
+5. `VISION.md` for umbrella thesis and product/research framing
 
 Archived bootstrap records:
 

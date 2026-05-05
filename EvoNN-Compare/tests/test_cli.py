@@ -103,6 +103,14 @@ def test_workspace_report_help() -> None:
     assert "--trend-output" in text
 
 
+def test_output_quality_help() -> None:
+    result = _invoke_help("output-quality")
+    assert result.exit_code == 0
+    text = _normalized_cli_output(result.stdout)
+    assert "--output" in text
+    assert "--write-run-artifacts" in text
+
+
 def test_historical_baseline_help() -> None:
     result = _invoke_help("historical-baseline")
     assert result.exit_code == 0

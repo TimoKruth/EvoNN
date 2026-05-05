@@ -10,11 +10,15 @@ Internal EvoNN-Compare runtime code should prefer direct imports from
 
 from evonn_shared.contracts import (
     ArtifactPaths,
+    ArtifactCompletenessEnvelope,
     BenchmarkEntry,
     BudgetEnvelope,
     DeviceInfo,
+    DiagnosticsEnvelope,
     FairnessEnvelope,
+    PerformanceEnvelope,
     ResultRecord,
+    RuntimeEnvelope,
     RunManifest,
     SearchTelemetry,
     SeedingEnvelope,
@@ -22,11 +26,15 @@ from evonn_shared.contracts import (
 
 __all__ = [
     "ArtifactPaths",
+    "ArtifactCompletenessEnvelope",
     "BenchmarkEntry",
     "BudgetEnvelope",
     "DeviceInfo",
+    "DiagnosticsEnvelope",
     "FairnessEnvelope",
+    "PerformanceEnvelope",
     "ResultRecord",
+    "RuntimeEnvelope",
     "RunManifest",
     "SearchTelemetry",
     "SeedingEnvelope",

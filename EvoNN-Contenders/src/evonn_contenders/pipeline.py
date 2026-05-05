@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import importlib.util
 from pathlib import Path
 import shutil
+import time
 
 from evonn_contenders.benchmarks import get_benchmark
 from evonn_contenders.config import RunConfig, baseline_signature, resolve_baseline_id
@@ -55,6 +56,7 @@ def run_contenders(
         seed=config.seed,
         config=config.model_dump(mode="json"),
     )
+    started = time.perf_counter()
 
     baseline_id = resolve_baseline_id(config)
     baseline_sig = baseline_signature(config)
@@ -169,6 +171,7 @@ def run_contenders(
             "evaluation_count": evaluation_count,
             "executed_evaluation_count": executed_evaluation_count,
             "cache_hits": cache_hits,
+            "wall_clock_seconds": time.perf_counter() - started,
             "optional_missing_by_group": optional_missing_by_group,
             "optional_missing_count": sum(len(names) for names in optional_missing_by_group.values()),
             "created_at": created_at,
@@ -232,6 +235,7 @@ def materialize_baseline_run(
         seed=config.seed,
         config=config.model_dump(mode="json"),
     )
+    started = time.perf_counter()
 
     evaluation_count = 0
     optional_missing_by_group: dict[str, list[str]] = {}
@@ -274,6 +278,7 @@ def materialize_baseline_run(
             "evaluation_count": evaluation_count,
             "executed_evaluation_count": 0,
             "cache_hits": len(config.benchmark_pool.benchmarks),
+            "wall_clock_seconds": time.perf_counter() - started,
             "optional_missing_by_group": optional_missing_by_group,
             "optional_missing_count": sum(len(names) for names in optional_missing_by_group.values()),
             "created_at": created_at,
