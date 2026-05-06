@@ -95,12 +95,26 @@ def _record_payload(record: OutputQualityRecord, *, required_budgets: tuple[int,
         record.completed_benchmark_count / max(record.benchmark_count, 1),
         record.performance.wall_clock_seconds,
     )
+    pack_family = _canonical_pack_name(str(fairness.get("benchmark_pack_id") or fair_matrix_context.get("pack_name") or pack_name))
+    comparison_key = _comparison_key(
+        pack_name=pack_family,
+        seed=seed,
+        code_version=code_version,
+    )
+    system_performance_key = _system_performance_key(
+        pack_name=pack_family,
+        seed=seed,
+        system=record.system,
+        backend=record.runtime.runtime_backend,
+        hardware_class=record.runtime.hardware_class,
+        code_version=code_version,
+    )
     return {
         "system": record.system,
         "run_id": record.run_id,
         "run_dir": str(record.run_dir),
         "pack_name": pack_name,
-        "pack_family": _canonical_pack_name(str(fairness.get("benchmark_pack_id") or fair_matrix_context.get("pack_name") or pack_name)),
+        "pack_family": pack_family,
         "budget": budget,
         "seed": seed,
         "code_version": code_version,
@@ -129,13 +143,9 @@ def _record_payload(record: OutputQualityRecord, *, required_budgets: tuple[int,
         "benchmark_count": record.benchmark_count,
         "completed_benchmark_count": record.completed_benchmark_count,
         "failed_benchmark_count": record.failed_benchmark_count,
-        "cohort_key": _cohort_key(
-            pack_name=_canonical_pack_name(str(fairness.get("benchmark_pack_id") or fair_matrix_context.get("pack_name") or pack_name)),
-            seed=seed,
-            backend=record.runtime.runtime_backend,
-            hardware_class=record.runtime.hardware_class,
-            code_version=code_version,
-        ),
+        "cohort_key": comparison_key,
+        "comparison_key": comparison_key,
+        "system_performance_key": system_performance_key,
         "exclusion_reasons": [],
     }
 
@@ -164,16 +174,18 @@ def _aggregate_systems(
         missing_budgets = [budget for budget in required_budgets if budget not in budgets_present]
         claim_ready = False
         selected_cohort = None
+        selected_performance_key = None
         if accepted:
-            cohort_counts: dict[str, set[int]] = defaultdict(set)
+            performance_counts: dict[str, set[int]] = defaultdict(set)
             for row in accepted:
-                cohort_counts[str(row["cohort_key"] or "unknown")].add(int(row["budget"]))
-            selected_cohort, budget_set = max(cohort_counts.items(), key=lambda item: (len(item[1]), item[0]))
+                performance_counts[str(row["system_performance_key"] or "unknown")].add(int(row["budget"]))
+            selected_performance_key, budget_set = max(performance_counts.items(), key=lambda item: (len(item[1]), item[0]))
+            selected_row = next(row for row in accepted if str(row["system_performance_key"]) == selected_performance_key)
+            selected_cohort = str(selected_row["comparison_key"])
             stats = cohort_stats.get(selected_cohort, {})
             claim_ready = (
                 set(required_budgets).issubset(budget_set)
-                and stats.get("lane_operating_state") in DECISION_GRADE_LANE_STATES
-                and set(stats.get("systems", [])) == set(CANONICAL_SYSTEMS)
+                and _comparison_ready(stats, required_budgets=required_budgets)
             )
         systems.append(
             {
@@ -184,6 +196,7 @@ def _aggregate_systems(
                 "missing_budgets": missing_budgets,
                 "performance_claim_ready": claim_ready,
                 "selected_cohort": selected_cohort,
+                "selected_system_performance_key": selected_performance_key,
                 "backend_labels": sorted({row["runtime"].get("backend") or "unknown" for row in accepted}),
                 "hardware_labels": sorted({row["runtime"].get("hardware_class") or row["runtime"].get("device_name") or "unknown" for row in accepted}),
                 "median_wall_clock_seconds": _median([row["performance"].get("wall_clock_seconds") for row in accepted]),
@@ -206,21 +219,35 @@ def _aggregate_systems(
 def _cohort_stats(run_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in run_rows:
-        grouped[str(row["cohort_key"])].append(row)
+        grouped[str(row["comparison_key"])].append(row)
     payload = {}
     for cohort_key, rows in grouped.items():
         lane_states = sorted({str(row.get("lane_operating_state") or "unknown") for row in rows})
+        backend_labels = sorted({str(row["runtime"].get("backend") or "unknown") for row in rows})
+        hardware_labels = sorted(
+            {str(row["runtime"].get("hardware_class") or row["runtime"].get("device_name") or "unknown") for row in rows}
+        )
+        systems_by_budget: dict[str, list[str]] = {}
+        lane_states_by_budget: dict[str, list[str]] = {}
+        for budget in sorted({int(row["budget"]) for row in rows if row.get("budget") is not None}):
+            budget_rows = [row for row in rows if row.get("budget") == budget]
+            systems_by_budget[str(budget)] = sorted({str(row["system"]) for row in budget_rows})
+            lane_states_by_budget[str(budget)] = sorted({str(row.get("lane_operating_state") or "unknown") for row in budget_rows})
         payload[cohort_key] = {
             "cohort_key": cohort_key,
             "pack_name": rows[0].get("pack_name"),
             "pack_family": rows[0].get("pack_family"),
             "seed": rows[0].get("seed"),
             "code_version": rows[0].get("code_version"),
-            "backend": rows[0]["runtime"].get("backend"),
-            "hardware_class": rows[0]["runtime"].get("hardware_class"),
+            "backend": backend_labels[0] if len(backend_labels) == 1 else "mixed",
+            "backend_labels": backend_labels,
+            "hardware_class": hardware_labels[0] if len(hardware_labels) == 1 else "mixed",
+            "hardware_labels": hardware_labels,
             "systems": sorted({str(row["system"]) for row in rows}),
             "budgets": sorted({int(row["budget"]) for row in rows if row.get("budget") is not None}),
+            "systems_by_budget": systems_by_budget,
             "lane_states": lane_states,
+            "lane_states_by_budget": lane_states_by_budget,
             "lane_operating_state": lane_states[0] if len(lane_states) == 1 else "mixed",
         }
     return payload
@@ -239,20 +266,24 @@ def _render_markdown(overview: dict[str, Any], run_rows: list[dict[str, Any]]) -
         "",
         "## Cohorts",
         "",
-        "| Cohort | Pack | Seed | Backend | Hardware | Lane State | Systems | Budgets |",
+        "| Cohort | Pack | Seed | Code | Lane State | Systems | Budgets | Complete Budgets |",
         "| --- | --- | ---: | --- | --- | --- | --- | --- |",
     ]
     for cohort in overview["cohorts"].values():
         lines.append(
-            "| {key} | `{pack}` | {seed} | `{backend}` | `{hardware}` | `{lane}` | `{systems}` | `{budgets}` |".format(
+            "| {key} | `{pack}` | {seed} | `{code}` | `{lane}` | `{systems}` | `{budgets}` | `{complete}` |".format(
                 key=cohort["cohort_key"],
                 pack=cohort.get("pack_family") or cohort["pack_name"],
                 seed=cohort["seed"] if cohort["seed"] is not None else 0,
-                backend=cohort["backend"] or "unknown",
-                hardware=cohort["hardware_class"] or "unknown",
+                code=cohort["code_version"] or "unknown",
                 lane=cohort["lane_operating_state"],
                 systems=", ".join(cohort["systems"]),
                 budgets=", ".join(str(v) for v in cohort["budgets"]),
+                complete=", ".join(
+                    budget
+                    for budget, systems in sorted((cohort.get("systems_by_budget") or {}).items(), key=lambda item: int(item[0]))
+                    if set(systems) == set(CANONICAL_SYSTEMS)
+                ) or "none",
             )
         )
     lines.extend([
@@ -316,17 +347,50 @@ def _exclusion_reasons(row: dict[str, Any], *, required_budgets: tuple[int, ...]
     if not cohort:
         reasons.append("cohort-missing")
     else:
-        if set(cohort.get("systems", [])) != set(CANONICAL_SYSTEMS):
+        budget_key = str(row.get("budget"))
+        systems_for_budget = set((cohort.get("systems_by_budget") or {}).get(budget_key, []))
+        lane_states_for_budget = set((cohort.get("lane_states_by_budget") or {}).get(budget_key, []))
+        if systems_for_budget != set(CANONICAL_SYSTEMS):
             reasons.append("incomplete-system-cohort")
-        if cohort.get("lane_operating_state") == "mixed":
+        if len(lane_states_for_budget) > 1:
             reasons.append("mixed-lane-states")
     return reasons
 
 
-def _cohort_key(*, pack_name: str, seed: int | None, backend: str | None, hardware_class: str | None, code_version: str | None) -> str:
+def _comparison_ready(cohort: dict[str, Any], *, required_budgets: tuple[int, ...]) -> bool:
+    systems_by_budget = cohort.get("systems_by_budget") or {}
+    lane_states_by_budget = cohort.get("lane_states_by_budget") or {}
+    for budget in required_budgets:
+        budget_key = str(budget)
+        if set(systems_by_budget.get(budget_key, [])) != set(CANONICAL_SYSTEMS):
+            return False
+        lane_states = set(lane_states_by_budget.get(budget_key, []))
+        if not lane_states or not lane_states.issubset(DECISION_GRADE_LANE_STATES):
+            return False
+    return True
+
+
+def _comparison_key(*, pack_name: str, seed: int | None, code_version: str | None) -> str:
     return "|".join([
         pack_name or "unknown-pack",
         str(seed if seed is not None else "unknown-seed"),
+        code_version or "unknown-code-version",
+    ])
+
+
+def _system_performance_key(
+    *,
+    pack_name: str,
+    seed: int | None,
+    system: str,
+    backend: str | None,
+    hardware_class: str | None,
+    code_version: str | None,
+) -> str:
+    return "|".join([
+        pack_name or "unknown-pack",
+        str(seed if seed is not None else "unknown-seed"),
+        system or "unknown-system",
         backend or "unknown-backend",
         hardware_class or "unknown-hardware",
         code_version or "unknown-code-version",

@@ -9,6 +9,22 @@ from evonn_compare.orchestration.performance_baseline import build_performance_b
 
 runner = CliRunner()
 
+SYSTEMS = ("prism", "topograph", "stratograph", "primordia", "contenders")
+BACKEND_BY_SYSTEM = {
+    "prism": "mlx",
+    "topograph": "mlx",
+    "stratograph": "mlx",
+    "primordia": "mlx",
+    "contenders": "scikit-learn",
+}
+HARDWARE_BY_SYSTEM = {
+    "prism": "apple_silicon",
+    "topograph": "apple_silicon",
+    "stratograph": "arm64",
+    "primordia": "arm64",
+    "contenders": "arm64",
+}
+
 
 def _write_run(run_dir: Path, *, system: str, run_id: str, budget: int, wall_clock: float, quality: float = 0.9, seed: int = 42, pack_name: str | None = None, backend: str = "mlx", hardware_class: str = "apple_silicon", lane_operating_state: str | None = None, code_version: str = "deadbeef") -> None:
     run_dir.mkdir(parents=True)
@@ -168,10 +184,18 @@ def test_build_performance_baseline_writes_bundle(tmp_path: Path) -> None:
     runs_root = workspace / "runs"
     for budget, wall in [(64, 10.0), (256, 20.0), (1000, 50.0)]:
         run_id = f"tier1_core_eval{budget}_seed42"
-        systems = ("prism", "topograph", "stratograph", "primordia", "contenders")
-        for system in ("prism", "topograph", "stratograph", "primordia", "contenders"):
-            _write_run(runs_root / system / run_id, system=system, run_id=run_id, budget=budget, wall_clock=wall, pack_name=f"tier1_core_eval{budget}")
-        _write_fair_matrix_case(workspace, run_id=run_id, budget=budget, seed=42, systems=systems, pack_name=f"tier1_core_eval{budget}")
+        for system in SYSTEMS:
+            _write_run(
+                runs_root / system / run_id,
+                system=system,
+                run_id=run_id,
+                budget=budget,
+                wall_clock=wall,
+                pack_name=f"tier1_core_eval{budget}",
+                backend=BACKEND_BY_SYSTEM[system],
+                hardware_class=HARDWARE_BY_SYSTEM[system],
+            )
+        _write_fair_matrix_case(workspace, run_id=run_id, budget=budget, seed=42, systems=SYSTEMS, pack_name=f"tier1_core_eval{budget}")
 
     result = build_performance_baseline(inputs=[workspace], output_root=tmp_path / "baselines")
 
@@ -182,7 +206,11 @@ def test_build_performance_baseline_writes_bundle(tmp_path: Path) -> None:
     assert result["accepted_run_count"] == 15
     assert prism["performance_claim_ready"] is True
     assert prism["budgets_present"] == [64, 256, 1000]
+    assert prism["backend_labels"] == ["mlx"]
+    assert contenders["backend_labels"] == ["scikit-learn"]
     assert contenders["performance_claim_ready"] is True
+    assert next(iter(payload["cohorts"].values()))["backend"] == "mixed"
+    assert next(iter(payload["cohorts"].values()))["hardware_class"] == "mixed"
     assert payload["code_version_tag"] == "deadbeef"
     assert Path(result["markdown"]).exists()
     assert Path(result["jsonl"]).exists()
@@ -210,9 +238,18 @@ def test_performance_baseline_cli_accepts_workspace(tmp_path: Path) -> None:
     runs_root = tmp_path / "workspace"
     for budget in (96, 384):
         run_id = f"tier_b_core_eval{budget}_seed42"
-        for system in ("prism", "topograph", "stratograph", "primordia", "contenders"):
-            _write_run(runs_root / "runs" / system / run_id, system=system, run_id=run_id, budget=budget, wall_clock=10.0 + budget / 100.0, pack_name=f"tier_b_core_eval{budget}")
-        _write_fair_matrix_case(runs_root, run_id=run_id, budget=budget, seed=42, systems=("prism", "topograph", "stratograph", "primordia", "contenders"), pack_name=f"tier_b_core_eval{budget}")
+        for system in SYSTEMS:
+            _write_run(
+                runs_root / "runs" / system / run_id,
+                system=system,
+                run_id=run_id,
+                budget=budget,
+                wall_clock=10.0 + budget / 100.0,
+                pack_name=f"tier_b_core_eval{budget}",
+                backend=BACKEND_BY_SYSTEM[system],
+                hardware_class=HARDWARE_BY_SYSTEM[system],
+            )
+        _write_fair_matrix_case(runs_root, run_id=run_id, budget=budget, seed=42, systems=SYSTEMS, pack_name=f"tier_b_core_eval{budget}")
 
     result = runner.invoke(app, ["performance-baseline", str(runs_root), "--output-root", str(tmp_path / "perf"), "--budgets", "96,384"])
 
