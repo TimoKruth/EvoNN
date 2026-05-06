@@ -514,7 +514,7 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
             {
                 "seed": 17,
                 "training": {"epochs": 3},
-                "evolution": {"population_size": 2},
+                "evolution": {"population_size": 1},
             },
             indent=2,
         ),
@@ -527,6 +527,7 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
                 "runtime_backend": "mlx",
                 "runtime_version": "0.0-test",
                 "precision_mode": "fp32",
+                "total_evaluations": 2,
             },
             indent=2,
         ),
@@ -679,6 +680,63 @@ def test_export_symbiosis_contract_prefers_persisted_total_evaluations(monkeypat
     assert manifest["budget"]["evaluation_count"] == 1000
     assert manifest["budget"]["actual_evaluations"] == 1000
     assert manifest["budget"]["cached_evaluations"] == 0
+
+
+def test_export_symbiosis_contract_reports_invalid_slots_without_partial_run(monkeypatch, tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "config.json").write_text(
+        json.dumps({"seed": 17, "training": {"epochs": 3}, "evolution": {"population_size": 1}}, indent=2),
+        encoding="utf-8",
+    )
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "elapsed_seconds": 1.5,
+                "runtime_backend": "mlx",
+                "runtime_version": "0.0-test",
+                "precision_mode": "fp32",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    genome = _sample_genome("mlp", [16, 8])
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        store.save_run(run_dir.name, {"seed": 17})
+        store.save_genome(run_dir.name, genome)
+        store.save_evaluation(
+            run_dir.name,
+            genome.genome_id,
+            0,
+            "tinystories_lm_smoke",
+            "perplexity",
+            float("nan"),
+            float("-inf"),
+            0,
+            0.0,
+            "unsupported_benchmark",
+            None,
+            "invalid",
+        )
+
+    monkeypatch.setattr(
+        sym,
+        "load_parity_pack",
+        lambda pack_path: [SimpleNamespace(id="tinystories_lm_smoke", task="language_modeling")],
+    )
+    monkeypatch.setattr(sym, "get_canonical_id", lambda name: f"canon::{name}")
+
+    manifest_path, _ = sym.export_symbiosis_contract(run_dir, "demo_pack.yaml")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["budget"]["evaluation_count"] == 1
+    assert manifest["budget"]["actual_evaluations"] == 1
+    assert manifest["budget"]["failed_evaluations"] == 0
+    assert manifest["budget"]["invalid_evaluations"] == 1
+    assert manifest["budget"]["partial_run"] is False
+    assert "unsupported genome-benchmark pairs" in manifest["budget"]["evaluation_semantics"]
 
 
 @pytest.mark.skipif(mx is None, reason="MLX runtime unavailable on this host")

@@ -234,7 +234,7 @@ def test_evaluate_reuses_run_scoped_benchmark_data_cache(monkeypatch):
     assert load_calls == 1
 
 
-def test_evaluate_skips_unsupported_pairs_without_counting(monkeypatch):
+def test_evaluate_counts_unsupported_pairs_as_invalid_budget_slots(monkeypatch):
     genome = _sample_genome("mlp")
     spec = _sample_spec(task="language_modeling")
     spec.modality = "text"
@@ -255,7 +255,9 @@ def test_evaluate_skips_unsupported_pairs_without_counting(monkeypatch):
     )
     updated = evaluate_mod.evaluate(state, RunConfig(), [spec])
 
-    assert updated.total_evaluations == 0
+    assert updated.total_evaluations == 1
+    assert updated.benchmark_evaluations == {"moons": 1}
+    assert updated.benchmark_failures == {"moons": 1}
     assert updated.results[genome.genome_id]["moons"].failure_reason == "unsupported_benchmark"
     assert compile_calls == []
 

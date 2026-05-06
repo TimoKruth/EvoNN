@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from topograph.export.symbiosis import _benchmark_metric_direction, _benchmark_metric_name
+from topograph.benchmarks.parity import get_canonical_id
 from topograph.nn import train as train_mod
 
 
@@ -66,6 +67,13 @@ def test_compute_metric_classification_returns_accuracy():
     assert metric_direction == "max"
     assert metric_value == 1.0
     assert quality == 1.0
+
+
+def test_openml_expanded_ladder_ids_are_canonical():
+    assert get_canonical_id("segment") == "openml_segment"
+    assert get_canonical_id("phoneme") == "openml_phoneme"
+    assert get_canonical_id("steel_plates_fault") == "openml_steel_plates_fault"
+    assert get_canonical_id("qsar_biodeg") == "openml_qsar_biodeg"
 
 
 def test_compute_metric_regression_returns_mse_and_negative_quality():

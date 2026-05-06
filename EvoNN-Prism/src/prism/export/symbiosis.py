@@ -163,7 +163,8 @@ def export_symbiosis_contract(
         evaluations=evaluations,
         fallback=total_evaluations,
     )
-    failed_evaluations = sum(1 for row in evaluations if row.get("status") not in {None, "ok"})
+    invalid_evaluations = sum(1 for row in evaluations if row.get("status") == "invalid")
+    failed_evaluations = sum(1 for row in evaluations if row.get("status") not in {None, "ok", "invalid"})
     config_snapshot_name = "config.yaml" if (output_dir / "config.yaml").exists() else "config.json"
     report_name = "report.md"
 
@@ -186,10 +187,11 @@ def export_symbiosis_contract(
             actual_evaluations=actual_evaluations,
             cached_evaluations=0,
             failed_evaluations=failed_evaluations,
-            invalid_evaluations=0,
-            partial_run=failed_evaluations > 0,
+            invalid_evaluations=invalid_evaluations,
+            partial_run=actual_evaluations < total_evaluations,
             evaluation_semantics=(
                 "one persisted genome-benchmark evaluation row counts as one scheduled evaluation slot; "
+                "unsupported genome-benchmark pairs are persisted as invalid scheduled slots; "
                 "weight inheritance still counts as a fresh evaluation and is not reported as a cached evaluation"
             ),
         ),

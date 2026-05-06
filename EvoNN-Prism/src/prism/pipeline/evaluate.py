@@ -124,12 +124,11 @@ def evaluate(
                 )
 
                 genome_results[benchmark_id] = result
-                if result.failure_reason == "unsupported_benchmark":
-                    continue
                 state.total_evaluations += 1
                 _record_benchmark_result(state, benchmark_id, result)
 
                 if store is not None and run_id is not None:
+                    status = "invalid" if result.failure_reason == "unsupported_benchmark" else None
                     store.save_evaluation(
                         run_id,
                         genome.genome_id,
@@ -142,6 +141,7 @@ def evaluate(
                         result.train_seconds,
                         result.failure_reason,
                         result.inherited_from,
+                        status,
                     )
 
             state.results[genome.genome_id] = genome_results

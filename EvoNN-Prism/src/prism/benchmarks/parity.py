@@ -25,14 +25,10 @@ CANONICAL_BENCHMARK_IDS: dict[str, str] = {
     # Tier 2 — image/tabular (EvoNN-leaning)
     "mnist": "mnist_image",
     "fashion_mnist": "fashionmnist_image",
-    "segment": "segment_classification",
     "vehicle": "vehicle_classification",
-    "qsar_biodeg": "qsar_biodeg_classification",
-    "steel_plates_fault": "steel_plates_fault_classification",
     # Tier 3 — topology benchmarks (EvoNN-2-leaning)
     "circles": "circles_classification",
     "blobs_f2_c2": "blobs_classification",
-    "phoneme": "phoneme_classification",
     "circles_n02_f3": "xor_tabular",
     # OpenML / shared tabular
     "adult": "openml_adult",
@@ -45,8 +41,12 @@ CANONICAL_BENCHMARK_IDS: dict[str, str] = {
     "letter": "openml_letter",
     "mfeat_factors": "openml_mfeat_factors",
     "nomao": "openml_nomao",
+    "phoneme": "openml_phoneme",
     "ozone_level": "openml_ozone_level",
+    "qsar_biodeg": "openml_qsar_biodeg",
+    "segment": "openml_segment",
     "speed_dating": "openml_speed_dating",
+    "steel_plates_fault": "openml_steel_plates_fault",
     "wall_robot": "openml_wall_robot",
     "wilt": "openml_wilt",
     # Bridge benchmarks
