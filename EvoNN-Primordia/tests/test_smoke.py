@@ -295,6 +295,8 @@ seed_policy:
     assert compare_summary["failure_patterns"] == {}
     assert compare_summary["wall_clock_seconds"] == summary["wall_clock_seconds"]
     assert compare_summary["primitive_usage"] == summary["primitive_usage"]
+    assert compare_summary["engine_evidence"]["primitive_usage"] == summary["primitive_usage"]
+    assert compare_summary["engine_evidence"]["primitive_bank_size"] == len(summary["primitive_usage"])
     assert primitive_bank["system"] == "primordia"
     assert primitive_bank["run_id"] == summary["run_id"]
     assert primitive_bank["runtime"] == summary["runtime"]

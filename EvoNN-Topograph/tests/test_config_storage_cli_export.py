@@ -425,6 +425,8 @@ def test_export_symbiosis_uses_recorded_runtime_metadata_in_manifest_and_summary
     assert summary["runtime_backend_limitations"] == "correctness fallback"
     assert summary["precision_mode"] == "bf16"
     assert summary["failure_patterns"] == {"failed": 1}
+    assert summary["engine_evidence"]["parallel_cache_behavior"]["cache_reuse_rate"] is None
+    assert summary["engine_evidence"]["topology_selection_policy"] is None
 
 
 

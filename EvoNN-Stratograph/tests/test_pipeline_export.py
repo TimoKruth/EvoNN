@@ -114,6 +114,8 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert summary["runtime_policy_name"] == "bounded_hierarchy_runtime_v2"
     assert summary["benchmark_slot_integrity"]["matches_evaluation_count"] is True
     assert summary["hierarchy_evidence"]["genome_count"] >= 1
+    assert summary["engine_evidence"]["hierarchy_evidence"]["genome_count"] >= 1
+    assert summary["engine_evidence"]["macro_depth"] == summary["hierarchy_summary"]["macro_depth"]
     assert manifest["artifacts"]["config_snapshot"] == "config.yaml"
     assert manifest["fairness"]["benchmark_pack_id"] == manifest["pack_name"]
     assert manifest["fairness"]["evaluation_count"] == manifest["budget"]["evaluation_count"]
@@ -130,6 +132,7 @@ def test_pipeline_and_export(repo_root, tmp_path) -> None:
     assert manifest["device"]["framework"] == budget_meta["runtime_backend"]
     assert manifest["device"]["framework_version"] == (budget_meta["runtime_version"] or "unknown")
     assert manifest["device"]["precision_mode"] == budget_meta["precision_mode"]
+    assert manifest["device"]["framework_requested"] == budget_meta["runtime_backend_requested"]
 
     report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert f"- Runtime: `{budget_meta['runtime_backend']}`" in report
