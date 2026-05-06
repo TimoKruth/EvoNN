@@ -322,8 +322,9 @@ def _output_quality_summary(*, path: Path, trend_rows: list[dict[str, Any]], out
                 "quality_level": str(payload.get("quality_level") or "L0"),
                 "measurement_state": str(payload.get("measurement_state") or "unknown"),
                 "missing_l3_fields": list(diagnostics.get("missing_l3_fields") or []),
+                "missing_l4_fields": list(diagnostics.get("missing_l4_fields") or []),
                 "missing_l2_fields": list(diagnostics.get("missing_l2_fields") or []),
-                "diagnostic_notes": list(diagnostics.get("notes") or []),
+                "diagnostic_warnings": list(diagnostics.get("warnings") or []),
                 "wall_clock_seconds": performance.get("wall_clock_seconds"),
                 "evals_per_second": performance.get("evals_per_second"),
                 "report_json_path": _relative_path(report_path, output_parent),
@@ -1032,7 +1033,7 @@ def _recent_runs_table(runs: list[dict[str, Any]]) -> str:
 def _output_quality_runs_table(runs: list[dict[str, Any]]) -> str:
     lines = [
         "<table>",
-        "<thead><tr><th>Comparison</th><th>Pack</th><th>Budget</th><th>Seed</th><th>System</th><th>Level</th><th>Measurement</th><th>Missing L3</th><th>Wall s</th><th>Eval/s</th><th>Report</th></tr></thead>",
+        "<thead><tr><th>Comparison</th><th>Pack</th><th>Budget</th><th>Seed</th><th>System</th><th>Level</th><th>Measurement</th><th>Missing L3</th><th>Missing L4</th><th>Wall s</th><th>Eval/s</th><th>Report</th></tr></thead>",
         "<tbody>",
     ]
     row_count = 0
@@ -1049,6 +1050,7 @@ def _output_quality_runs_table(runs: list[dict[str, Any]]) -> str:
                 f"<td><span class='tag tag-{html.escape(str(quality['quality_level']).lower())}'>{html.escape(str(quality['quality_level']))}</span></td>"
                 f"<td>{html.escape(str(quality['measurement_state']))}</td>"
                 f"<td>{html.escape(', '.join(quality['missing_l3_fields']) or 'none')}</td>"
+                f"<td>{html.escape(', '.join(quality['missing_l4_fields']) or 'none')}</td>"
                 f"<td>{_optional_float_cell(quality.get('wall_clock_seconds'))}</td>"
                 f"<td>{_optional_float_cell(quality.get('evals_per_second'))}</td>"
                 f"<td><a href='{html.escape(str(quality['report_json_path']))}'>json</a></td>"

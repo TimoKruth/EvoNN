@@ -1548,8 +1548,11 @@ def test_dashboard_payload_surfaces_output_quality_badges(tmp_path: Path) -> Non
     assert quality["system"] == "prism"
     assert quality["quality_level"] == "L3"
     assert quality["measurement_state"] == "measurable"
+    assert "engine_evidence.family_distribution" in quality["missing_l4_fields"]
     html = output_path.read_text(encoding="utf-8")
     assert "Output Quality By Run" in html
+    assert "Missing L4" in html
+    assert "engine_evidence.family_distribution" in html
     assert "L3" in html
 
 

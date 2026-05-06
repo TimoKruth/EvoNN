@@ -315,7 +315,6 @@ def _runtime_envelope(*, manifest: Mapping[str, Any], summary: Mapping[str, Any]
     )
     resolved = _first_text(
         summary.get("runtime_backend"),
-        summary.get("requested_runtime_backend"),
         runtime_policy.get("runtime_backend"),
         device.get("framework"),
     )
