@@ -115,6 +115,7 @@ def generate_topograph_config(
     pack = load_parity_pack(pack_path)
     benchmark_ids = resolve_supported_benchmark_ids(pack.benchmarks, "topograph")
     patch = _topograph_budget_patch(budget=budget, benchmark_count=len(pack.benchmarks))
+    parallel_workers = _topograph_parallel_workers(pack)
     payload = {
         "seed": seed,
         "benchmark": benchmark_ids[0],
@@ -129,7 +130,7 @@ def generate_topograph_config(
             "batch_size": 32,
             "multi_fidelity": False,
             "weight_inheritance": True,
-            "parallel_workers": 2,
+            "parallel_workers": parallel_workers,
         },
         "speciation": {"enabled": True, "threshold": 3.0},
         "run_dir": str(run_dir),
@@ -140,6 +141,22 @@ def generate_topograph_config(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return output_path
+
+
+def _topograph_parallel_workers(pack: Any) -> int:
+    """Avoid process-pool stalls on heavier expanded-ladder benchmarks."""
+
+    expanded_blocker_groups = {"language_modeling"}
+    expanded_blocker_ids = {
+        "fashionmnist_image",
+        "mnist_image",
+    }
+    for benchmark in pack.benchmarks:
+        benchmark_id = str(getattr(benchmark, "benchmark_id", ""))
+        group = str(getattr(benchmark, "benchmark_group", "") or "")
+        if benchmark_id.startswith("openml_") or benchmark_id in expanded_blocker_ids or group in expanded_blocker_groups:
+            return 1
+    return 2
 
 
 def prepare_campaign_cases(

@@ -361,6 +361,7 @@ def test_generate_tier_b_configs_resolve_supported_benchmark_ids_across_systems(
 
     assert prism_payload["benchmark_pack"]["benchmark_ids"] == expected
     assert topograph_payload["benchmark_pool"]["benchmarks"] == expected
+    assert topograph_payload["training"]["parallel_workers"] == 1
     assert stratograph_payload["benchmark_pool"]["benchmarks"] == expected
     assert primordia_payload["benchmark_pool"]["benchmarks"] == expected
     assert contender_payload["benchmark_pool"]["benchmarks"] == expected
