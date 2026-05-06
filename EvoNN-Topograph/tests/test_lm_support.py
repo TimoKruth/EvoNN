@@ -86,10 +86,10 @@ def test_tinystories_smoke_catalog_caps_shared_cache(tmp_path: Path, monkeypatch
     x_train, y_train, x_val, y_val = spec.load_data(seed=42)
 
     assert spec.task == "language_modeling"
-    assert x_train.shape == (512, 256)
-    assert y_train.shape == (512, 256)
-    assert x_val.shape == (128, 256)
-    assert y_val.shape == (128, 256)
+    assert x_train.shape == (128, 256)
+    assert y_train.shape == (128, 256)
+    assert x_val.shape == (32, 256)
+    assert y_val.shape == (32, 256)
 
 
 def test_wikitext2_smoke_catalog_caps_shared_cache(tmp_path: Path, monkeypatch):
@@ -99,10 +99,10 @@ def test_wikitext2_smoke_catalog_caps_shared_cache(tmp_path: Path, monkeypatch):
     x_train, y_train, x_val, y_val = spec.load_data(seed=42)
 
     assert spec.task == "language_modeling"
-    assert x_train.shape == (512, 256)
-    assert y_train.shape == (512, 256)
-    assert x_val.shape == (128, 256)
-    assert y_val.shape == (128, 256)
+    assert x_train.shape == (128, 256)
+    assert y_train.shape == (128, 256)
+    assert x_val.shape == (32, 256)
+    assert y_val.shape == (32, 256)
 
 
 def test_lm_cache_resolves_repo_shared_cache(tmp_path: Path, monkeypatch):

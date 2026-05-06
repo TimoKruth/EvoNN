@@ -753,8 +753,8 @@ def test_language_modeling_specs_load_and_compile():
     assert y_train.shape[1] == 128
 
     for name, train_rows, val_rows in [
-        ("tinystories_lm_smoke", 512, 128),
-        ("wikitext2_lm_smoke", 512, 128),
+        ("tinystories_lm_smoke", 128, 32),
+        ("wikitext2_lm_smoke", 128, 32),
     ]:
         spec = get_benchmark(name)
         xs, ys, xv, yv = spec.load_data(seed=42)

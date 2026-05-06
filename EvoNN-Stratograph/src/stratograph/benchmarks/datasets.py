@@ -149,8 +149,8 @@ _BUILTIN_BENCHMARKS: dict[str, BenchmarkSpec] = {
         dataset="tinystories_lm_smoke",
         input_dim=256,
         num_classes=8192,
-        max_train_samples=1024,
-        max_val_samples=256,
+        max_train_samples=128,
+        max_val_samples=32,
     ),
     "wikitext2_lm": BenchmarkSpec(
         name="wikitext2_lm",
@@ -169,8 +169,8 @@ _BUILTIN_BENCHMARKS: dict[str, BenchmarkSpec] = {
         dataset="wikitext2_lm_smoke",
         input_dim=256,
         num_classes=32768,
-        max_train_samples=1024,
-        max_val_samples=256,
+        max_train_samples=128,
+        max_val_samples=32,
     ),
 }
 

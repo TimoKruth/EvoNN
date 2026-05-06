@@ -22,6 +22,16 @@ def test_synthetic_lm_loads() -> None:
     assert y_val.shape == x_val.shape
 
 
+def test_lm_smoke_caps_are_promotion_lane_sized() -> None:
+    for name in ("tinystories_lm_smoke", "wikitext2_lm_smoke"):
+        spec = get_benchmark(name)
+        x_train, y_train, x_val, y_val = spec.load_data(seed=7)
+        assert x_train.shape == (128, 256)
+        assert y_train.shape == (128, 256)
+        assert x_val.shape == (32, 256)
+        assert y_val.shape == (32, 256)
+
+
 def test_tier1_regression_benchmarks_load() -> None:
     for name in ("diabetes", "friedman1"):
         spec = get_benchmark(name)
