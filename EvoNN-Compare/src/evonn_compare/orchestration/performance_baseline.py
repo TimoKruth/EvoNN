@@ -31,8 +31,14 @@ def build_performance_baseline(
     generated_at = datetime.now(timezone.utc).isoformat()
 
     run_rows = [_record_payload(record, required_budgets=required_budgets) for record in records]
-    cohort_stats = _cohort_stats(run_rows)
-    systems = _aggregate_systems(run_rows, required_budgets=required_budgets, cohort_stats=cohort_stats)
+    comparison_cohorts = _comparison_cohort_stats(run_rows)
+    performance_series = _performance_series_stats(run_rows)
+    systems = _aggregate_systems(
+        run_rows,
+        required_budgets=required_budgets,
+        comparison_cohorts=comparison_cohorts,
+        performance_series=performance_series,
+    )
     code_versions = sorted({str(row["code_version"]) for row in run_rows if row.get("code_version")})
     code_version_tag = code_versions[0] if len(code_versions) == 1 else ("mixed" if code_versions else "unknown")
     bundle_root = (output_root or Path("performance_baselines")) / f"{_stamp(generated_at)}-{_slug(code_version_tag)}"
@@ -46,7 +52,8 @@ def build_performance_baseline(
         "required_budgets": list(required_budgets),
         "run_count": len(run_rows),
         "accepted_run_count": sum(1 for row in run_rows if row["counts_for_baseline"]),
-        "cohorts": cohort_stats,
+        "comparison_cohorts": comparison_cohorts,
+        "performance_series": performance_series,
         "systems": systems,
     }
 
@@ -143,7 +150,6 @@ def _record_payload(record: OutputQualityRecord, *, required_budgets: tuple[int,
         "benchmark_count": record.benchmark_count,
         "completed_benchmark_count": record.completed_benchmark_count,
         "failed_benchmark_count": record.failed_benchmark_count,
-        "cohort_key": comparison_key,
         "comparison_key": comparison_key,
         "system_performance_key": system_performance_key,
         "exclusion_reasons": [],
@@ -154,7 +160,8 @@ def _aggregate_systems(
     run_rows: list[dict[str, Any]],
     *,
     required_budgets: tuple[int, ...],
-    cohort_stats: dict[str, dict[str, Any]],
+    comparison_cohorts: dict[str, dict[str, Any]],
+    performance_series: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in run_rows:
@@ -166,25 +173,36 @@ def _aggregate_systems(
             row["exclusion_reasons"] = _exclusion_reasons(
                 row,
                 required_budgets=required_budgets,
-                cohort_stats=cohort_stats,
+                comparison_cohorts=comparison_cohorts,
             )
             row["counts_for_baseline"] = not row["exclusion_reasons"]
         accepted = [row for row in rows if row["counts_for_baseline"]]
         budgets_present = sorted({int(row["budget"]) for row in accepted if row.get("budget") is not None})
         missing_budgets = [budget for budget in required_budgets if budget not in budgets_present]
         claim_ready = False
-        selected_cohort = None
+        selected_comparison_cohort = None
         selected_performance_key = None
+        performance_claim_warnings = []
+        candidate_series = _candidate_performance_series(
+            rows=accepted,
+            performance_series=performance_series,
+            required_budgets=required_budgets,
+        )
         if accepted:
-            performance_counts: dict[str, set[int]] = defaultdict(set)
-            for row in accepted:
-                performance_counts[str(row["system_performance_key"] or "unknown")].add(int(row["budget"]))
-            selected_performance_key, budget_set = max(performance_counts.items(), key=lambda item: (len(item[1]), item[0]))
-            selected_row = next(row for row in accepted if str(row["system_performance_key"]) == selected_performance_key)
-            selected_cohort = str(selected_row["comparison_key"])
-            stats = cohort_stats.get(selected_cohort, {})
+            if len(candidate_series) > 1:
+                performance_claim_warnings.append("multiple-performance-series")
+            selected = _select_performance_series(candidate_series)
+            selected_performance_key = selected["system_performance_key"] if selected else None
+            selected_rows = [row for row in accepted if row.get("system_performance_key") == selected_performance_key]
+            selected_comparison_keys = sorted({str(row["comparison_key"]) for row in selected_rows})
+            if len(selected_comparison_keys) > 1:
+                performance_claim_warnings.append("multiple-comparison-cohorts-for-selected-series")
+            selected_comparison_cohort = selected_comparison_keys[0] if len(selected_comparison_keys) == 1 else None
+            stats = comparison_cohorts.get(selected_comparison_cohort or "", {})
             claim_ready = (
-                set(required_budgets).issubset(budget_set)
+                selected is not None
+                and selected["has_required_budgets"]
+                and selected_comparison_cohort is not None
                 and _comparison_ready(stats, required_budgets=required_budgets)
             )
         systems.append(
@@ -195,8 +213,10 @@ def _aggregate_systems(
                 "budgets_present": budgets_present,
                 "missing_budgets": missing_budgets,
                 "performance_claim_ready": claim_ready,
-                "selected_cohort": selected_cohort,
+                "selected_comparison_cohort": selected_comparison_cohort,
                 "selected_system_performance_key": selected_performance_key,
+                "performance_series": candidate_series,
+                "performance_claim_warnings": performance_claim_warnings,
                 "backend_labels": sorted({row["runtime"].get("backend") or "unknown" for row in accepted}),
                 "hardware_labels": sorted({row["runtime"].get("hardware_class") or row["runtime"].get("device_name") or "unknown" for row in accepted}),
                 "median_wall_clock_seconds": _median([row["performance"].get("wall_clock_seconds") for row in accepted]),
@@ -216,12 +236,46 @@ def _aggregate_systems(
     return systems
 
 
-def _cohort_stats(run_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def _candidate_performance_series(
+    *,
+    rows: list[dict[str, Any]],
+    performance_series: dict[str, dict[str, Any]],
+    required_budgets: tuple[int, ...],
+) -> list[dict[str, Any]]:
+    rows_by_series: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        rows_by_series[str(row["system_performance_key"])].append(row)
+    candidates = []
+    for series_key, series_rows in sorted(rows_by_series.items()):
+        series = performance_series.get(series_key, {})
+        budgets = sorted({int(row["budget"]) for row in series_rows if row.get("budget") is not None})
+        missing_budgets = [budget for budget in required_budgets if budget not in budgets]
+        candidates.append(
+            {
+                "system_performance_key": series_key,
+                "backend": series.get("backend"),
+                "hardware_class": series.get("hardware_class"),
+                "budgets": budgets,
+                "missing_budgets": missing_budgets,
+                "has_required_budgets": not missing_budgets,
+                "run_ids": sorted({str(row["run_id"]) for row in series_rows}),
+            }
+        )
+    return sorted(candidates, key=lambda row: (not row["has_required_budgets"], -len(row["budgets"]), row["system_performance_key"]))
+
+
+def _select_performance_series(candidate_series: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not candidate_series:
+        return None
+    return min(candidate_series, key=lambda row: (not row["has_required_budgets"], -len(row["budgets"]), row["system_performance_key"]))
+
+
+def _comparison_cohort_stats(run_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in run_rows:
         grouped[str(row["comparison_key"])].append(row)
     payload = {}
-    for cohort_key, rows in grouped.items():
+    for comparison_key, rows in grouped.items():
         lane_states = sorted({str(row.get("lane_operating_state") or "unknown") for row in rows})
         backend_labels = sorted({str(row["runtime"].get("backend") or "unknown") for row in rows})
         hardware_labels = sorted(
@@ -233,8 +287,8 @@ def _cohort_stats(run_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             budget_rows = [row for row in rows if row.get("budget") == budget]
             systems_by_budget[str(budget)] = sorted({str(row["system"]) for row in budget_rows})
             lane_states_by_budget[str(budget)] = sorted({str(row.get("lane_operating_state") or "unknown") for row in budget_rows})
-        payload[cohort_key] = {
-            "cohort_key": cohort_key,
+        payload[comparison_key] = {
+            "comparison_key": comparison_key,
             "pack_name": rows[0].get("pack_name"),
             "pack_family": rows[0].get("pack_family"),
             "seed": rows[0].get("seed"),
@@ -253,6 +307,27 @@ def _cohort_stats(run_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return payload
 
 
+def _performance_series_stats(run_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in run_rows:
+        grouped[str(row["system_performance_key"])].append(row)
+    payload = {}
+    for series_key, rows in grouped.items():
+        payload[series_key] = {
+            "system_performance_key": series_key,
+            "comparison_keys": sorted({str(row["comparison_key"]) for row in rows}),
+            "system": rows[0].get("system"),
+            "pack_family": rows[0].get("pack_family"),
+            "seed": rows[0].get("seed"),
+            "code_version": rows[0].get("code_version"),
+            "backend": rows[0]["runtime"].get("backend"),
+            "hardware_class": rows[0]["runtime"].get("hardware_class"),
+            "budgets": sorted({int(row["budget"]) for row in rows if row.get("budget") is not None}),
+            "run_ids": sorted({str(row["run_id"]) for row in rows}),
+        }
+    return payload
+
+
 def _render_markdown(overview: dict[str, Any], run_rows: list[dict[str, Any]]) -> str:
     lines = [
         "# Performance Baseline",
@@ -264,19 +339,21 @@ def _render_markdown(overview: dict[str, Any], run_rows: list[dict[str, Any]]) -
         f"- required_budgets: `{', '.join(str(v) for v in overview['required_budgets'])}`",
         f"- accepted_runs: `{overview['accepted_run_count']}/{overview['run_count']}`",
         "",
-        "## Cohorts",
+        "## Comparison Cohorts",
         "",
-        "| Cohort | Pack | Seed | Code | Lane State | Systems | Budgets | Complete Budgets |",
-        "| --- | --- | ---: | --- | --- | --- | --- | --- |",
+        "| Comparison Key | Pack | Seed | Code | Lane State | Backends | Hardware | Systems | Budgets | Complete Budgets |",
+        "| --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- |",
     ]
-    for cohort in overview["cohorts"].values():
+    for cohort in overview["comparison_cohorts"].values():
         lines.append(
-            "| {key} | `{pack}` | {seed} | `{code}` | `{lane}` | `{systems}` | `{budgets}` | `{complete}` |".format(
-                key=cohort["cohort_key"],
+            "| {key} | `{pack}` | {seed} | `{code}` | `{lane}` | `{backends}` | `{hardware}` | `{systems}` | `{budgets}` | `{complete}` |".format(
+                key=cohort["comparison_key"],
                 pack=cohort.get("pack_family") or cohort["pack_name"],
                 seed=cohort["seed"] if cohort["seed"] is not None else 0,
                 code=cohort["code_version"] or "unknown",
                 lane=cohort["lane_operating_state"],
+                backends=", ".join(cohort.get("backend_labels") or [cohort.get("backend") or "unknown"]),
+                hardware=", ".join(cohort.get("hardware_labels") or [cohort.get("hardware_class") or "unknown"]),
                 systems=", ".join(cohort["systems"]),
                 budgets=", ".join(str(v) for v in cohort["budgets"]),
                 complete=", ".join(
@@ -290,18 +367,20 @@ def _render_markdown(overview: dict[str, Any], run_rows: list[dict[str, Any]]) -
         "",
         "## System Summary",
         "",
-        "| System | Accepted | Budgets | Claim Ready | Cohort | Wall s | Eval/s | Quality/s | Bench/s | Failure-Adj Bench/s | Cache Reuse | Backends | Hardware |",
-        "| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+        "| System | Accepted | Budgets | Claim Ready | Comparison | Performance Series | Warnings | Wall s | Eval/s | Quality/s | Bench/s | Failure-Adj Bench/s | Cache Reuse | Backends | Hardware |",
+        "| --- | ---: | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ])
     for row in overview["systems"]:
         lines.append(
-            "| {system} | {accepted}/{total} | `{budgets}` | `{ready}` | `{cohort}` | {wall} | {eps} | {qps} | {bps} | {fbps} | {cache} | `{backends}` | `{hardware}` |".format(
+            "| {system} | {accepted}/{total} | `{budgets}` | `{ready}` | `{comparison}` | `{series}` | `{warnings}` | {wall} | {eps} | {qps} | {bps} | {fbps} | {cache} | `{backends}` | `{hardware}` |".format(
                 system=row["system"],
                 accepted=row["accepted_run_count"],
                 total=row["run_count"],
                 budgets=", ".join(str(v) for v in row["budgets_present"]) or "none",
                 ready="yes" if row["performance_claim_ready"] else "no",
-                cohort=row["selected_cohort"] or "none",
+                comparison=row["selected_comparison_cohort"] or "none",
+                series=row["selected_system_performance_key"] or "none",
+                warnings=", ".join(row.get("performance_claim_warnings") or []) or "none",
                 wall=_fmt(row["median_wall_clock_seconds"]),
                 eps=_fmt(row["median_evals_per_second"]),
                 qps=_fmt(row["median_quality_per_second"]),
@@ -312,7 +391,25 @@ def _render_markdown(overview: dict[str, Any], run_rows: list[dict[str, Any]]) -
                 hardware=", ".join(row["hardware_labels"]) or "unknown",
             )
         )
-    lines.extend(["", "## Excluded Runs", "", "| System | Run ID | Budget | Reasons |", "| --- | --- | ---: | --- |"]) 
+    lines.extend([
+        "",
+        "## Performance Series",
+        "",
+        "| Series | System | Backend | Hardware | Budgets | Comparison Keys |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ])
+    for series in overview["performance_series"].values():
+        lines.append(
+            "| {key} | `{system}` | `{backend}` | `{hardware}` | `{budgets}` | `{comparisons}` |".format(
+                key=series["system_performance_key"],
+                system=series["system"] or "unknown",
+                backend=series["backend"] or "unknown",
+                hardware=series["hardware_class"] or "unknown",
+                budgets=", ".join(str(v) for v in series["budgets"]) or "none",
+                comparisons=", ".join(series["comparison_keys"]) or "none",
+            )
+        )
+    lines.extend(["", "## Excluded Runs", "", "| System | Run ID | Budget | Reasons |", "| --- | --- | ---: | --- |"])
     excluded_any = False
     for row in run_rows:
         if row["counts_for_baseline"]:
@@ -324,7 +421,12 @@ def _render_markdown(overview: dict[str, Any], run_rows: list[dict[str, Any]]) -
     return "\n".join(lines) + "\n"
 
 
-def _exclusion_reasons(row: dict[str, Any], *, required_budgets: tuple[int, ...], cohort_stats: dict[str, dict[str, Any]]) -> list[str]:
+def _exclusion_reasons(
+    row: dict[str, Any],
+    *,
+    required_budgets: tuple[int, ...],
+    comparison_cohorts: dict[str, dict[str, Any]],
+) -> list[str]:
     reasons = []
     if row["quality_level"] not in {"L3", "L4"}:
         reasons.append(f"quality={row['quality_level']}")
@@ -343,7 +445,7 @@ def _exclusion_reasons(row: dict[str, Any], *, required_budgets: tuple[int, ...]
     lane_state = row.get("lane_operating_state")
     if lane_state not in DECISION_GRADE_LANE_STATES:
         reasons.append(f"lane-state={lane_state or 'missing'}")
-    cohort = cohort_stats.get(str(row.get("cohort_key")))
+    cohort = comparison_cohorts.get(str(row.get("comparison_key")))
     if not cohort:
         reasons.append("cohort-missing")
     else:

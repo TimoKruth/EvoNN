@@ -209,8 +209,11 @@ def test_build_performance_baseline_writes_bundle(tmp_path: Path) -> None:
     assert prism["backend_labels"] == ["mlx"]
     assert contenders["backend_labels"] == ["scikit-learn"]
     assert contenders["performance_claim_ready"] is True
-    assert next(iter(payload["cohorts"].values()))["backend"] == "mixed"
-    assert next(iter(payload["cohorts"].values()))["hardware_class"] == "mixed"
+    assert prism["selected_comparison_cohort"] == next(iter(payload["comparison_cohorts"].keys()))
+    assert "cohort_key" not in payload["runs"][0]
+    assert next(iter(payload["comparison_cohorts"].values()))["backend"] == "mixed"
+    assert next(iter(payload["comparison_cohorts"].values()))["hardware_class"] == "mixed"
+    assert len(payload["performance_series"]) == 5
     assert payload["code_version_tag"] == "deadbeef"
     assert Path(result["markdown"]).exists()
     assert Path(result["jsonl"]).exists()
@@ -232,6 +235,36 @@ def test_performance_baseline_rejects_mixed_cohorts_even_when_budget_set_exists(
 
     assert prism["performance_claim_ready"] is False
     assert any("incomplete-system-cohort" in ",".join(row["reasons"]) or "pack" in ",".join(row["reasons"]) for row in prism["excluded_runs"])
+
+
+def test_performance_baseline_flags_runtime_series_ambiguity(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    runs_root = workspace / "runs"
+    for budget, backend, hardware_class in [(64, "mlx", "apple_silicon"), (256, "numpy", "arm64"), (1000, "mlx", "apple_silicon")]:
+        run_id = f"tier1_core_eval{budget}_seed42"
+        for system in SYSTEMS:
+            system_backend = backend if system == "prism" else BACKEND_BY_SYSTEM[system]
+            system_hardware = hardware_class if system == "prism" else HARDWARE_BY_SYSTEM[system]
+            _write_run(
+                runs_root / system / run_id,
+                system=system,
+                run_id=run_id,
+                budget=budget,
+                wall_clock=10.0,
+                pack_name=f"tier1_core_eval{budget}",
+                backend=system_backend,
+                hardware_class=system_hardware,
+            )
+        _write_fair_matrix_case(workspace, run_id=run_id, budget=budget, seed=42, systems=SYSTEMS, pack_name=f"tier1_core_eval{budget}")
+
+    result = build_performance_baseline(inputs=[workspace], output_root=tmp_path / "baselines")
+    payload = json.loads(Path(result["json"]).read_text(encoding="utf-8"))
+    prism = next(row for row in payload["systems"] if row["system"] == "prism")
+
+    assert prism["performance_claim_ready"] is False
+    assert prism["performance_claim_warnings"] == ["multiple-performance-series"]
+    assert len(prism["performance_series"]) == 2
+    assert all(series["has_required_budgets"] is False for series in prism["performance_series"])
 
 
 def test_performance_baseline_cli_accepts_workspace(tmp_path: Path) -> None:
