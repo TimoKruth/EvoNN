@@ -98,6 +98,17 @@ def test_extra_trees_trains_on_friedman1_regression() -> None:
     assert float(record["metric_value"]) >= 0.0
 
 
+def test_regression_alias_contenders_resolve_and_train() -> None:
+    assert resolve_contenders("tabular", ["ridge", "ridge_or_linear", "linear_svr", "svr_or_nystroem_svr"])
+    ridge = _evaluate("diabetes", "tabular", "ridge_or_linear")
+    nystroem = _evaluate("friedman1", "tabular", "svr_or_nystroem_svr")
+
+    assert ridge["status"] == "ok"
+    assert nystroem["status"] == "ok"
+    assert float(ridge["metric_value"]) >= 0.0
+    assert float(nystroem["metric_value"]) >= 0.0
+
+
 def test_new_contender_names_resolve() -> None:
     assert resolve_contenders("tabular", ["linear_svc", "xgb_small", "lgbm_small", "catboost_small"])
     assert resolve_contenders("image", ["cnn_small"])

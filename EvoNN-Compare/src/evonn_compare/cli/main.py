@@ -6,6 +6,7 @@ import typer
 
 from evonn_compare.cli.campaign import campaign
 from evonn_compare.cli.campaign_state import campaign_inspect, campaign_stop
+from evonn_compare.cli.benchmark_audit import benchmark_audit
 from evonn_compare.cli.compare import compare
 from evonn_compare.cli.dashboard import dashboard
 from evonn_compare.cli.fair_matrix import fair_matrix
@@ -25,6 +26,7 @@ app = typer.Typer(
 )
 
 app.command("compare")(compare)
+app.command("benchmark-audit")(benchmark_audit)
 app.command("validate")(validate)
 app.command("campaign")(campaign)
 app.command("campaign-inspect")(campaign_inspect)

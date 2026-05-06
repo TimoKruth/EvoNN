@@ -119,6 +119,14 @@ def test_performance_baseline_help() -> None:
     assert "--write-run-artifacts" in text
 
 
+def test_benchmark_audit_help() -> None:
+    result = _invoke_help("benchmark-audit")
+    assert result.exit_code == 0
+    text = _normalized_cli_output(result.stdout)
+    assert "--pack" in text
+    assert "--output" in text
+
+
 def test_historical_baseline_help() -> None:
     result = _invoke_help("historical-baseline")
     assert result.exit_code == 0
@@ -221,6 +229,32 @@ def test_fair_matrix_preset_tier_b_weekend_dry_run(tmp_path) -> None:
     assert result.exit_code == 0
     assert "tier_b_core_eval1000" in result.stdout
     assert "trend-dataset\t" in result.stdout
+
+
+def test_expanded_benchmark_ladder_presets_dry_run(tmp_path) -> None:
+    presets = {
+        "tier_a_contract": "tier_a_contract_eval64",
+        "tier_b_local_v2": "tier_b_core_v2_eval96",
+        "tier_b_overnight_v2": "tier_b_core_v2_eval384",
+        "tier_b_weekend_v2": "tier_b_core_v2_eval1536",
+        "tier_c_local": "tier_c_architecture_sensitive_eval128",
+        "tier_c_overnight": "tier_c_architecture_sensitive_eval512",
+        "tier_d_broad": "tier_d_broad_shared_eval656",
+    }
+    for preset, expected_case in presets.items():
+        result = runner.invoke(app, ["fair-matrix", "--preset", preset, "--workspace", str(tmp_path / preset), "--dry-run"])
+        assert result.exit_code == 0
+        assert expected_case in result.stdout
+
+
+def test_benchmark_audit_cli_writes_reports(tmp_path: Path) -> None:
+    output_path = tmp_path / "tier_a_contract.md"
+    result = runner.invoke(app, ["benchmark-audit", "--pack", "tier_a_contract", "--output", str(output_path)])
+
+    assert result.exit_code == 0
+    assert "status\t" in result.stdout
+    assert output_path.exists()
+    assert output_path.with_suffix(".json").exists()
 
 
 def test_campaign_execute_surfaces_manifest(tmp_path, monkeypatch) -> None:

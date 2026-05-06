@@ -1,0 +1,172 @@
+name: tier_b_core_v2
+tier: 2
+ladder_tier: B
+description: Expanded default local research lane with explicit contender floors across tabular, synthetic, image, and regression tasks.
+usage_classification:
+  local: {evaluation_count: 96, notes: Eight evaluations per benchmark across the 12-benchmark Tier B lane.}
+  overnight: {evaluation_count: 384, notes: Thirty-two evaluations per benchmark for deeper local studies.}
+  extended: {evaluation_count: 768, notes: Sixty-four evaluations per benchmark for promotion evidence.}
+  weekend: {evaluation_count: 1536, notes: One hundred twenty-eight evaluations per benchmark for longer runs.}
+promotion_requirements:
+  clean_runs_at_96: 2
+  clean_runs_at_384: 1
+benchmarks:
+  - benchmark_id: iris_classification
+    native_ids: {prism: iris, topograph: iris, stratograph: iris, primordia: iris, contenders: iris, evonn: iris_classification, evonn2: iris, hybrid: iris}
+    task_kind: classification
+    benchmark_group: tabular
+    benchmark_family: tabular
+    domain: classic_tabular
+    difficulty: smoke
+    runtime_class: local
+    metric_name: accuracy
+    metric_direction: max
+    minimum_required_contenders: [hist_gb, extra_trees, linear_svc]
+    enhanced_optional_contenders: [xgb_small, lgbm_small, catboost_small]
+    score_ceiling: 1.0
+  - benchmark_id: breast_cancer
+    native_ids: {prism: breast_cancer, topograph: breast_cancer, stratograph: breast_cancer, primordia: breast_cancer, contenders: breast_cancer, evonn: breast_cancer, evonn2: breast_cancer, hybrid: breast_cancer}
+    task_kind: classification
+    benchmark_group: tabular
+    benchmark_family: tabular
+    domain: classic_tabular
+    difficulty: smoke
+    runtime_class: local
+    metric_name: accuracy
+    metric_direction: max
+    minimum_required_contenders: [hist_gb, extra_trees, linear_svc]
+    enhanced_optional_contenders: [xgb_small, lgbm_small, catboost_small]
+    score_ceiling: 1.0
+  - benchmark_id: credit_g_classification
+    native_ids: {prism: credit_g, topograph: credit_g, stratograph: credit_g, primordia: credit_g, contenders: credit_g, evonn: openml_credit_g, evonn2: credit_g, hybrid: credit_g}
+    task_kind: classification
+    benchmark_group: tabular
+    benchmark_family: tabular
+    domain: openml_tabular
+    difficulty: core
+    runtime_class: local
+    metric_name: accuracy
+    metric_direction: max
+    minimum_required_contenders: [hist_gb, extra_trees, linear_svc]
+    enhanced_optional_contenders: [xgb_small, lgbm_small, catboost_small]
+    score_ceiling: 1.0
+  - benchmark_id: openml_bank_marketing
+    native_ids: {prism: bank_marketing, topograph: bank_marketing, stratograph: bank_marketing, primordia: bank_marketing, contenders: bank_marketing, evonn: openml_bank_marketing, evonn2: bank_marketing, hybrid: bank_marketing}
+    task_kind: classification
+    benchmark_group: tabular
+    benchmark_family: tabular
+    domain: openml_tabular
+    difficulty: hard
+    runtime_class: overnight
+    metric_name: accuracy
+    metric_direction: max
+    minimum_required_contenders: [hist_gb, extra_trees, linear_svc]
+    enhanced_optional_contenders: [xgb_small, lgbm_small, catboost_small]
+    score_ceiling: 1.0
+  - benchmark_id: openml_letter
+    native_ids: {prism: letter, topograph: letter, stratograph: letter, primordia: letter, contenders: letter, evonn: openml_letter, evonn2: letter, hybrid: letter}
+    task_kind: classification
+    benchmark_group: tabular
+    benchmark_family: tabular
+    domain: openml_tabular
+    difficulty: hard
+    runtime_class: overnight
+    metric_name: accuracy
+    metric_direction: max
+    minimum_required_contenders: [hist_gb, extra_trees, linear_svc]
+    enhanced_optional_contenders: [xgb_small, lgbm_small, catboost_small]
+    score_ceiling: 1.0
+  - benchmark_id: openml_gas_sensor
+    native_ids: {prism: gas_sensor, topograph: gas_sensor, stratograph: gas_sensor, primordia: gas_sensor, contenders: gas_sensor, evonn: openml_gas_sensor, evonn2: gas_sensor, hybrid: gas_sensor}
+    task_kind: classification
+    benchmark_group: tabular
+    benchmark_family: tabular
+    domain: openml_tabular
+    difficulty: hard
+    runtime_class: overnight
+    metric_name: accuracy
+    metric_direction: max
+    minimum_required_contenders: [hist_gb, extra_trees, linear_svc]
+    enhanced_optional_contenders: [xgb_small, lgbm_small, catboost_small]
+    score_ceiling: 1.0
+  - benchmark_id: moons_classification
+    native_ids: {prism: moons, topograph: moons, stratograph: moons, primordia: moons, contenders: moons, evonn: moons_classification, evonn2: moons, hybrid: moons}
+    task_kind: classification
+    benchmark_group: synthetic
+    benchmark_family: synthetic
+    domain: nonlinear_synthetic
+    difficulty: core
+    runtime_class: local
+    metric_name: accuracy
+    metric_direction: max
+    minimum_required_contenders: [hist_gb, extra_trees, svm_nystroem_rbf]
+    enhanced_optional_contenders: [xgb_small, lgbm_small, catboost_small]
+    score_ceiling: 1.0
+  - benchmark_id: circles_classification
+    native_ids: {prism: circles, topograph: circles, stratograph: circles, primordia: circles, contenders: circles, evonn: circles_classification, evonn2: circles, hybrid: circles}
+    task_kind: classification
+    benchmark_group: synthetic
+    benchmark_family: synthetic
+    domain: nonlinear_synthetic
+    difficulty: core
+    runtime_class: local
+    metric_name: accuracy
+    metric_direction: max
+    minimum_required_contenders: [hist_gb, extra_trees, svm_nystroem_rbf]
+    enhanced_optional_contenders: [xgb_small, lgbm_small, catboost_small]
+    score_ceiling: 1.0
+  - benchmark_id: digits_image
+    native_ids: {prism: digits, topograph: digits, stratograph: digits, primordia: digits, contenders: digits, evonn: digits_image, evonn2: digits, hybrid: digits}
+    task_kind: classification
+    benchmark_group: image
+    benchmark_family: image-classification
+    domain: small_image
+    difficulty: core
+    runtime_class: local
+    metric_name: accuracy
+    metric_direction: max
+    minimum_required_contenders: [mlp_wide, extra_trees]
+    enhanced_optional_contenders: [cnn_small]
+    score_ceiling: 1.0
+  - benchmark_id: fashionmnist_image
+    native_ids: {prism: fashion_mnist, topograph: fashion_mnist, stratograph: fashion_mnist, primordia: fashion_mnist, contenders: fashion_mnist, evonn: fashionmnist_image, evonn2: fashion_mnist, hybrid: fashion_mnist}
+    task_kind: classification
+    benchmark_group: image
+    benchmark_family: image-classification
+    domain: small_image
+    difficulty: hard
+    runtime_class: overnight
+    metric_name: accuracy
+    metric_direction: max
+    minimum_required_contenders: [mlp_wide, extra_trees]
+    enhanced_optional_contenders: [cnn_small]
+    score_ceiling: 1.0
+  - benchmark_id: diabetes_regression
+    native_ids: {prism: diabetes, topograph: diabetes, stratograph: diabetes, primordia: diabetes, contenders: diabetes, evonn: diabetes_regression, evonn2: diabetes, hybrid: diabetes}
+    task_kind: regression
+    benchmark_group: tabular
+    benchmark_family: tabular-regression
+    domain: classic_regression
+    difficulty: core
+    runtime_class: local
+    metric_name: mse
+    metric_direction: min
+    minimum_required_contenders: [hist_gb, extra_trees, ridge_or_linear, svr_or_nystroem_svr]
+  - benchmark_id: openml_cpu_activity
+    native_ids: {prism: cpu_performance, topograph: cpu_performance, stratograph: cpu_performance, primordia: cpu_performance, contenders: cpu_performance, evonn: openml_cpu_activity, evonn2: cpu_performance, hybrid: cpu_performance}
+    task_kind: regression
+    benchmark_group: tabular
+    benchmark_family: tabular-regression
+    domain: openml_regression
+    difficulty: hard
+    runtime_class: overnight
+    metric_name: mse
+    metric_direction: min
+    minimum_required_contenders: [hist_gb, extra_trees, ridge_or_linear, svr_or_nystroem_svr]
+budget_policy:
+  evaluation_count: 96
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

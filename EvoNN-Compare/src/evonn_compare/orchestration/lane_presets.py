@@ -64,6 +64,55 @@ LANE_PRESETS: dict[str, LanePreset] = {
         budgets=(1000,),
         description="High-budget Tier B preset for repeated longer local studies.",
     ),
+    "tier_a_contract": LanePreset(
+        name="tier_a_contract",
+        pack="tier_a_contract",
+        seeds=(42,),
+        budgets=(64,),
+        description="Decision-grade Tier A contract lane with explicit contender-floor metadata.",
+    ),
+    "tier_b_local_v2": LanePreset(
+        name="tier_b_local_v2",
+        pack="tier_b_core_v2",
+        seeds=(42,),
+        budgets=(96,),
+        description="Expanded Tier B local research lane with 12 benchmarks and required contender floors.",
+    ),
+    "tier_b_overnight_v2": LanePreset(
+        name="tier_b_overnight_v2",
+        pack="tier_b_core_v2",
+        seeds=(42,),
+        budgets=(384,),
+        description="Expanded Tier B overnight lane for promotion evidence.",
+    ),
+    "tier_b_weekend_v2": LanePreset(
+        name="tier_b_weekend_v2",
+        pack="tier_b_core_v2",
+        seeds=(42,),
+        budgets=(1536,),
+        description="Expanded Tier B weekend lane.",
+    ),
+    "tier_c_local": LanePreset(
+        name="tier_c_local",
+        pack="tier_c_architecture_sensitive",
+        seeds=(42,),
+        budgets=(128,),
+        description="Exploratory Tier C local architecture-sensitive lane.",
+    ),
+    "tier_c_overnight": LanePreset(
+        name="tier_c_overnight",
+        pack="tier_c_architecture_sensitive",
+        seeds=(42,),
+        budgets=(512,),
+        description="Exploratory Tier C overnight architecture-sensitive lane.",
+    ),
+    "tier_d_broad": LanePreset(
+        name="tier_d_broad",
+        pack="tier_d_broad_shared",
+        seeds=(42,),
+        budgets=(656,),
+        description="Special-only broad shared benchmark lane; keep separate until repeated clean runs exist.",
+    ),
 }
 
 

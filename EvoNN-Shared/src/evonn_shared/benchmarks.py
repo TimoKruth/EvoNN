@@ -22,6 +22,16 @@ class BenchmarkDescriptor(BaseModel):
     task_kind: TaskKind
     metric_name: str
     metric_direction: MetricDirection
+    benchmark_group: Literal["tabular", "synthetic", "image", "language_modeling"] | None = None
+    domain: str | None = None
+    difficulty: Literal["smoke", "core", "hard", "stress"] | None = None
+    runtime_class: Literal["ci", "local", "overnight", "weekend", "special"] | None = None
+    minimum_required_contenders: tuple[str, ...] = ()
+    enhanced_optional_contenders: tuple[str, ...] = ()
+    score_ceiling: float | None = None
+    tie_tolerance_abs: float = 1e-12
+    tie_tolerance_rel: float = 1e-12
+    admission_notes: str = ""
     source: str | None = None
     native_name: str | None = None
 

@@ -22,3 +22,13 @@ def test_tier_b_core_loads_expected_benchmark_families() -> None:
         "fashionmnist_image",
         "tinystories_lm_smoke",
     ]
+
+
+def test_expanded_ladder_pack_metadata_loads() -> None:
+    pack = load_parity_pack("tier_b_core_v2")
+
+    assert pack.name == "tier_b_core_v2"
+    assert pack.ladder_tier == "B"
+    assert len(pack.benchmarks) == 12
+    assert pack.benchmarks[0].minimum_required_contenders
+    assert pack.benchmarks[0].score_ceiling == 1.0

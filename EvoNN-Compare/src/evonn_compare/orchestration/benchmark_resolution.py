@@ -55,6 +55,28 @@ def resolve_supported_benchmark_ids(benchmarks: list[ParityBenchmark], system: s
     return [resolve_supported_benchmark_id(entry, system) for entry in benchmarks]
 
 
+def resolve_benchmark_support(benchmark: ParityBenchmark, system: str) -> dict[str, object]:
+    """Return support details for one benchmark/system pair."""
+
+    candidates = _candidate_ids(benchmark, system)
+    for candidate in candidates:
+        if _benchmark_supported(system, candidate):
+            return {
+                "system": system,
+                "benchmark_id": benchmark.benchmark_id,
+                "resolved_id": candidate,
+                "supported": True,
+                "candidates": candidates,
+            }
+    return {
+        "system": system,
+        "benchmark_id": benchmark.benchmark_id,
+        "resolved_id": candidates[0] if candidates else benchmark.benchmark_id,
+        "supported": False,
+        "candidates": candidates,
+    }
+
+
 def _benchmark_supported(system: str, candidate: str) -> bool:
     loader = _get_benchmark_loader(system)
     if loader is not None:

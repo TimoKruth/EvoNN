@@ -308,6 +308,9 @@ def build_matrix_trend_rows(
                 "comparison_cohort": "current-workspace",
                 "comparison_label": "current-workspace",
                 "comparison_case_id": comparison_case_id,
+                "score_ceiling": getattr(benchmark, "score_ceiling", None),
+                "tie_tolerance_abs": getattr(benchmark, "tie_tolerance_abs", 1e-12),
+                "tie_tolerance_rel": getattr(benchmark, "tie_tolerance_rel", 1e-12),
                 "lane_operating_state": lane.operating_state if lane is not None else "reference-only",
                 "system_operating_state": lane.system_operating_states.get(system, "unknown") if lane is not None else "unknown",
                 "budget_accounting_ok": lane.budget_accounting_ok if lane is not None else False,
@@ -369,13 +372,23 @@ def _winner_table(
             ties += 1
             continue
         values = [value for _system, value in contenders]
+        ceiling = getattr(benchmark, "score_ceiling", None)
+        abs_tol = float(getattr(benchmark, "tie_tolerance_abs", 1e-12))
+        rel_tol = float(getattr(benchmark, "tie_tolerance_rel", 1e-12))
+        if ceiling is not None and all(_within_tolerance(value, float(ceiling), abs_tol=abs_tol, rel_tol=rel_tol) for _system, value in contenders):
+            ties += 1
+            continue
         best = max(values) if benchmark.metric_direction == "max" else min(values)
-        winners = [system for system, value in contenders if abs(value - best) <= 1e-12]
+        winners = [system for system, value in contenders if _within_tolerance(value, best, abs_tol=abs_tol, rel_tol=rel_tol)]
         if len(winners) == 1:
             wins[winners[0]] += 1
         else:
             ties += 1
     return wins, ties
+
+
+def _within_tolerance(value: float, target: float, *, abs_tol: float, rel_tol: float) -> bool:
+    return abs(value - target) <= max(abs_tol, rel_tol * max(abs(value), abs(target), 1.0))
 
 
 def _reference_note(pair_results: dict[tuple[str, str], tuple[ComparisonResult, Path]]) -> str | None:

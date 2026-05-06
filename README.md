@@ -69,6 +69,11 @@ uv run --package evonn-compare python -m evonn_compare fair-matrix \
 - Topograph is the primary challenger on the shared compare surface.
 - `fair-matrix` and `campaign` default to the trusted daily `local` lane
   (`tier1_core` @ `64`) when no pack or preset is supplied.
+- Expanded benchmark-ladder presets are available for staged research:
+  `tier_a_contract`, `tier_b_local_v2`, `tier_b_overnight_v2`,
+  `tier_b_weekend_v2`, `tier_c_local`, `tier_c_overnight`, and `tier_d_broad`.
+- Use `evonn-compare benchmark-audit --pack <pack>` before promoting a new pack;
+  promoted packs require explicit required contender-floor metadata.
 - Shared infrastructure should converge where it improves trust, parity, and
   maintenance, while search-core logic stays package-local.
 

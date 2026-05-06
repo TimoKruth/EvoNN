@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -57,6 +57,16 @@ class ParityBenchmark(BaseModel):
     native_ids: dict[str, str] | None = None
     task_kind: Literal["classification", "regression", "language_modeling"]
     benchmark_family: str | None = None
+    benchmark_group: Literal["tabular", "synthetic", "image", "language_modeling"] | None = None
+    domain: str | None = None
+    difficulty: Literal["smoke", "core", "hard", "stress"] | None = None
+    runtime_class: Literal["ci", "local", "overnight", "weekend", "special"] | None = None
+    minimum_required_contenders: tuple[str, ...] = ()
+    enhanced_optional_contenders: tuple[str, ...] = ()
+    score_ceiling: float | None = None
+    tie_tolerance_abs: float = 1e-12
+    tie_tolerance_rel: float = 1e-12
+    admission_notes: str = ""
     metric_name: str
     metric_direction: Literal["max", "min"]
     comparison_status: Literal["supported", "asymmetric", "unsupported"] = "supported"
@@ -70,6 +80,9 @@ class ParityPack(BaseModel):
 
     name: str
     tier: Literal[1, 2, 3]
+    ladder_tier: Literal["A", "B", "C", "D", "E"] | None = None
+    usage_classification: dict[str, Any] | None = None
+    promotion_requirements: dict[str, Any] | None = None
     description: str
     benchmarks: list[ParityBenchmark]
     budget_policy: BudgetPolicy

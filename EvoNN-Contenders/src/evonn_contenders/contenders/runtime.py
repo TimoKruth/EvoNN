@@ -234,6 +234,7 @@ def _run_transformer_lm_backend(
 
 _BACKEND_RUNNERS: dict[str, BackendRunner] = {
     "sklearn_classifier": _run_classifier_backend,
+    "sklearn_regressor": _run_classifier_backend,
     "boosted_classifier": _run_classifier_backend,
     "ngram_lm": _run_ngram_backend,
     "torch_cnn": _run_cnn_backend,
@@ -405,20 +406,22 @@ def _build_regressor(
         return _build_mlp_regressor(seed, hidden_layer_sizes=(256, 128), max_iter=180)
     if contender_name == "mlp_deep":
         return _build_mlp_regressor(seed, hidden_layer_sizes=(256, 128, 64), max_iter=180)
-    if contender_name in {"logistic", "logistic_c1", "logistic_c10", "logistic_balanced"}:
+    if contender_name in {"logistic", "logistic_c1", "logistic_c10", "logistic_balanced", "ridge", "ridge_or_linear"}:
         alpha = {
             "logistic": 1.0,
             "logistic_c1": 10.0,
             "logistic_c10": 0.1,
             "logistic_balanced": 1.0,
+            "ridge": 1.0,
+            "ridge_or_linear": 1.0,
         }[contender_name]
         return _build_ridge_regressor(alpha=alpha)
-    if contender_name in {"linear_svc", "linear_svc_balanced"}:
+    if contender_name in {"linear_svc", "linear_svc_balanced", "linear_svr"}:
         return _build_linear_svr(seed)
-    if contender_name == "rbf_svc_small":
+    if contender_name in {"rbf_svc_small", "svr"}:
         _check_kernel_svm_guardrails(spec, x_train, config)
         return _build_rbf_svr()
-    if contender_name == "svm_nystroem_rbf":
+    if contender_name in {"svm_nystroem_rbf", "svr_or_nystroem_svr"}:
         return _build_nystroem_svr(seed, x_train.shape[1], len(x_train))
     raise KeyError(f"Unknown regression contender: {contender_name}")
 

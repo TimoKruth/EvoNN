@@ -1,0 +1,29 @@
+name: tier_d_blocked_candidates
+tier: 3
+ladder_tier: D
+description: Candidate broad-suite benchmarks held out until benchmark-audit confirms engine support and required contender-floor metadata.
+usage_classification:
+  special_only: {evaluation_count: 0, notes: Not executable; tracks blocked broad-suite candidates.}
+promotion_requirements:
+  requires_benchmark_audit: true
+benchmarks:
+  - {benchmark_id: openml_adult, task_kind: classification, metric_name: accuracy, metric_direction: max, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: openml_blood_transfusion, task_kind: classification, metric_name: accuracy, metric_direction: max, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: openml_concrete, task_kind: regression, metric_name: mse, metric_direction: min, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: openml_energy_efficiency, task_kind: regression, metric_name: mse, metric_direction: min, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: openml_letter, task_kind: classification, metric_name: accuracy, metric_direction: max, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: openml_mfeat_factors, task_kind: classification, metric_name: accuracy, metric_direction: max, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: openml_nomao, task_kind: classification, metric_name: accuracy, metric_direction: max, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: openml_phoneme, task_kind: classification, metric_name: accuracy, metric_direction: max, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: openml_segment, task_kind: classification, metric_name: accuracy, metric_direction: max, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: openml_steel_plates_fault, task_kind: classification, metric_name: accuracy, metric_direction: max, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: openml_wilt, task_kind: classification, metric_name: accuracy, metric_direction: max, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: mnist_image, task_kind: classification, metric_name: accuracy, metric_direction: max, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+  - {benchmark_id: wikitext2_lm_smoke, task_kind: language_modeling, metric_name: perplexity, metric_direction: min, comparison_status: unsupported, admission_notes: blocked pending explicit all-system support and contender-floor metadata}
+budget_policy:
+  evaluation_count: 0
+  epochs_per_candidate: 1
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

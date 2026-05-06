@@ -218,6 +218,11 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
         _output_quality_runs_table(payload["runs"]),
         "</section>",
         "<section class='panel'>",
+        "<h2>Contender Floor By Benchmark</h2>",
+        "<p>Required-floor status shows whether EvoNN wins are being measured against the declared reliable contender set or only an exploratory/weak baseline.</p>",
+        _contender_floor_table(payload["runs"]),
+        "</section>",
+        "<section class='panel'>",
         "<h2>Detailed Per-Run Table: All 5 Systems</h2>",
         _run_scope_table(payload["runs"], scope_key="all_scope", systems=all_systems),
         "</section>",
@@ -294,9 +299,23 @@ def _build_run_entry(*, path: Path, payload: dict[str, Any], output_path: Path) 
         "baseline_context": baseline_context,
         "trend_rows": trend_rows,
         "output_quality": _output_quality_summary(path=path, trend_rows=trend_rows, output_parent=output_parent),
+        "contender_floor": _contender_floor_summary(path=path, output_parent=output_parent),
         "system_seeding": _system_seeding_summary(trend_rows),
         "all_scope": _scope_summary(trend_rows, systems=ALL_SYSTEMS),
         "project_scope": _scope_summary(trend_rows, systems=PROJECT_SYSTEMS),
+    }
+
+
+def _contender_floor_summary(*, path: Path, output_parent: Path) -> dict[str, Any]:
+    report_path = path.with_name("contender_floor_report.json")
+    if not report_path.exists():
+        return {"available": False, "benchmarks": [], "report_json_path": None}
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    return {
+        "available": True,
+        "lane_floor_status": payload.get("lane_floor_status"),
+        "benchmarks": list(payload.get("benchmarks") or []),
+        "report_json_path": _relative_path(report_path, output_parent),
     }
 
 
@@ -1067,6 +1086,37 @@ def _quality_for_system(run: dict[str, Any], system: str) -> dict[str, Any] | No
         if str(quality.get("system")) == system:
             return quality
     return None
+
+
+def _contender_floor_table(runs: list[dict[str, Any]]) -> str:
+    lines = [
+        "<table>",
+        "<thead><tr><th>Comparison</th><th>Pack</th><th>Budget</th><th>Benchmark</th><th>Required</th><th>Ran</th><th>Status</th><th>Admission</th><th>Best</th><th>Metric</th></tr></thead>",
+        "<tbody>",
+    ]
+    row_count = 0
+    for run in runs:
+        floor = run.get("contender_floor") or {}
+        for row in list(floor.get("benchmarks") or []):
+            row_count += 1
+            lines.append(
+                "<tr>"
+                f"<td>{html.escape(str(run.get('comparison_label') or 'current-workspace'))}</td>"
+                f"<td><code>{html.escape(str(run['pack_name']))}</code></td>"
+                f"<td>{run['budget']}</td>"
+                f"<td><code>{html.escape(str(row['benchmark_id']))}</code></td>"
+                f"<td>{html.escape(', '.join(row.get('required_contenders') or []) or 'none')}</td>"
+                f"<td>{html.escape(', '.join(row.get('required_contenders_ran') or []) or 'none')}</td>"
+                f"<td><span class='tag tag-{html.escape(str(row['floor_status']))}'>{html.escape(str(row['floor_status']))}</span></td>"
+                f"<td>{html.escape(str(row['admission_status']))}</td>"
+                f"<td>{html.escape(str(row.get('best_required_contender') or 'none'))}</td>"
+                f"<td>{_optional_float_cell(row.get('best_required_contender_metric'))}</td>"
+                "</tr>"
+            )
+    if row_count == 0:
+        return "<p>No contender-floor reports found beside the loaded run artifacts.</p>"
+    lines.extend(["</tbody>", "</table>"])
+    return "\n".join(lines)
 
 
 def _transfer_overview_table(transfer: dict[str, Any]) -> str:

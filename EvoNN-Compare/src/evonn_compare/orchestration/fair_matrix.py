@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 import itertools
 import json
@@ -615,7 +615,9 @@ def run_fair_matrix_case(
         pair_results=pair_results,
         systems=case.systems,
     )
+    contender_floor = _build_contender_floor_report(case=case, pack=pack, runs=runs)
     lane = _build_lane_metadata(case=case, runs=runs, pair_results=pair_results)
+    lane = _lane_with_contender_floor(lane=lane, contender_floor=contender_floor)
     summary = build_matrix_summary(
         pack_name=case.pack_name,
         lane=lane,
@@ -634,6 +636,7 @@ def run_fair_matrix_case(
         systems=case.systems,
     )
     _notify_stage(stage_callback, "report")
+    _write_contender_floor_report(case.report_dir, contender_floor)
     case.summary_output_path.write_text(render_fair_matrix_markdown(summary), encoding="utf-8")
     case.summary_output_path.with_suffix(".json").write_text(
         json.dumps(asdict(summary), indent=2, default=str),
@@ -658,6 +661,161 @@ def run_fair_matrix_case(
         for record in trend_records:
             handle.write(json.dumps(record) + "\n")
     return case.summary_output_path
+
+
+def _build_contender_floor_report(*, case: MatrixCase, pack: Any, runs: dict[str, tuple[Any, list[Any]]]) -> dict[str, Any]:
+    contender_run = runs.get("contenders")
+    if contender_run is None:
+        return {
+            "pack_name": pack.name,
+            "lane_floor_status": "not_applicable",
+            "benchmarks": [],
+        }
+    if not any(getattr(benchmark, "minimum_required_contenders", ()) for benchmark in pack.benchmarks):
+        return {
+            "pack_name": pack.name,
+            "lane_floor_status": "metadata_missing",
+            "benchmarks": [],
+        }
+    contender_results = {record.benchmark_id: record for record in contender_run[1]} if contender_run is not None else {}
+    contender_run_dir = _run_dir_for_system(case, "contenders")
+    contender_records = _load_contender_records_by_benchmark(contender_run_dir)
+    rows = []
+    for benchmark in pack.benchmarks:
+        required = tuple(getattr(benchmark, "minimum_required_contenders", ()) or ())
+        optional = tuple(getattr(benchmark, "enhanced_optional_contenders", ()) or ())
+        record = contender_results.get(benchmark.benchmark_id)
+        required_records = [
+            row for row in contender_records.get(benchmark.benchmark_id, [])
+            if row.get("contender_name") in required
+        ]
+        required_ok_records = [
+            row for row in required_records
+            if row.get("status") == "ok" and row.get("metric_value") is not None
+        ]
+        best_required = _best_contender_record(required_ok_records, metric_direction=benchmark.metric_direction)
+        best_name = best_required.get("contender_name") if best_required is not None else None
+        metric_value = best_required.get("metric_value") if best_required is not None else None
+        required_ran = sorted({str(row["contender_name"]) for row in required_records if row.get("contender_name")})
+        if not required:
+            floor_status = "missing"
+        elif best_required is not None:
+            floor_status = "passed"
+        elif record is None:
+            floor_status = "missing"
+        else:
+            floor_status = "failed"
+        if floor_status == "passed":
+            admission_status = "decision_grade"
+        elif floor_status == "weak":
+            admission_status = "exploratory_only"
+        else:
+            admission_status = "blocked"
+        rows.append(
+            {
+                "benchmark_id": benchmark.benchmark_id,
+                "required_contenders": list(required),
+                "required_contenders_ran": required_ran,
+                "required_contenders_ok": best_required is not None,
+                "best_required_contender": best_name if required_ran else None,
+                "best_required_contender_metric": metric_value if required_ran else None,
+                "enhanced_optional_contenders": list(optional),
+                "enhanced_optional_skips": [],
+                "floor_status": floor_status,
+                "admission_status": admission_status,
+                "metric_name": benchmark.metric_name,
+                "metric_direction": benchmark.metric_direction,
+                "score_ceiling": getattr(benchmark, "score_ceiling", None),
+            }
+        )
+    lane_floor_status = "passed"
+    if any(row["floor_status"] in {"missing", "failed"} for row in rows):
+        lane_floor_status = "blocked"
+    elif any(row["floor_status"] == "weak" for row in rows):
+        lane_floor_status = "weak"
+    return {
+        "pack_name": pack.name,
+        "lane_floor_status": lane_floor_status,
+        "benchmarks": rows,
+    }
+
+
+def _load_contender_records_by_benchmark(run_dir: Path) -> dict[str, list[dict[str, Any]]]:
+    summary_path = run_dir / "contender_summary.json"
+    dataset_path = run_dir / "dataset_manifest.json"
+    if not summary_path.exists():
+        return {}
+    records = json.loads(summary_path.read_text(encoding="utf-8"))
+    if not isinstance(records, list):
+        return {}
+    native_to_canonical = {}
+    if dataset_path.exists():
+        dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
+        if isinstance(dataset, list):
+            native_to_canonical = {
+                str(row.get("native_name")): str(row.get("benchmark_id"))
+                for row in dataset
+                if isinstance(row, dict) and row.get("native_name") and row.get("benchmark_id")
+            }
+    by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        benchmark_id = native_to_canonical.get(str(record.get("benchmark_name")), str(record.get("benchmark_name")))
+        by_benchmark.setdefault(benchmark_id, []).append(record)
+    return by_benchmark
+
+
+def _best_contender_record(records: list[dict[str, Any]], *, metric_direction: str) -> dict[str, Any] | None:
+    if not records:
+        return None
+    reverse = metric_direction == "max"
+    return sorted(records, key=lambda row: float(row["metric_value"]), reverse=reverse)[0]
+
+
+def _lane_with_contender_floor(*, lane: LaneMetadata, contender_floor: dict[str, Any]) -> LaneMetadata:
+    status = contender_floor.get("lane_floor_status")
+    if status not in {"blocked", "weak"}:
+        return lane
+    note = f"contender floor {status}"
+    if status == "blocked":
+        operating_state = "reference-only"
+        repeatability_ready = False
+    else:
+        operating_state = "contract-fair" if lane.operating_state in {"trusted-core", "trusted-extended"} else lane.operating_state
+        repeatability_ready = False
+    return replace(
+        lane,
+        operating_state=operating_state,
+        acceptance_notes=(*lane.acceptance_notes, note),
+        repeatability_ready=repeatability_ready,
+    )
+
+
+def _write_contender_floor_report(report_dir: Path, payload: dict[str, Any]) -> None:
+    write_json(report_dir / "contender_floor_report.json", payload)
+    lines = [
+        "# Contender Floor Report",
+        "",
+        f"- pack: `{payload['pack_name']}`",
+        f"- lane_floor_status: `{payload['lane_floor_status']}`",
+        "",
+        "| Benchmark | Required | Ran | Status | Admission | Best | Metric |",
+        "| --- | --- | --- | --- | --- | --- | ---: |",
+    ]
+    for row in payload["benchmarks"]:
+        lines.append(
+            "| {benchmark} | `{required}` | `{ran}` | `{status}` | `{admission}` | `{best}` | {metric} |".format(
+                benchmark=row["benchmark_id"],
+                required=", ".join(row["required_contenders"]) or "none",
+                ran=", ".join(row["required_contenders_ran"]) or "none",
+                status=row["floor_status"],
+                admission=row["admission_status"],
+                best=row["best_required_contender"] or "none",
+                metric="-" if row["best_required_contender_metric"] is None else row["best_required_contender_metric"],
+            )
+        )
+    (report_dir / "contender_floor_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _write_trend_artifacts(case: MatrixCase, trend_rows: list[Any]) -> None:
