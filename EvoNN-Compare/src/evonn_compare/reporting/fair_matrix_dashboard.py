@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from evonn_compare.output_quality import inspect_run_dir
 from evonn_compare.reporting.fair_matrix_stats import (
     build_multi_seed_statistics,
     build_scope_run_summaries,
@@ -212,6 +213,11 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
         _engine_profile_table(payload["specialization"]["engine_profiles"]["projects_only"]),
         "</section>",
         "<section class='panel'>",
+        "<h2>Output Quality By Run</h2>",
+        "<p>These badges surface whether each engine export is only structurally valid or actually measurable enough for parity and performance claims. Missing L3 fields and measurement downgrades are shown directly so comparable-looking rows do not silently overstate confidence.</p>",
+        _output_quality_runs_table(payload["runs"]),
+        "</section>",
+        "<section class='panel'>",
         "<h2>Detailed Per-Run Table: All 5 Systems</h2>",
         _run_scope_table(payload["runs"], scope_key="all_scope", systems=all_systems),
         "</section>",
@@ -287,10 +293,49 @@ def _build_run_entry(*, path: Path, payload: dict[str, Any], output_path: Path) 
         },
         "baseline_context": baseline_context,
         "trend_rows": trend_rows,
+        "output_quality": _output_quality_summary(trend_rows, output_parent=output_parent),
         "system_seeding": _system_seeding_summary(trend_rows),
         "all_scope": _scope_summary(trend_rows, systems=ALL_SYSTEMS),
         "project_scope": _scope_summary(trend_rows, systems=PROJECT_SYSTEMS),
     }
+
+
+def _output_quality_summary(trend_rows: list[dict[str, Any]], *, output_parent: Path) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    for system in ALL_SYSTEMS:
+        row = next((entry for entry in trend_rows if str(entry.get("system")) == system), None)
+        if row is None:
+            continue
+        artifact_paths = dict(row.get("artifact_paths") or {})
+        summary_path = artifact_paths.get("summary")
+        if not summary_path:
+            continue
+        run_dir = Path(str(summary_path)).resolve().parent
+        report_path = run_dir / "output_quality_report.json"
+        if report_path.exists():
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+        elif (run_dir / "manifest.json").exists() and (run_dir / "results.json").exists():
+            payload = inspect_run_dir(run_dir, write_run_artifacts=False).payload()
+        else:
+            continue
+        diagnostics = dict(payload.get("diagnostics") or {})
+        performance = dict(payload.get("performance") or {})
+        rows.append(
+            {
+                "system": system,
+                "quality_level": str(payload.get("quality_level") or "L0"),
+                "measurement_state": str(payload.get("measurement_state") or "unknown"),
+                "missing_l3_fields": list(diagnostics.get("missing_l3_fields") or []),
+                "missing_l2_fields": list(diagnostics.get("missing_l2_fields") or []),
+                "diagnostic_notes": list(diagnostics.get("notes") or []),
+                "wall_clock_seconds": performance.get("wall_clock_seconds"),
+                "evals_per_second": performance.get("evals_per_second"),
+                "report_json_path": _relative_path(report_path, output_parent),
+                "run_dir": _relative_path(run_dir, output_parent),
+            }
+        )
+    rows.sort(key=lambda item: ALL_SYSTEMS.index(item["system"]))
+    return {"systems": rows}
 
 
 def _build_campaign_state_payload(campaign_state: dict[str, Any] | None, *, output_path: Path) -> dict[str, Any]:
@@ -900,6 +945,9 @@ def _run_scope_table(runs: list[dict[str, Any]], *, scope_key: str, systems: lis
             row = row_map[system]
             cell = f"{row['solo_wins']} solo / {row['shared_wins']} shared"
             meta = []
+            quality = _quality_for_system(run, system)
+            if quality is not None:
+                meta.append(f"{quality['quality_level']} / {quality['measurement_state']}")
             if row["benchmark_failures"]:
                 meta.append(f"fail {row['benchmark_failures']}")
             if row["missing_results"]:
@@ -962,6 +1010,44 @@ def _recent_runs_table(runs: list[dict[str, Any]]) -> str:
         )
     lines.extend(["</tbody>", "</table>"])
     return "\n".join(lines)
+
+
+def _output_quality_runs_table(runs: list[dict[str, Any]]) -> str:
+    lines = [
+        "<table>",
+        "<thead><tr><th>Comparison</th><th>Pack</th><th>Budget</th><th>Seed</th><th>System</th><th>Level</th><th>Measurement</th><th>Missing L3</th><th>Wall s</th><th>Eval/s</th><th>Report</th></tr></thead>",
+        "<tbody>",
+    ]
+    row_count = 0
+    for run in runs:
+        for quality in list((run.get("output_quality") or {}).get("systems") or []):
+            row_count += 1
+            lines.append(
+                "<tr>"
+                f"<td>{html.escape(str(run.get('comparison_label') or 'current-workspace'))}</td>"
+                f"<td><code>{html.escape(run['pack_name'])}</code></td>"
+                f"<td>{run['budget']}</td>"
+                f"<td>{run['seed']}</td>"
+                f"<td>{html.escape(_titleize(str(quality['system'])))}</td>"
+                f"<td><span class='tag tag-{html.escape(str(quality['quality_level']).lower())}'>{html.escape(str(quality['quality_level']))}</span></td>"
+                f"<td>{html.escape(str(quality['measurement_state']))}</td>"
+                f"<td>{html.escape(', '.join(quality['missing_l3_fields']) or 'none')}</td>"
+                f"<td>{_optional_float_cell(quality.get('wall_clock_seconds'))}</td>"
+                f"<td>{_optional_float_cell(quality.get('evals_per_second'))}</td>"
+                f"<td><a href='{html.escape(str(quality['report_json_path']))}'>json</a></td>"
+                "</tr>"
+            )
+    if row_count == 0:
+        return "<p>No output-quality reports found beside the loaded run artifacts.</p>"
+    lines.extend(["</tbody>", "</table>"])
+    return "\n".join(lines)
+
+
+def _quality_for_system(run: dict[str, Any], system: str) -> dict[str, Any] | None:
+    for quality in list((run.get("output_quality") or {}).get("systems") or []):
+        if str(quality.get("system")) == system:
+            return quality
+    return None
 
 
 def _transfer_overview_table(transfer: dict[str, Any]) -> str:
