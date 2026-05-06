@@ -8,6 +8,28 @@ Bring Prism, Topograph, Stratograph, Primordia, and the contender floor to the
 same evidence quality level so near-future comparisons are measurable,
 repeatable, and decision-grade.
 
+## Implementation Status Snapshot
+
+As of 2026-05-06, this plan is partly implemented already.
+
+Landed or substantially landed:
+- shared output envelopes in `EvoNN-Shared` (`RuntimeEnvelope`,
+  `PerformanceEnvelope`, `DiagnosticsEnvelope`,
+  `ArtifactCompletenessEnvelope`)
+- Compare `output-quality` CLI plus normalized artifact/report generation
+- workspace trend and dashboard surfaces in Compare
+- historical baseline import workflow
+- repo planning README now marks branch-plan status more truthfully
+- Compare `performance-baseline` workflow now writes baseline bundles under
+  `performance_baselines/<timestamp>-<git-sha>/`
+
+Still ongoing after this branch:
+- engine-by-engine L3/L4 closure on all named lanes, especially beyond the runs
+  already represented in fixtures/tests
+- dashboard surfacing of output-quality badges and downgrade reasons as a
+  first-class visual layer everywhere
+- cheap CI fixture coverage across all engines for recurring parity drift checks
+
 This plan does **not** mean all engines should share the same architecture. It
 means every engine must produce artifacts with the same audit quality:
 

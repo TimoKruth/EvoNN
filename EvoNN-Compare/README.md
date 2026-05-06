@@ -256,6 +256,39 @@ Current comparison semantics:
 - compatibility assumptions and integrity findings are written into the baseline
   manifest and surfaced in imported summary artifacts
 
+### Performance baseline workflow
+
+`performance-baseline` is the compare-owned measurement bundle builder for
+compare-grade run directories or workspaces. It refreshes normalized
+output-quality artifacts, applies quality/fairness gates, requires the canonical
+multi-budget set (`64/256/1000`) before a system is marked claim-ready, and
+writes a stable bundle under `performance_baselines/<timestamp>-<git-sha>/`.
+
+Use it from the repo root:
+
+```bash
+uv run --package evonn-compare evonn-compare performance-baseline \
+  EvoNN-Compare/manual_compare_runs \
+  --label local-baseline
+```
+
+Key outputs:
+
+- `performance_baselines/<stamp>-<git-sha>/performance_baseline.json`
+- `performance_baselines/<stamp>-<git-sha>/performance_baseline.md`
+- `performance_baselines/<stamp>-<git-sha>/run_records.jsonl`
+
+The baseline summary includes:
+
+- wall-clock medians
+- evals/second
+- quality/second
+- benchmark throughput
+- failure-adjusted throughput
+- cache reuse rate
+- backend and hardware labels
+- excluded runs with explicit gate reasons
+
 ### Trend reporting CLI
 
 Use `trend-report` to merge and query one or more trend datasets:

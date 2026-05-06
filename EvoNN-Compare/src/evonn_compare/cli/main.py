@@ -12,6 +12,7 @@ from evonn_compare.cli.fair_matrix import fair_matrix
 from evonn_compare.cli.historical_baseline import historical_baseline
 from evonn_compare.cli.hybrid import run as hybrid_run
 from evonn_compare.cli.output_quality import output_quality
+from evonn_compare.cli.performance_baseline import performance_baseline
 from evonn_compare.cli.seeded_compare import seeded_compare
 from evonn_compare.cli.transfer_regimes import transfer_regimes
 from evonn_compare.cli.trend_report import trend_report
@@ -33,6 +34,7 @@ app.command("seeded-compare")(seeded_compare)
 app.command("transfer-regimes")(transfer_regimes)
 app.command("historical-baseline")(historical_baseline)
 app.command("output-quality")(output_quality)
+app.command("performance-baseline")(performance_baseline)
 app.command("trend-report")(trend_report)
 app.command("dashboard")(dashboard)
 app.command("workspace-report")(workspace_report)
