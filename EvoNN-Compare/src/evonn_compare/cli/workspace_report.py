@@ -12,6 +12,7 @@ import typer
 from evonn_compare.cli.trend_report import load_trend_rows
 from evonn_compare.orchestration.historical_baseline import discover_workspace_trend_inputs
 from evonn_compare.orchestration.campaign_state import load_workspace_state, render_workspace_state_markdown
+from evonn_compare.output_quality import inspect_paths, write_aggregate_report
 from evonn_compare.reporting.fair_matrix_dashboard import (
     build_dashboard_payload,
     discover_fair_matrix_summaries,
@@ -126,6 +127,12 @@ def refresh_workspace_reports(
     dashboard_output_path.write_text(render_dashboard_html(payload), encoding="utf-8")
     dashboard_output_path.with_suffix(".json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+    output_quality_overview_path = workspace_path / "output_quality_overview.md"
+    output_quality_run_dirs = _discover_output_quality_run_dirs(summary_paths)
+    if output_quality_run_dirs:
+        output_quality_records = inspect_paths(output_quality_run_dirs, write_run_artifacts=True)
+        write_aggregate_report(output_quality_records, output_quality_overview_path)
+
     if open_browser:
         webbrowser.open(dashboard_output_path.resolve().as_uri())
 
@@ -138,3 +145,20 @@ def refresh_workspace_reports(
         "dashboard": str(dashboard_output_path),
         "dashboard_data": str(dashboard_output_path.with_suffix('.json')),
     }
+
+
+def _discover_output_quality_run_dirs(summary_paths: list[Path]) -> list[Path]:
+    run_dirs: dict[Path, None] = {}
+    for summary_path in summary_paths:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        for row in list(payload.get("trend_rows") or []):
+            artifact_paths = dict(row.get("artifact_paths") or {})
+            summary_artifact = artifact_paths.get("summary")
+            if summary_artifact is None:
+                continue
+            run_dir = Path(str(summary_artifact)).resolve().parent
+            manifest_path = run_dir / "manifest.json"
+            results_path = run_dir / "results.json"
+            if manifest_path.exists() and results_path.exists():
+                run_dirs[run_dir] = None
+    return sorted(run_dirs)

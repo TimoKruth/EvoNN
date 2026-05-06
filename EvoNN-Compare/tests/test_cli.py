@@ -892,12 +892,107 @@ def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) 
     workspace = tmp_path / "workspace"
     trends_dir = workspace / "trends"
     reports_dir = workspace / "reports" / "tier1_core_eval64_seed42"
+    run_dir = workspace / "runs" / "prism" / "tier1_core_eval64_seed42"
     trends_dir.mkdir(parents=True)
     reports_dir.mkdir(parents=True)
+    run_dir.mkdir(parents=True)
+    (run_dir / "config.yaml").write_text("seed: 42\n", encoding="utf-8")
+    (run_dir / "report.md").write_text("# report\n", encoding="utf-8")
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "system": "prism",
+                "run_id": "tier1_core_eval64_seed42",
+                "runtime_backend": "mlx",
+                "runtime_backend_requested": "auto",
+                "wall_clock_seconds": 10.0,
+                "median_benchmark_quality": 0.8,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "system": "prism",
+                "run_id": "tier1_core_eval64_seed42",
+                "run_name": "tier1_core_eval64_seed42",
+                "created_at": "2026-05-06T00:00:00Z",
+                "pack_name": "tier1_core_eval64",
+                "seed": 42,
+                "benchmarks": [
+                    {
+                        "benchmark_id": "iris_classification",
+                        "task_kind": "classification",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                        "status": "ok",
+                    }
+                ],
+                "budget": {
+                    "evaluation_count": 64,
+                    "epochs_per_candidate": 20,
+                    "wall_clock_seconds": 10.0,
+                    "budget_policy_name": "prototype_equal_budget",
+                    "actual_evaluations": 64,
+                    "cached_evaluations": 0,
+                    "failed_evaluations": 0,
+                    "invalid_evaluations": 0,
+                    "evaluation_semantics": "one candidate evaluation",
+                },
+                "device": {
+                    "device_name": "apple_silicon",
+                    "precision_mode": "fp32",
+                    "framework": "mlx",
+                    "framework_version": "0.31.1",
+                },
+                "artifacts": {
+                    "config_snapshot": "config.yaml",
+                    "report_markdown": "report.md",
+                },
+                "fairness": {
+                    "benchmark_pack_id": "tier1_core_eval64",
+                    "seed": 42,
+                    "evaluation_count": 64,
+                    "budget_policy_name": "prototype_equal_budget",
+                    "data_signature": "abc",
+                    "code_version": "deadbeef",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "results.json").write_text(
+        json.dumps(
+            [
+                {
+                    "system": "prism",
+                    "run_id": "tier1_core_eval64_seed42",
+                    "benchmark_id": "iris_classification",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": 0.8,
+                    "quality": 0.8,
+                    "parameter_count": 10,
+                    "train_seconds": 2.0,
+                    "status": "ok",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
     (trends_dir / "fair_matrix_trend_rows.jsonl").write_text(
         json.dumps(_dashboard_row("prism", "iris_classification", 0.8)) + "\n",
         encoding="utf-8",
     )
+    row = _dashboard_row("prism", "iris_classification", 0.8)
+    row["artifact_paths"] = {
+        "manifest": str(run_dir / "manifest.json"),
+        "results": str(run_dir / "results.json"),
+        "summary": str(run_dir / "summary.json"),
+        "report": str(run_dir / "report.md"),
+    }
     (reports_dir / "fair_matrix_summary.json").write_text(
         json.dumps(
             {
@@ -925,7 +1020,7 @@ def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) 
                 "fair_rows": [],
                 "reference_rows": [],
                 "parity_rows": [],
-                "trend_rows": [_dashboard_row("prism", "iris_classification", 0.8)],
+                "trend_rows": [row],
             },
             indent=2,
         ),
@@ -941,6 +1036,7 @@ def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) 
     assert (workspace / "trends" / "fair_matrix_trends.md").exists()
     assert (workspace / "trends" / "fair_matrix_trends.json").exists()
     assert (workspace / "fair_matrix_dashboard.html").exists()
+    assert (workspace / "output_quality_overview.md").exists()
     assert "Lane States" in (workspace / "trends" / "fair_matrix_trends.md").read_text(encoding="utf-8")
 
 
