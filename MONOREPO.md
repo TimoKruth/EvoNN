@@ -116,13 +116,20 @@ For the current local-first workflow:
   - `overnight` → `256`
   - `weekend` → `1000`
 - expanded benchmark-ladder presets are staged:
+  - `tier_a_smoke` → `tier_a_contract` @ `16`
   - `tier_a_contract` → `tier_a_contract` @ `64`
   - `tier_b_local_v2` → `tier_b_core_v2` @ `96`
   - `tier_b_overnight_v2` → `tier_b_core_v2` @ `384`
+  - `tier_b_extended_v2` → `tier_b_core_v2` @ `768`
   - `tier_b_weekend_v2` → `tier_b_core_v2` @ `1536`
   - `tier_c_local` → `tier_c_architecture_sensitive` @ `128`
   - `tier_c_overnight` → `tier_c_architecture_sensitive` @ `512`
+  - `tier_c_extended` → `tier_c_architecture_sensitive` @ `1024`
+  - `tier_c_weekend` → `tier_c_architecture_sensitive` @ `2048`
+  - `tier_d_local` → `tier_d_broad_shared` @ `328`
   - `tier_d_broad` → `tier_d_broad_shared` @ `656`
+  - `tier_d_overnight` → `tier_d_broad_shared` @ `1312`
+  - `tier_d_weekend` → `tier_d_broad_shared` @ `2624`
 - run `uv run --package evonn-compare evonn-compare benchmark-audit --pack <pack>`
   before treating any expanded pack as decision-grade
 

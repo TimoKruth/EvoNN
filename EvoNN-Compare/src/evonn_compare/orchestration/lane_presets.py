@@ -64,6 +64,13 @@ LANE_PRESETS: dict[str, LanePreset] = {
         budgets=(1000,),
         description="High-budget Tier B preset for repeated longer local studies.",
     ),
+    "tier_a_smoke": LanePreset(
+        name="tier_a_smoke",
+        pack="tier_a_contract",
+        seeds=(42,),
+        budgets=(16,),
+        description="Lowest-budget Tier A contract lane with explicit contender-floor metadata.",
+    ),
     "tier_a_contract": LanePreset(
         name="tier_a_contract",
         pack="tier_a_contract",
@@ -84,6 +91,13 @@ LANE_PRESETS: dict[str, LanePreset] = {
         seeds=(42,),
         budgets=(384,),
         description="Expanded Tier B overnight lane for promotion evidence.",
+    ),
+    "tier_b_extended_v2": LanePreset(
+        name="tier_b_extended_v2",
+        pack="tier_b_core_v2",
+        seeds=(42,),
+        budgets=(768,),
+        description="Expanded Tier B extended promotion-evidence lane.",
     ),
     "tier_b_weekend_v2": LanePreset(
         name="tier_b_weekend_v2",
@@ -106,12 +120,47 @@ LANE_PRESETS: dict[str, LanePreset] = {
         budgets=(512,),
         description="Exploratory Tier C overnight architecture-sensitive lane.",
     ),
+    "tier_c_extended": LanePreset(
+        name="tier_c_extended",
+        pack="tier_c_architecture_sensitive",
+        seeds=(42,),
+        budgets=(1024,),
+        description="Exploratory Tier C extended architecture-sensitive lane for promotion evidence.",
+    ),
+    "tier_c_weekend": LanePreset(
+        name="tier_c_weekend",
+        pack="tier_c_architecture_sensitive",
+        seeds=(42,),
+        budgets=(2048,),
+        description="Exploratory Tier C weekend architecture-sensitive lane.",
+    ),
+    "tier_d_local": LanePreset(
+        name="tier_d_local",
+        pack="tier_d_broad_shared",
+        seeds=(42,),
+        budgets=(328,),
+        description="Special-only broad shared benchmark lane at the lowest planned Tier D budget.",
+    ),
     "tier_d_broad": LanePreset(
         name="tier_d_broad",
         pack="tier_d_broad_shared",
         seeds=(42,),
         budgets=(656,),
         description="Special-only broad shared benchmark lane; keep separate until repeated clean runs exist.",
+    ),
+    "tier_d_overnight": LanePreset(
+        name="tier_d_overnight",
+        pack="tier_d_broad_shared",
+        seeds=(42,),
+        budgets=(1312,),
+        description="Special-only broad shared overnight lane; keep separate until repeated clean runs exist.",
+    ),
+    "tier_d_weekend": LanePreset(
+        name="tier_d_weekend",
+        pack="tier_d_broad_shared",
+        seeds=(42,),
+        budgets=(2624,),
+        description="Special-only broad shared weekend lane; keep separate until repeated clean runs exist.",
     ),
 }
 

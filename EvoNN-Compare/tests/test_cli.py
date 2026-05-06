@@ -233,13 +233,20 @@ def test_fair_matrix_preset_tier_b_weekend_dry_run(tmp_path) -> None:
 
 def test_expanded_benchmark_ladder_presets_dry_run(tmp_path) -> None:
     presets = {
+        "tier_a_smoke": "tier_a_contract_eval16",
         "tier_a_contract": "tier_a_contract_eval64",
         "tier_b_local_v2": "tier_b_core_v2_eval96",
         "tier_b_overnight_v2": "tier_b_core_v2_eval384",
+        "tier_b_extended_v2": "tier_b_core_v2_eval768",
         "tier_b_weekend_v2": "tier_b_core_v2_eval1536",
         "tier_c_local": "tier_c_architecture_sensitive_eval128",
         "tier_c_overnight": "tier_c_architecture_sensitive_eval512",
+        "tier_c_extended": "tier_c_architecture_sensitive_eval1024",
+        "tier_c_weekend": "tier_c_architecture_sensitive_eval2048",
+        "tier_d_local": "tier_d_broad_shared_eval328",
         "tier_d_broad": "tier_d_broad_shared_eval656",
+        "tier_d_overnight": "tier_d_broad_shared_eval1312",
+        "tier_d_weekend": "tier_d_broad_shared_eval2624",
     }
     for preset, expected_case in presets.items():
         result = runner.invoke(app, ["fair-matrix", "--preset", preset, "--workspace", str(tmp_path / preset), "--dry-run"])

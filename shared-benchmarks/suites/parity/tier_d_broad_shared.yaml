@@ -3,6 +3,7 @@ tier: 3
 ladder_tier: D
 description: Special-only broad shared lane containing only benchmarks with explicit contender-floor admission metadata.
 usage_classification:
+  special_smoke: {evaluation_count: 328, notes: Lowest planned Tier D special-only broad lane.}
   special_local: {evaluation_count: 656, notes: Special-only broad lane; keep separate from main leaderboards until repeated clean runs exist.}
   special_overnight: {evaluation_count: 1312, notes: Thirty-two evaluations per benchmark if the admitted set remains 41 benchmarks.}
   special_weekend: {evaluation_count: 2624, notes: Weekend-scale broad validation.}
