@@ -4,6 +4,8 @@ source_id: 12
 dataset: mfeat_factors
 input_dim: 216
 num_classes: 10
+max_train_samples: 2048
+max_val_samples: 512
 task: classification
 domain: vision
 tags: [tabular, multiclass, suite-b, openml]

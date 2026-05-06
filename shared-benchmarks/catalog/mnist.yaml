@@ -4,3 +4,5 @@ source: image
 dataset: mnist
 input_dim: 784
 num_classes: 10
+max_train_samples: 2048
+max_val_samples: 512

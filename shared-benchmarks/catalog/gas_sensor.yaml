@@ -4,6 +4,8 @@ source_id: 1476
 dataset: gas_sensor
 input_dim: 128
 num_classes: 6
+max_train_samples: 2048
+max_val_samples: 512
 task: classification
 domain: chemical_sensors
 tags: [tabular, multiclass, suite-c, edge]

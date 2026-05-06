@@ -4,6 +4,8 @@ source_id: 1461
 dataset: bank_marketing
 input_dim: 16
 num_classes: 2
+max_train_samples: 2048
+max_val_samples: 512
 task: classification
 domain: finance
 tags: [tabular, binary, suite-b, openml]

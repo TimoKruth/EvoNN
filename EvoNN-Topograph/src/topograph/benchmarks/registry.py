@@ -39,6 +39,9 @@ class DatasetMeta(BaseModel):
     input_dim: int | None = None
     num_classes: int | None = None
     n_samples: int | None = None
+    max_train_samples: int | None = None
+    max_val_samples: int | None = None
+    max_test_samples: int | None = None
     description: str = ""
     domain: str = ""
     tags: list[str] = []
@@ -151,6 +154,8 @@ class DatasetRegistry:
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=validation_split, random_state=seed, stratify=stratify,
         )
+        X_train, y_train = _cap_split(X_train, y_train, meta.max_train_samples)
+        X_val, y_val = _cap_split(X_val, y_val, meta.max_val_samples)
         return (
             X_train.astype(np.int32 if meta.task == "language_modeling" else np.float32),
             y_train,
@@ -269,3 +274,13 @@ class DatasetRegistry:
             y = np.array([float(row[target_col]) for row in rows], dtype=np.float32)
 
         return X, y
+
+
+def _cap_split(
+    x: np.ndarray,
+    y: np.ndarray,
+    limit: int | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    if limit is None or limit <= 0 or len(x) <= limit:
+        return x, y
+    return x[:limit], y[:limit]

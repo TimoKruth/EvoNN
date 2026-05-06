@@ -81,6 +81,8 @@ class BenchmarkSpec(BaseModel):
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=validation_split, random_state=seed, stratify=stratify,
         )
+        X_train, y_train = _cap_split(X_train, y_train, self.max_train_samples)
+        X_val, y_val = _cap_split(X_val, y_val, self.max_val_samples)
         y_dtype = np.float32 if self.task == "regression" else np.int64
         return (
             X_train.astype(np.float32),
@@ -247,3 +249,13 @@ class BenchmarkSpec(BaseModel):
             input_dim=input_dim,
             num_classes=num_classes,
         )
+
+
+def _cap_split(
+    x: np.ndarray,
+    y: np.ndarray,
+    limit: int | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    if limit is None or limit <= 0 or len(x) <= limit:
+        return x, y
+    return x[:limit], y[:limit]

@@ -4,6 +4,8 @@ source_id: 197
 dataset: cpu_performance
 input_dim: 21
 num_classes: 1
+max_train_samples: 2048
+max_val_samples: 512
 task: regression
 domain: computing
 tags: [tabular, suite-a, small]

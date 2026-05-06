@@ -4,6 +4,8 @@ source_id: 40982
 dataset: steel_plates_fault
 input_dim: 27
 num_classes: 7
+max_train_samples: 2048
+max_val_samples: 512
 task: classification
 domain: manufacturing
 tags: [tabular, multiclass, suite-a]

@@ -4,6 +4,8 @@ source_id: 44959
 dataset: concrete
 input_dim: 8
 num_classes: 1
+max_train_samples: 2048
+max_val_samples: 512
 task: regression
 domain: materials
 tags: [tabular, suite-a]

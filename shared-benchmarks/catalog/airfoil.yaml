@@ -4,6 +4,8 @@ source_id: 44957
 dataset: airfoil
 input_dim: 5
 num_classes: 1
+max_train_samples: 2048
+max_val_samples: 512
 task: regression
 domain: aerospace
 tags: [tabular, suite-a]

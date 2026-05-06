@@ -40,6 +40,9 @@ class DatasetMeta(BaseModel):
     input_dim: int | None = None
     num_classes: int | None = None
     n_samples: int | None = None
+    max_train_samples: int | None = None
+    max_val_samples: int | None = None
+    max_test_samples: int | None = None
 
 
 _SUPERPROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -137,6 +140,8 @@ class DatasetRegistry:
             random_state=seed,
             stratify=stratify,
         )
+        x_train, y_train = _cap_split(x_train, y_train, meta.max_train_samples)
+        x_val, y_val = _cap_split(x_val, y_val, meta.max_val_samples)
         x_dtype = np.int32 if meta.task == "language_modeling" else np.float32
         y_dtype = np.float32 if meta.task == "regression" else np.int64
         return (
@@ -251,3 +256,13 @@ class DatasetRegistry:
         else:
             y = np.asarray([float(row[target_col]) for row in rows], dtype=np.float32)
         return x, y
+
+
+def _cap_split(
+    x: np.ndarray,
+    y: np.ndarray,
+    limit: int | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    if limit is None or limit <= 0 or len(x) <= limit:
+        return x, y
+    return x[:limit], y[:limit]
