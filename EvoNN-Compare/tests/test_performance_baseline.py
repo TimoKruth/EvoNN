@@ -267,6 +267,43 @@ def test_performance_baseline_flags_runtime_series_ambiguity(tmp_path: Path) -> 
     assert all(series["has_required_budgets"] is False for series in prism["performance_series"])
 
 
+def test_performance_baseline_does_not_use_summary_lane_fallback_when_matching_rows_are_ambiguous(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    runs_root = workspace / "runs"
+    run_id = "tier1_core_eval64_seed42"
+    for system in SYSTEMS:
+        _write_run(
+            runs_root / system / run_id,
+            system=system,
+            run_id=run_id,
+            budget=64,
+            wall_clock=10.0,
+            pack_name="tier1_core_eval64",
+            backend=BACKEND_BY_SYSTEM[system],
+            hardware_class=HARDWARE_BY_SYSTEM[system],
+        )
+    _write_fair_matrix_case(workspace, run_id=run_id, budget=64, seed=42, systems=SYSTEMS, pack_name="tier1_core_eval64")
+
+    summary_path = workspace / "reports" / run_id / "fair_matrix_summary.json"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    prism_rows = [row for row in payload["trend_rows"] if row["system"] == "prism"]
+    prism_rows[0]["lane_operating_state"] = "trusted-core"
+    prism_rows[0]["fairness_metadata"]["lane_operating_state"] = "trusted-core"
+    duplicate = json.loads(json.dumps(prism_rows[0]))
+    duplicate["lane_operating_state"] = "trusted-extended"
+    duplicate["fairness_metadata"]["lane_operating_state"] = "trusted-extended"
+    payload["trend_rows"].append(duplicate)
+    payload["lane"]["operating_state"] = "trusted-core"
+    summary_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    result = build_performance_baseline(inputs=[workspace], output_root=tmp_path / "baselines")
+    baseline = json.loads(Path(result["json"]).read_text(encoding="utf-8"))
+    prism = next(row for row in baseline["systems"] if row["system"] == "prism")
+
+    assert prism["performance_claim_ready"] is False
+    assert any("lane-state=missing" in row["reasons"] for row in prism["excluded_runs"])
+
+
 def test_performance_baseline_cli_accepts_workspace(tmp_path: Path) -> None:
     runs_root = tmp_path / "workspace"
     for budget in (96, 384):

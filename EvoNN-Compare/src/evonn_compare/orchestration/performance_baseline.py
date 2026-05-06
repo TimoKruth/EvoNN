@@ -540,7 +540,7 @@ def _fair_matrix_context(*, record: OutputQualityRecord, manifest: dict[str, Any
         lane_state = lane_states[0] if len(lane_states) == 1 else None
         pack_names = sorted({str(row.get("pack_name") or "") for row in matches if str(row.get("pack_name") or "").strip()})
         pack_name = pack_names[0] if len(pack_names) == 1 else None
-    if lane_state is None and isinstance(summary_mapping.get("lane"), dict):
+    if not matches and lane_state is None and isinstance(summary_mapping.get("lane"), dict):
         lane_state = _first_text((summary_mapping.get("lane") or {}).get("operating_state"))
     return {
         "lane_operating_state": lane_state,
