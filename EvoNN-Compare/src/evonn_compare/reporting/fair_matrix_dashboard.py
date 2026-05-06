@@ -293,24 +293,20 @@ def _build_run_entry(*, path: Path, payload: dict[str, Any], output_path: Path) 
         },
         "baseline_context": baseline_context,
         "trend_rows": trend_rows,
-        "output_quality": _output_quality_summary(trend_rows, output_parent=output_parent),
+        "output_quality": _output_quality_summary(path=path, trend_rows=trend_rows, output_parent=output_parent),
         "system_seeding": _system_seeding_summary(trend_rows),
         "all_scope": _scope_summary(trend_rows, systems=ALL_SYSTEMS),
         "project_scope": _scope_summary(trend_rows, systems=PROJECT_SYSTEMS),
     }
 
 
-def _output_quality_summary(trend_rows: list[dict[str, Any]], *, output_parent: Path) -> dict[str, Any]:
+def _output_quality_summary(*, path: Path, trend_rows: list[dict[str, Any]], output_parent: Path) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
+    run_dirs = _discover_run_dirs_from_summary(path=path, trend_rows=trend_rows)
     for system in ALL_SYSTEMS:
-        row = next((entry for entry in trend_rows if str(entry.get("system")) == system), None)
-        if row is None:
+        run_dir = run_dirs.get(system)
+        if run_dir is None:
             continue
-        artifact_paths = dict(row.get("artifact_paths") or {})
-        summary_path = artifact_paths.get("summary")
-        if not summary_path:
-            continue
-        run_dir = Path(str(summary_path)).resolve().parent
         report_path = run_dir / "output_quality_report.json"
         if report_path.exists():
             payload = json.loads(report_path.read_text(encoding="utf-8"))
@@ -336,6 +332,27 @@ def _output_quality_summary(trend_rows: list[dict[str, Any]], *, output_parent: 
         )
     rows.sort(key=lambda item: ALL_SYSTEMS.index(item["system"]))
     return {"systems": rows}
+
+
+def _discover_run_dirs_from_summary(*, path: Path, trend_rows: list[dict[str, Any]]) -> dict[str, Path]:
+    run_dirs: dict[str, Path] = {}
+    workspace_root = _workspace_root_from_summary(path)
+    case_name = path.parent.name
+    for row in trend_rows:
+        system = str(row.get("system") or "")
+        if not system:
+            continue
+        artifact_paths = dict(row.get("artifact_paths") or {})
+        summary_artifact = artifact_paths.get("summary")
+        if summary_artifact:
+            run_dir = Path(str(summary_artifact)).resolve().parent
+        elif workspace_root is not None:
+            run_dir = workspace_root / "runs" / system / case_name
+        else:
+            continue
+        if (run_dir / "manifest.json").exists() and (run_dir / "results.json").exists():
+            run_dirs[system] = run_dir
+    return run_dirs
 
 
 def _build_campaign_state_payload(campaign_state: dict[str, Any] | None, *, output_path: Path) -> dict[str, Any]:

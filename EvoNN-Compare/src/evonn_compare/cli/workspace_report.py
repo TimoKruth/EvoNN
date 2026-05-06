@@ -151,12 +151,22 @@ def _discover_output_quality_run_dirs(summary_paths: list[Path]) -> list[Path]:
     run_dirs: dict[Path, None] = {}
     for summary_path in summary_paths:
         payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        workspace_root = None
+        current = summary_path.resolve()
+        for parent in current.parents:
+            if parent.name == "reports":
+                workspace_root = parent.parent.resolve()
+                break
+        case_name = summary_path.parent.name
         for row in list(payload.get("trend_rows") or []):
             artifact_paths = dict(row.get("artifact_paths") or {})
             summary_artifact = artifact_paths.get("summary")
-            if summary_artifact is None:
+            if summary_artifact is not None:
+                run_dir = Path(str(summary_artifact)).resolve().parent
+            elif workspace_root is not None and row.get("system"):
+                run_dir = workspace_root / "runs" / str(row.get("system")) / case_name
+            else:
                 continue
-            run_dir = Path(str(summary_artifact)).resolve().parent
             manifest_path = run_dir / "manifest.json"
             results_path = run_dir / "results.json"
             if manifest_path.exists() and results_path.exists():

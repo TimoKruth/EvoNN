@@ -13,6 +13,7 @@ def performance_baseline(
     inputs: list[str] = typer.Argument(..., help="Run directories or workspaces containing compare-grade exports"),
     output_root: str | None = typer.Option(None, "--output-root", help="Root directory for baseline bundles"),
     label: str | None = typer.Option(None, "--label", help="Optional baseline label"),
+    budgets: str = typer.Option("64,256,1000", "--budgets", help="Comma-separated required budgets, e.g. 96,384,768,1536"),
     write_run_artifacts: bool = typer.Option(
         True,
         "--write-run-artifacts/--no-write-run-artifacts",
@@ -25,6 +26,7 @@ def performance_baseline(
         inputs=[Path(value) for value in inputs],
         output_root=Path(output_root) if output_root is not None else None,
         label=label,
+        required_budgets=tuple(int(part.strip()) for part in budgets.split(",") if part.strip()),
         write_run_artifacts=write_run_artifacts,
     )
     typer.echo(f"bundle_root\t{result['bundle_root']}")

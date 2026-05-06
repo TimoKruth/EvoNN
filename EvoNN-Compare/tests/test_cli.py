@@ -987,12 +987,6 @@ def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) 
         encoding="utf-8",
     )
     row = _dashboard_row("prism", "iris_classification", 0.8)
-    row["artifact_paths"] = {
-        "manifest": str(run_dir / "manifest.json"),
-        "results": str(run_dir / "results.json"),
-        "summary": str(run_dir / "summary.json"),
-        "report": str(run_dir / "report.md"),
-    }
     (reports_dir / "fair_matrix_summary.json").write_text(
         json.dumps(
             {
@@ -1038,6 +1032,9 @@ def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) 
     assert (workspace / "fair_matrix_dashboard.html").exists()
     assert (workspace / "output_quality_overview.md").exists()
     assert "Lane States" in (workspace / "trends" / "fair_matrix_trends.md").read_text(encoding="utf-8")
+    dashboard_data = json.loads((workspace / "fair_matrix_dashboard.json").read_text(encoding="utf-8"))
+    output_quality_rows = dashboard_data["runs"][0]["output_quality"]["systems"]
+    assert output_quality_rows[0]["system"] == "prism"
 
 
 def test_workspace_report_normalizes_legacy_root_dataset_and_dedupes_rows(tmp_path: Path) -> None:
