@@ -131,6 +131,8 @@ def export_symbiosis_contract(
             "precision_mode": runtime_meta["precision_mode"],
             "framework": runtime_meta["runtime_backend"],
             "framework_version": runtime_meta["runtime_version"],
+            "framework_requested": runtime_meta["requested_runtime_backend"],
+            "framework_limitations": runtime_meta["runtime_backend_limitations"],
         },
         "artifacts": {
             "config_snapshot": "config.yaml",
@@ -232,6 +234,17 @@ def _write_contract_summary_json(
     hierarchy_leaders = report_context.get("hierarchy_leaders", {})
     hierarchy_evidence = report_context.get("hierarchy_evidence", {})
     non_ok_results = report_context.get("non_ok_results", [])
+    hierarchy_summary = None
+    if representative_genome is not None:
+        hierarchy_summary = {
+            "representative_genome_id": representative_genome.genome_id,
+            "macro_nodes": len(representative_genome.macro_nodes),
+            "enabled_macro_edges": sum(1 for edge in representative_genome.macro_edges if edge.enabled),
+            "cell_library_size": len(representative_genome.cell_library),
+            "macro_depth": representative_genome.macro_depth,
+            "avg_cell_depth": float(representative_genome.average_cell_depth),
+            "reuse_ratio": float(representative_genome.reuse_ratio),
+        }
 
     summary: dict[str, Any] = {
         "system": "stratograph",
@@ -261,17 +274,16 @@ def _write_contract_summary_json(
         "hierarchy_selection_policy": manifest.get("search_telemetry", {}).get("hierarchy_selection_policy"),
         "benchmark_slot_integrity": budget.get("benchmark_slot_integrity"),
         "hierarchy_evidence": hierarchy_evidence,
+        "engine_evidence": {
+            "macro_depth": None if hierarchy_summary is None else hierarchy_summary.get("macro_depth"),
+            "cell_library_size": None if hierarchy_summary is None else hierarchy_summary.get("cell_library_size"),
+            "reuse_ratio": None if hierarchy_summary is None else hierarchy_summary.get("reuse_ratio"),
+            "hierarchy_leaders": hierarchy_leaders,
+            "hierarchy_evidence": hierarchy_evidence,
+        },
     }
-    if representative_genome is not None:
-        summary["hierarchy_summary"] = {
-            "representative_genome_id": representative_genome.genome_id,
-            "macro_nodes": len(representative_genome.macro_nodes),
-            "enabled_macro_edges": sum(1 for edge in representative_genome.macro_edges if edge.enabled),
-            "cell_library_size": len(representative_genome.cell_library),
-            "macro_depth": representative_genome.macro_depth,
-            "avg_cell_depth": float(representative_genome.average_cell_depth),
-            "reuse_ratio": float(representative_genome.reuse_ratio),
-        }
+    if hierarchy_summary is not None:
+        summary["hierarchy_summary"] = hierarchy_summary
     if hierarchy_leaders:
         summary["hierarchy_leaders"] = hierarchy_leaders
     write_json(output_dir / "summary.json", summary)

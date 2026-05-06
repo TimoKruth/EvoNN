@@ -20,6 +20,13 @@ from evonn_shared.manifests import write_json
 
 QUALITY_LEVELS = ("L0", "L1", "L2", "L3", "L4")
 SYSTEM_ORDER = ("prism", "topograph", "stratograph", "primordia", "contenders")
+ENGINE_EVIDENCE_REQUIREMENTS = {
+    "prism": ("family_distribution", "family_benchmark_wins", "operator_mix"),
+    "topograph": ("topology_size", "parallel_cache_behavior", "mutation_pressure_policy", "topology_selection_policy"),
+    "stratograph": ("macro_depth", "cell_library_size", "reuse_ratio", "hierarchy_evidence"),
+    "primordia": ("primitive_count", "primitive_bank_size", "primitive_usage", "group_counts"),
+    "contenders": ("contender_family_coverage", "optional_dependency_skips", "baseline_floor_policy_stage", "baseline_floor_evidence"),
+}
 
 
 @dataclass(frozen=True)
@@ -114,6 +121,7 @@ def inspect_run_dir(run_dir: Path, *, write_run_artifacts: bool = True) -> Outpu
     performance = _performance_envelope(manifest=manifest, results=results, summary=summary)
     diagnostics = _diagnostics_envelope(
         manifest=manifest,
+        summary=summary,
         results=results,
         artifacts=artifacts,
         runtime=runtime,
@@ -181,6 +189,7 @@ def render_run_markdown(record: OutputQualityRecord) -> str:
         f"| Missing Required Artifacts | `{', '.join(record.artifact_completeness.required_missing) or 'none'}` |",
         f"| Missing L2 Fields | `{', '.join(record.diagnostics.missing_l2_fields) or 'none'}` |",
         f"| Missing L3 Fields | `{', '.join(record.diagnostics.missing_l3_fields) or 'none'}` |",
+        f"| Missing L4 Fields | `{', '.join(record.diagnostics.missing_l4_fields) or 'none'}` |",
     ]
     return "\n".join(lines) + "\n"
 
@@ -306,7 +315,6 @@ def _runtime_envelope(*, manifest: Mapping[str, Any], summary: Mapping[str, Any]
     )
     resolved = _first_text(
         summary.get("runtime_backend"),
-        summary.get("requested_runtime_backend"),
         runtime_policy.get("runtime_backend"),
         device.get("framework"),
     )
@@ -392,6 +400,7 @@ def _performance_envelope(
 def _diagnostics_envelope(
     *,
     manifest: Mapping[str, Any],
+    summary: Mapping[str, Any],
     results: list[Mapping[str, Any]],
     artifacts: ArtifactCompletenessEnvelope,
     runtime: RuntimeEnvelope,
@@ -438,6 +447,12 @@ def _diagnostics_envelope(
     if performance.train_seconds_total is None:
         missing_l3.append("performance.train_seconds_total")
 
+    engine_evidence = _mapping(summary.get("engine_evidence"))
+    missing_l4 = []
+    for field in ENGINE_EVIDENCE_REQUIREMENTS.get(str(manifest.get("system") or "unknown"), ()): 
+        if field not in engine_evidence or engine_evidence.get(field) in (None, "", [], {}):
+            missing_l4.append(f"engine_evidence.{field}")
+
     warnings = []
     if not summary_exists:
         warnings.append("summary.json missing")
@@ -454,6 +469,7 @@ def _diagnostics_envelope(
         missing_required_artifacts=artifacts.required_missing,
         missing_l2_fields=tuple(missing_l2),
         missing_l3_fields=tuple(missing_l3),
+        missing_l4_fields=tuple(missing_l4),
         warnings=tuple(warnings),
     )
 
@@ -465,7 +481,9 @@ def _quality_level(*, artifacts: ArtifactCompletenessEnvelope, diagnostics: Diag
         return "L1"
     if diagnostics.missing_l3_fields:
         return "L2"
-    return "L3"
+    if diagnostics.missing_l4_fields:
+        return "L3"
+    return "L4"
 
 
 def _measurement_state(performance: PerformanceEnvelope) -> str:

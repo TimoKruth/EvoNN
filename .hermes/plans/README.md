@@ -33,28 +33,32 @@ Merge rule:
 
 ## Current Branch Plans
 
-- `2026-04-26_211820-primordia-quality-parity-plan.md`
+- `2026-04-26_211820-primordia-quality-parity-plan.md` — `active`
   - full Primordia engine-advancement plan
   - starts with backend portability, then benchmark completion, then search and
     quality work
-- `2026-04-27_101500-prism-engine-advancement-plan.md`
+- `2026-04-27_101500-prism-engine-advancement-plan.md` — `active`
   - Prism branch plan for backend portability, quality, runtime maturity, and
     stronger default-engine operation
-- `2026-04-27_102000-topograph-engine-advancement-plan.md`
+- `2026-04-27_102000-topograph-engine-advancement-plan.md` — `active`
   - Topograph branch plan for Linux-capable runtime portability, search quality,
     cost discipline, and challenger maturity
-- `2026-04-27_102500-stratograph-engine-advancement-plan.md`
+- `2026-04-27_102500-stratograph-engine-advancement-plan.md` — `active`
   - Stratograph branch plan for turning the current challenger into a more
     complete, higher-quality hierarchical engine
-- `2026-04-27_103000-contenders-floor-hardening-plan.md`
+- `2026-04-27_103000-contenders-floor-hardening-plan.md` — `active`
   - Contenders branch plan for a stronger, more portable, more auditable
     baseline floor
-- `2026-04-27_103500-compare-trust-lane-maturation-plan.md`
+- `2026-04-27_103500-compare-trust-lane-maturation-plan.md` — `merged-validation`
   - Compare branch plan for fair-matrix trust, dashboards, trends, and
     higher-budget lane operation
-- `2026-04-27_104000-shared-substrate-debt-reduction-plan.md`
+  - most trust-lane surfaces have already landed; use it mainly for remaining
+    validation or cleanup slices, not as untouched future work
+- `2026-04-27_104000-shared-substrate-debt-reduction-plan.md` — `merged-validation`
   - Shared branch plan for substrate debt reduction without collapsing package
     identity
+  - shared contracts/helpers landed broadly enough that this is now primarily a
+    validation and debt-burn-down surface
 
 ## Relationship To Root Plans
 

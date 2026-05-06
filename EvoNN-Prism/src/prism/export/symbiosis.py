@@ -553,8 +553,26 @@ def _write_summary_json(
         "operator_mix": _operator_mix(lineage_records or []),
         "family_benchmark_wins": _family_benchmark_wins(best_per_benchmark or {}, genomes),
         "failure_patterns": _failure_patterns(results),
+        "engine_evidence": {
+            "family_distribution": _family_distribution(genomes),
+            "family_benchmark_wins": _family_benchmark_wins(best_per_benchmark or {}, genomes),
+            "operator_mix": _operator_mix(lineage_records or []),
+            "default_engine_decision_notes": [
+                "prism export carries family-level winner and operator evidence for default-engine review"
+            ],
+        },
     }
     write_json(output_dir / "summary.json", summary)
+
+
+def _family_distribution(genomes: list[ModelGenome]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for genome in genomes:
+        family = getattr(genome, "family", None)
+        if not family:
+            continue
+        counts[str(family)] = counts.get(str(family), 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
 
 def _operator_mix(lineage_records: list[dict[str, Any]]) -> dict[str, int]:

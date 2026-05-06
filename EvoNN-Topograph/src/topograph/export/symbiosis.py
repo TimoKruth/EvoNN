@@ -687,5 +687,28 @@ def _write_summary_json(
         "seed_overlap_policy": seeding.get("seed_overlap_policy"),
         "seed_representative_genome_id": seeding.get("representative_genome_id"),
         "seed_representative_architecture_summary": seeding.get("representative_architecture_summary"),
+        "engine_evidence": {
+            "topology_size": _topology_size_summary(population),
+            "parallel_cache_behavior": {
+                "cache_reuse_rate": budget.get("cache_reuse_rate"),
+                "worker_clamp_reason_counts": budget.get("worker_clamp_reason_counts", {}),
+                "requested_worker_count": budget.get("requested_parallel_workers"),
+                "resolved_worker_count": budget.get("resolved_parallel_workers_max"),
+            },
+            "mutation_pressure_policy": budget.get("mutation_pressure_policy"),
+            "topology_selection_policy": budget.get("topology_selection_policy"),
+        },
     }
     write_json(output_dir / "summary.json", summary)
+
+
+def _topology_size_summary(population: list[Genome]) -> dict[str, int | float] | None:
+    if not population:
+        return None
+    enabled_layers = [len(genome.enabled_layers) for genome in population]
+    node_counts = [len(genome.nodes) for genome in population if getattr(genome, "nodes", None) is not None]
+    return {
+        "population_count": len(population),
+        "enabled_layers_mean": round(sum(enabled_layers) / len(enabled_layers), 3),
+        "node_count_max": max(node_counts) if node_counts else 0,
+    }

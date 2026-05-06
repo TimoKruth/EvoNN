@@ -211,6 +211,8 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
     assert summary["operator_mix"]["mutation:width"] == 1
     assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
     assert summary["failure_patterns"]["failed"] == 1
+    assert summary["engine_evidence"]["operator_mix"]["mutation:width"] == 1
+    assert summary["engine_evidence"]["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
 
 
 def test_resolve_run_id_prefers_latest_entry(tmp_path: Path):

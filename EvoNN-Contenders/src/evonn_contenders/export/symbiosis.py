@@ -140,6 +140,8 @@ def export_symbiosis_contract(
             precision_mode="float32",
             framework="scikit-learn",
             framework_version=None,
+            framework_requested="scikit-learn",
+            framework_limitations="optional baseline families may be unavailable when extra dependencies are missing",
         ),
         artifacts=ArtifactPaths(
             config_snapshot="config.yaml",
@@ -229,7 +231,9 @@ def _build_contract_summary(
         "epochs_per_candidate": manifest.budget.epochs_per_candidate,
         "population_size": manifest.budget.population_size,
         "runtime_backend": manifest.device.framework,
+        "runtime_backend_requested": "scikit-learn",
         "runtime_version": manifest.device.framework_version,
+        "runtime_backend_limitations": "optional baseline families may be unavailable when extra dependencies are missing",
         "precision_mode": manifest.device.precision_mode,
         **core,
         "successful_benchmarks": len(results) - len(failed),
@@ -237,6 +241,13 @@ def _build_contract_summary(
         "optional_missing_count": int(budget_meta.get("optional_missing_count", 0)),
         "backend_dispatch": budget_meta.get("backend_dispatch") or {},
         "baseline_floor_evidence": budget_meta.get("baseline_floor_evidence") or {},
+        "engine_evidence": {
+            "contender_family_coverage": manifest.baseline_coverage.model_dump(mode="json") if manifest.baseline_coverage is not None else None,
+            "optional_dependency_skips": budget_meta.get("optional_missing_by_group") or {},
+            "baseline_floor_policy_stage": budget_meta.get("budget_policy_name") or "fixed_reference_contender_pool",
+            "backend_dispatch": budget_meta.get("backend_dispatch") or {},
+            "baseline_floor_evidence": budget_meta.get("baseline_floor_evidence") or {},
+        },
         "baseline_coverage": (
             manifest.baseline_coverage.model_dump(mode="json")
             if manifest.baseline_coverage is not None

@@ -111,6 +111,14 @@ def test_output_quality_help() -> None:
     assert "--write-run-artifacts" in text
 
 
+def test_performance_baseline_help() -> None:
+    result = _invoke_help("performance-baseline")
+    assert result.exit_code == 0
+    text = _normalized_cli_output(result.stdout)
+    assert "--output-root" in text
+    assert "--write-run-artifacts" in text
+
+
 def test_historical_baseline_help() -> None:
     result = _invoke_help("historical-baseline")
     assert result.exit_code == 0
@@ -884,12 +892,101 @@ def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) 
     workspace = tmp_path / "workspace"
     trends_dir = workspace / "trends"
     reports_dir = workspace / "reports" / "tier1_core_eval64_seed42"
+    run_dir = workspace / "runs" / "prism" / "tier1_core_eval64_seed42"
     trends_dir.mkdir(parents=True)
     reports_dir.mkdir(parents=True)
+    run_dir.mkdir(parents=True)
+    (run_dir / "config.yaml").write_text("seed: 42\n", encoding="utf-8")
+    (run_dir / "report.md").write_text("# report\n", encoding="utf-8")
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "system": "prism",
+                "run_id": "tier1_core_eval64_seed42",
+                "runtime_backend": "mlx",
+                "runtime_backend_requested": "auto",
+                "wall_clock_seconds": 10.0,
+                "median_benchmark_quality": 0.8,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "system": "prism",
+                "run_id": "tier1_core_eval64_seed42",
+                "run_name": "tier1_core_eval64_seed42",
+                "created_at": "2026-05-06T00:00:00Z",
+                "pack_name": "tier1_core_eval64",
+                "seed": 42,
+                "benchmarks": [
+                    {
+                        "benchmark_id": "iris_classification",
+                        "task_kind": "classification",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                        "status": "ok",
+                    }
+                ],
+                "budget": {
+                    "evaluation_count": 64,
+                    "epochs_per_candidate": 20,
+                    "wall_clock_seconds": 10.0,
+                    "budget_policy_name": "prototype_equal_budget",
+                    "actual_evaluations": 64,
+                    "cached_evaluations": 0,
+                    "failed_evaluations": 0,
+                    "invalid_evaluations": 0,
+                    "evaluation_semantics": "one candidate evaluation",
+                },
+                "device": {
+                    "device_name": "apple_silicon",
+                    "precision_mode": "fp32",
+                    "framework": "mlx",
+                    "framework_version": "0.31.1",
+                },
+                "artifacts": {
+                    "config_snapshot": "config.yaml",
+                    "report_markdown": "report.md",
+                },
+                "fairness": {
+                    "benchmark_pack_id": "tier1_core_eval64",
+                    "seed": 42,
+                    "evaluation_count": 64,
+                    "budget_policy_name": "prototype_equal_budget",
+                    "data_signature": "abc",
+                    "code_version": "deadbeef",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "results.json").write_text(
+        json.dumps(
+            [
+                {
+                    "system": "prism",
+                    "run_id": "tier1_core_eval64_seed42",
+                    "benchmark_id": "iris_classification",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": 0.8,
+                    "quality": 0.8,
+                    "parameter_count": 10,
+                    "train_seconds": 2.0,
+                    "status": "ok",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
     (trends_dir / "fair_matrix_trend_rows.jsonl").write_text(
         json.dumps(_dashboard_row("prism", "iris_classification", 0.8)) + "\n",
         encoding="utf-8",
     )
+    row = _dashboard_row("prism", "iris_classification", 0.8)
     (reports_dir / "fair_matrix_summary.json").write_text(
         json.dumps(
             {
@@ -917,7 +1014,7 @@ def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) 
                 "fair_rows": [],
                 "reference_rows": [],
                 "parity_rows": [],
-                "trend_rows": [_dashboard_row("prism", "iris_classification", 0.8)],
+                "trend_rows": [row],
             },
             indent=2,
         ),
@@ -933,7 +1030,11 @@ def test_workspace_report_refreshes_trend_and_dashboard_outputs(tmp_path: Path) 
     assert (workspace / "trends" / "fair_matrix_trends.md").exists()
     assert (workspace / "trends" / "fair_matrix_trends.json").exists()
     assert (workspace / "fair_matrix_dashboard.html").exists()
+    assert (workspace / "output_quality_overview.md").exists()
     assert "Lane States" in (workspace / "trends" / "fair_matrix_trends.md").read_text(encoding="utf-8")
+    dashboard_data = json.loads((workspace / "fair_matrix_dashboard.json").read_text(encoding="utf-8"))
+    output_quality_rows = dashboard_data["runs"][0]["output_quality"]["systems"]
+    assert output_quality_rows[0]["system"] == "prism"
 
 
 def test_workspace_report_normalizes_legacy_root_dataset_and_dedupes_rows(tmp_path: Path) -> None:
@@ -1303,6 +1404,156 @@ def test_dashboard_payload_adds_engine_specialization_views(tmp_path: Path) -> N
     assert "Engine Rank By Benchmark Family: All 5 Systems" in html
     assert "Engine Profiles: All 5 Systems" in html
     assert "topology and skip-connection search" in html
+
+
+def test_dashboard_payload_surfaces_output_quality_badges(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    summary_dir = workspace_root / "reports" / "tier1_core_eval64_seed42"
+    summary_dir.mkdir(parents=True)
+    prism_run_dir = workspace_root / "runs" / "prism" / "tier1_core_eval64_seed42"
+    prism_run_dir.mkdir(parents=True)
+    (prism_run_dir / "config.yaml").write_text("seed: 42\n", encoding="utf-8")
+    (prism_run_dir / "report.md").write_text("# report\n", encoding="utf-8")
+    (prism_run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "system": "prism",
+                "run_id": "tier1_core_eval64_seed42",
+                "runtime_backend": "mlx",
+                "runtime_backend_requested": "auto",
+                "wall_clock_seconds": 10.0,
+                "median_benchmark_quality": 0.9,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (prism_run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "system": "prism",
+                "run_id": "tier1_core_eval64_seed42",
+                "run_name": "tier1_core_eval64_seed42",
+                "created_at": "2026-05-06T00:00:00Z",
+                "pack_name": "tier1_core_eval64",
+                "seed": 42,
+                "benchmarks": [
+                    {
+                        "benchmark_id": "iris_classification",
+                        "task_kind": "classification",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                        "status": "ok",
+                    }
+                ],
+                "budget": {
+                    "evaluation_count": 64,
+                    "epochs_per_candidate": 20,
+                    "wall_clock_seconds": 10.0,
+                    "budget_policy_name": "prototype_equal_budget",
+                    "actual_evaluations": 64,
+                    "cached_evaluations": 0,
+                    "failed_evaluations": 0,
+                    "invalid_evaluations": 0,
+                    "evaluation_semantics": "one candidate evaluation",
+                },
+                "device": {
+                    "device_name": "apple_silicon",
+                    "precision_mode": "fp32",
+                    "framework": "mlx",
+                    "framework_version": "0.31.1",
+                },
+                "artifacts": {
+                    "config_snapshot": "config.yaml",
+                    "report_markdown": "report.md",
+                },
+                "fairness": {
+                    "benchmark_pack_id": "tier1_core_eval64",
+                    "seed": 42,
+                    "evaluation_count": 64,
+                    "budget_policy_name": "prototype_equal_budget",
+                    "data_signature": "abc",
+                    "code_version": "deadbeef",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (prism_run_dir / "results.json").write_text(
+        json.dumps(
+            [
+                {
+                    "system": "prism",
+                    "run_id": "tier1_core_eval64_seed42",
+                    "benchmark_id": "iris_classification",
+                    "metric_name": "accuracy",
+                    "metric_direction": "max",
+                    "metric_value": 0.9,
+                    "quality": 0.9,
+                    "parameter_count": 10,
+                    "train_seconds": 2.0,
+                    "status": "ok",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    row = _dashboard_row("prism", "iris_classification", 0.9)
+    row["artifact_paths"] = {
+        "manifest": str(prism_run_dir / "manifest.json"),
+        "results": str(prism_run_dir / "results.json"),
+        "summary": str(prism_run_dir / "summary.json"),
+        "report": str(prism_run_dir / "report.md"),
+    }
+    (summary_dir / "fair_matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "pack_name": "tier1_core_eval64",
+                "systems": ["prism"],
+                "lane": {
+                    "preset": "local",
+                    "pack_name": "tier1_core_eval64",
+                    "expected_budget": 64,
+                    "expected_seed": 42,
+                    "operating_state": "trusted-core",
+                    "artifact_completeness_ok": True,
+                    "fairness_ok": True,
+                    "task_coverage_ok": True,
+                    "budget_consistency_ok": True,
+                    "seed_consistency_ok": True,
+                    "budget_accounting_ok": True,
+                    "core_systems_complete_ok": True,
+                    "extended_systems_complete_ok": False,
+                    "observed_task_kinds": ["classification"],
+                    "system_operating_states": {"prism": "benchmark-complete"},
+                    "acceptance_notes": [],
+                    "repeatability_ready": True,
+                },
+                "fair_rows": [],
+                "reference_rows": [],
+                "parity_rows": [],
+                "trend_rows": [row],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "dashboard.html"
+
+    result = runner.invoke(app, ["dashboard", str(workspace_root), "--output", str(output_path)])
+
+    assert result.exit_code == 0
+    payload = json.loads(output_path.with_suffix(".json").read_text(encoding="utf-8"))
+    quality = payload["runs"][0]["output_quality"]["systems"][0]
+    assert quality["system"] == "prism"
+    assert quality["quality_level"] == "L3"
+    assert quality["measurement_state"] == "measurable"
+    assert "engine_evidence.family_distribution" in quality["missing_l4_fields"]
+    html = output_path.read_text(encoding="utf-8")
+    assert "Output Quality By Run" in html
+    assert "Missing L4" in html
+    assert "engine_evidence.family_distribution" in html
+    assert "L3" in html
 
 
 def test_dashboard_payload_adds_transfer_regime_views_and_provenance_links(tmp_path: Path) -> None:

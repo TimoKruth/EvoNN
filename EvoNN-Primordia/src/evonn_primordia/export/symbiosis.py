@@ -279,6 +279,14 @@ def _build_compare_summary(
         "primitive_usage": summary.get("primitive_usage", {}),
         "group_counts": summary.get("group_counts", {}),
         "completed_benchmarks": summary.get("completed_benchmarks", []),
+        "engine_evidence": {
+            "primitive_count": int(summary.get("attempted_evaluations", evaluation_count)),
+            "primitive_bank_size": len(summary.get("primitive_usage", {})),
+            "promotion_count": int(summary.get("promotion_count", 0)),
+            "primitive_usage": summary.get("primitive_usage", {}),
+            "group_counts": summary.get("group_counts", {}),
+            "runtime_limitations": summary.get("runtime_backend_limitations") or "",
+        },
     }
 
 

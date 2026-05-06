@@ -160,6 +160,7 @@ class DiagnosticsEnvelope(BaseModel):
     missing_required_artifacts: tuple[str, ...] = ()
     missing_l2_fields: tuple[str, ...] = ()
     missing_l3_fields: tuple[str, ...] = ()
+    missing_l4_fields: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
 
 

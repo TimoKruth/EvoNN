@@ -24,6 +24,11 @@ def test_output_quality_writes_normalized_artifacts(tmp_path: Path) -> None:
                 "runtime_backend_requested": "auto",
                 "median_benchmark_quality": 0.9,
                 "wall_clock_seconds": 10.0,
+                "engine_evidence": {
+                    "family_distribution": {"mlp": 1},
+                    "family_benchmark_wins": {"mlp": 1},
+                    "operator_mix": {"mutation:width": 1},
+                },
             }
         ),
         encoding="utf-8",
@@ -102,12 +107,27 @@ def test_output_quality_writes_normalized_artifacts(tmp_path: Path) -> None:
 
     record = inspect_run_dir(run_dir)
 
-    assert record.quality_level == "L3"
+    assert record.quality_level == "L4"
     assert record.measurement_state == "measurable"
     assert record.performance.evals_per_second == 6.4
     assert (run_dir / "performance.json").exists()
     assert (run_dir / "diagnostics.json").exists()
     assert (run_dir / "output_quality_report.md").exists()
+
+
+def test_output_quality_audits_missing_engine_evidence_as_not_l4(tmp_path: Path) -> None:
+    run_dir = tmp_path / "runs" / "prism" / "case"
+    run_dir.mkdir(parents=True)
+    (run_dir / "config.yaml").write_text("seed: 42\n", encoding="utf-8")
+    (run_dir / "report.md").write_text("# report\n", encoding="utf-8")
+    (run_dir / "summary.json").write_text(json.dumps({"system": "prism", "run_id": "case", "runtime_backend": "mlx", "wall_clock_seconds": 10.0, "median_benchmark_quality": 0.9}), encoding="utf-8")
+    (run_dir / "manifest.json").write_text(json.dumps({"system": "prism", "run_id": "case", "benchmarks": [{"benchmark_id": "iris", "task_kind": "classification", "metric_name": "accuracy", "metric_direction": "max", "status": "ok"}], "budget": {"evaluation_count": 64, "wall_clock_seconds": 10.0, "budget_policy_name": "prototype_equal_budget", "actual_evaluations": 64, "evaluation_semantics": "one candidate evaluation"}, "device": {"device_name": "apple_silicon", "framework": "mlx", "precision_mode": "fp32"}, "artifacts": {"config_snapshot": "config.yaml", "report_markdown": "report.md"}, "fairness": {"benchmark_pack_id": "tier1_core_eval64", "seed": 42, "evaluation_count": 64, "budget_policy_name": "prototype_equal_budget", "data_signature": "abc", "code_version": "deadbeef"}}, indent=2), encoding="utf-8")
+    (run_dir / "results.json").write_text(json.dumps([{"system": "prism", "run_id": "case", "benchmark_id": "iris", "metric_name": "accuracy", "metric_direction": "max", "metric_value": 1.0, "quality": 1.0, "parameter_count": 10, "train_seconds": 2.0, "status": "ok"}]), encoding="utf-8")
+
+    record = inspect_run_dir(run_dir)
+
+    assert record.quality_level == "L3"
+    assert "engine_evidence.family_distribution" in record.diagnostics.missing_l4_fields
 
 
 def test_output_quality_cli_accepts_workspace(tmp_path: Path) -> None:
@@ -137,3 +157,50 @@ def test_output_quality_cli_accepts_workspace(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "runs\t1" in result.stdout
     assert (workspace / "output_quality_overview.md").exists()
+
+
+def test_output_quality_uses_device_framework_when_only_requested_backend_is_present(tmp_path: Path) -> None:
+    run_dir = tmp_path / "runs" / "prism" / "case"
+    run_dir.mkdir(parents=True)
+    (run_dir / "config.yaml").write_text("seed: 42\n", encoding="utf-8")
+    (run_dir / "report.md").write_text("# report\n", encoding="utf-8")
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "system": "prism",
+                "run_id": "case",
+                "requested_runtime_backend": "auto",
+                "wall_clock_seconds": 10.0,
+                "median_benchmark_quality": 0.9,
+                "engine_evidence": {
+                    "family_distribution": {"mlp": 1},
+                    "family_benchmark_wins": {"mlp": 1},
+                    "operator_mix": {"mutation:width": 1},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "system": "prism",
+                "run_id": "case",
+                "benchmarks": [{"benchmark_id": "iris", "task_kind": "classification", "metric_name": "accuracy", "metric_direction": "max", "status": "ok"}],
+                "budget": {"evaluation_count": 64, "wall_clock_seconds": 10.0, "budget_policy_name": "prototype_equal_budget", "actual_evaluations": 64, "evaluation_semantics": "one candidate evaluation"},
+                "device": {"device_name": "apple_silicon", "framework": "mlx", "precision_mode": "fp32"},
+                "artifacts": {"config_snapshot": "config.yaml", "report_markdown": "report.md"},
+                "fairness": {"benchmark_pack_id": "tier1_core_eval64", "seed": 42, "evaluation_count": 64, "budget_policy_name": "prototype_equal_budget", "data_signature": "abc", "code_version": "deadbeef"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "results.json").write_text(
+        json.dumps([{"system": "prism", "run_id": "case", "benchmark_id": "iris", "metric_name": "accuracy", "metric_direction": "max", "metric_value": 1.0, "quality": 1.0, "parameter_count": 10, "train_seconds": 2.0, "status": "ok"}]),
+        encoding="utf-8",
+    )
+
+    record = inspect_run_dir(run_dir)
+
+    assert record.runtime.runtime_backend_requested == "auto"
+    assert record.runtime.runtime_backend == "mlx"

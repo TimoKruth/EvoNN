@@ -116,6 +116,9 @@ seed_policy:
         "tabular": 2,
     }
     assert summary["baseline_floor_evidence"]["successful_winner_count"] == 2
+    assert summary["runtime_backend_requested"] == "scikit-learn"
+    assert "optional baseline families" in summary["runtime_backend_limitations"]
+    assert summary["engine_evidence"]["baseline_floor_evidence"]["successful_winner_count"] == 2
 
     report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert "## Baseline Floor Evidence" in report
