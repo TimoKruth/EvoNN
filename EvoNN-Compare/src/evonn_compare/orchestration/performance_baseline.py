@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 from typing import Any, Iterable
 
 from evonn_compare.output_quality import OutputQualityRecord, inspect_paths
@@ -73,10 +74,12 @@ def _record_payload(record: OutputQualityRecord, *, required_budgets: tuple[int,
     summary = json.loads(record.summary_path.read_text(encoding="utf-8")) if record.summary_path is not None else {}
     budget = _as_int(((manifest.get("budget") or {}).get("evaluation_count")))
     pack_name = str(manifest.get("pack_name") or manifest.get("benchmark_pack_id") or "unknown")
+    fair_matrix_context = _fair_matrix_context(record=record, manifest=manifest)
     fairness = manifest.get("fairness") or {}
     code_version = fairness.get("code_version")
     seed = _as_int(fairness.get("seed") if fairness else manifest.get("seed"))
     lane_operating_state = _first_text(
+        fair_matrix_context.get("lane_operating_state"),
         summary.get("lane_operating_state"),
         (summary.get("fairness") or {}).get("lane_operating_state") if isinstance(summary.get("fairness"), dict) else None,
         (summary.get("fairness_metadata") or {}).get("lane_operating_state") if isinstance(summary.get("fairness_metadata"), dict) else None,
@@ -97,6 +100,7 @@ def _record_payload(record: OutputQualityRecord, *, required_budgets: tuple[int,
         "run_id": record.run_id,
         "run_dir": str(record.run_dir),
         "pack_name": pack_name,
+        "pack_family": _canonical_pack_name(str(fairness.get("benchmark_pack_id") or fair_matrix_context.get("pack_name") or pack_name)),
         "budget": budget,
         "seed": seed,
         "code_version": code_version,
@@ -126,7 +130,7 @@ def _record_payload(record: OutputQualityRecord, *, required_budgets: tuple[int,
         "completed_benchmark_count": record.completed_benchmark_count,
         "failed_benchmark_count": record.failed_benchmark_count,
         "cohort_key": _cohort_key(
-            pack_name=pack_name,
+            pack_name=_canonical_pack_name(str(fairness.get("benchmark_pack_id") or fair_matrix_context.get("pack_name") or pack_name)),
             seed=seed,
             backend=record.runtime.runtime_backend,
             hardware_class=record.runtime.hardware_class,
@@ -209,6 +213,7 @@ def _cohort_stats(run_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         payload[cohort_key] = {
             "cohort_key": cohort_key,
             "pack_name": rows[0].get("pack_name"),
+            "pack_family": rows[0].get("pack_family"),
             "seed": rows[0].get("seed"),
             "code_version": rows[0].get("code_version"),
             "backend": rows[0]["runtime"].get("backend"),
@@ -241,7 +246,7 @@ def _render_markdown(overview: dict[str, Any], run_rows: list[dict[str, Any]]) -
         lines.append(
             "| {key} | `{pack}` | {seed} | `{backend}` | `{hardware}` | `{lane}` | `{systems}` | `{budgets}` |".format(
                 key=cohort["cohort_key"],
-                pack=cohort["pack_name"],
+                pack=cohort.get("pack_family") or cohort["pack_name"],
                 seed=cohort["seed"] if cohort["seed"] is not None else 0,
                 backend=cohort["backend"] or "unknown",
                 hardware=cohort["hardware_class"] or "unknown",
@@ -326,6 +331,69 @@ def _cohort_key(*, pack_name: str, seed: int | None, backend: str | None, hardwa
         hardware_class or "unknown-hardware",
         code_version or "unknown-code-version",
     ])
+
+
+def _canonical_pack_name(pack_name: str) -> str:
+    return re.sub(r"_eval\d+$", "", pack_name or "unknown-pack") or "unknown-pack"
+
+
+def _fair_matrix_context(*, record: OutputQualityRecord, manifest: dict[str, Any]) -> dict[str, Any]:
+    workspace_root = _workspace_root_from_run_dir(record.run_dir)
+    if workspace_root is None:
+        return {}
+    report_dir = workspace_root / "reports" / record.run_id
+    summary_path = report_dir / "fair_matrix_summary.json"
+    trends_json_path = report_dir / "fair_matrix_trends.json"
+    trends_jsonl_path = report_dir / "fair_matrix_trends.jsonl"
+
+    summary_payload = _read_json_if_exists(summary_path)
+    summary_mapping = summary_payload if isinstance(summary_payload, dict) else {}
+    trend_rows = []
+    if isinstance(summary_mapping.get("trend_rows"), list):
+        trend_rows = list(summary_mapping.get("trend_rows") or [])
+    elif trends_json_path.exists():
+        trend_rows = _read_json_if_exists(trends_json_path)
+    elif trends_jsonl_path.exists():
+        trend_rows = [json.loads(line) for line in trends_jsonl_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    fairness = manifest.get("fairness") or {}
+    budget = _as_int((manifest.get("budget") or {}).get("evaluation_count"))
+    seed = _as_int(fairness.get("seed") if fairness else manifest.get("seed"))
+    matches = [
+        row for row in trend_rows
+        if isinstance(row, dict)
+        and str(row.get("system") or row.get("engine") or "") == record.system
+        and str(row.get("run_id") or "") == record.run_id
+        and _as_int(row.get("budget")) == budget
+        and _as_int(row.get("seed")) == seed
+    ]
+    lane_state = None
+    pack_name = None
+    if matches:
+        lane_states = sorted({str(row.get("lane_operating_state") or (row.get("fairness_metadata") or {}).get("lane_operating_state") or "") for row in matches if str(row.get("lane_operating_state") or (row.get("fairness_metadata") or {}).get("lane_operating_state") or "").strip()})
+        lane_state = lane_states[0] if len(lane_states) == 1 else None
+        pack_names = sorted({str(row.get("pack_name") or "") for row in matches if str(row.get("pack_name") or "").strip()})
+        pack_name = pack_names[0] if len(pack_names) == 1 else None
+    if lane_state is None and isinstance(summary_mapping.get("lane"), dict):
+        lane_state = _first_text((summary_mapping.get("lane") or {}).get("operating_state"))
+    return {
+        "lane_operating_state": lane_state,
+        "pack_name": pack_name,
+    }
+
+
+def _workspace_root_from_run_dir(run_dir: Path) -> Path | None:
+    current = run_dir.resolve()
+    for parent in current.parents:
+        if parent.name == "runs":
+            return parent.parent.resolve()
+    return None
+
+
+def _read_json_if_exists(path: Path) -> Any:
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _first_text(*values: Any) -> str | None:
