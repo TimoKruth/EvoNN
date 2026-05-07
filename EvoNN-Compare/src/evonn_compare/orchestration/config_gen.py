@@ -263,11 +263,16 @@ def _prism_allowed_families(pack, *, budget: int) -> list[str]:
     has_lm = any(entry.task_kind == "language_modeling" for entry in pack.benchmarks)
     has_non_lm = any(entry.task_kind != "language_modeling" for entry in pack.benchmarks)
     if has_lm and has_non_lm:
-        if units >= 4:
-            return ["mlp", "sparse_mlp", "attention", "sparse_attention"]
-        return ["mlp", "attention"]
+        for families in (
+            ["mlp", "sparse_mlp", "attention", "sparse_attention"],
+            ["attention", "sparse_attention"],
+            ["attention"],
+        ):
+            if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
+                return families
+        return ["attention"]
     if has_lm:
-        if units >= 2:
+        if _has_exact_factorization(units, min_population_size=2, preferred_population_cap=8):
             return ["attention", "sparse_attention"]
         return ["attention"]
     return ["mlp", "sparse_mlp"]
@@ -282,7 +287,11 @@ def _prism_budget_patch(*, budget: int, benchmark_count: int, required_family_co
             f"budget {budget} too small for prism pack coverage: need at least "
             f"{benchmark_count * required_family_count} evaluations"
         )
-    population_size, generations = _exact_factorization(units, preferred_population_cap=8)
+    population_size, generations = _exact_factorization(
+        units,
+        preferred_population_cap=8,
+        min_population_size=required_family_count,
+    )
     return {
         "evolution": {
             "population_size": population_size,
@@ -307,13 +316,38 @@ def _topograph_budget_patch(*, budget: int, benchmark_count: int) -> dict[str, A
     }
 
 
-def _exact_factorization(units: int, *, preferred_population_cap: int) -> tuple[int, int]:
+def _has_exact_factorization(
+    units: int,
+    *,
+    min_population_size: int,
+    preferred_population_cap: int,
+) -> bool:
+    try:
+        _exact_factorization(
+            units,
+            preferred_population_cap=preferred_population_cap,
+            min_population_size=min_population_size,
+        )
+    except ValueError:
+        return False
+    return True
+
+
+def _exact_factorization(
+    units: int,
+    *,
+    preferred_population_cap: int,
+    min_population_size: int = 1,
+) -> tuple[int, int]:
     if units <= 0:
         raise ValueError(f"units must be positive, got {units}")
-    for population_size in range(min(preferred_population_cap, units), 0, -1):
+    for population_size in range(min(preferred_population_cap, units), min_population_size - 1, -1):
         if units % population_size == 0:
             return population_size, units // population_size
-    return units, 1
+    raise ValueError(
+        f"units {units} cannot be exactly factored with population >= {min_population_size} "
+        f"and cap {preferred_population_cap}"
+    )
 
 
 def _deep_update(target: dict[str, Any], patch: dict[str, Any]) -> None:

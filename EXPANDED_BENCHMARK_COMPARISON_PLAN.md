@@ -291,16 +291,20 @@ Tier C starts as exploratory only. It becomes decision-grade only after two clea
 
 Purpose: broad benchmark diversity across the existing all-shared surface.
 
-Pack size: use existing generated `all_shared.yaml`, currently 41 benchmarks.
+Pack size: start from the audited admitted subset of `all_shared.yaml`.
+The first implemented admitted subset contains 8 benchmarks; broaden it only as
+additional candidates pass `benchmark-audit` and required contender-floor checks.
 
 Budgets:
 
-- 328
-- 656
-- 1312
-- 2624
+- 320
+- 640
+- 1280
+- 2560
 
-All are divisible by 41.
+All are divisible by the current 8-benchmark admitted subset and keep Prism's
+mixed-family population factorable. If the admitted set grows, revise these
+presets rather than carrying forward incompatible per-benchmark prime budgets.
 
 Status: special/overnight only at first.
 
@@ -444,7 +448,7 @@ Add presets:
 - `tier_b_weekend_v2`: pack `tier_b_core_v2`, budget `1536`
 - `tier_c_local`: pack `tier_c_architecture_sensitive`, budget `128`
 - `tier_c_overnight`: pack `tier_c_architecture_sensitive`, budget `512`
-- `tier_d_broad`: pack `tier_d_broad_shared`, budget `656`
+- `tier_d_broad`: pack `tier_d_broad_shared`, budget `640`
 
 Acceptance:
 

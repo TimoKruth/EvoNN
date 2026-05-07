@@ -83,7 +83,7 @@ def test_generate_prism_and_topograph_configs_use_legacy_slots(tmp_path: Path) -
     assert topograph_payload["benchmark_pool"]["primordia_seed_candidates_path"].endswith("seed_candidates.json")
     assert prism_payload["evolution"]["num_generations"] == 1
     assert topograph_payload["training"]["parallel_workers"] == 2
-def test_generate_prism_config_uses_mlp_and_attention_for_mixed_lm_pack(tmp_path: Path) -> None:
+def test_generate_prism_config_uses_cross_modal_families_for_small_mixed_lm_pack(tmp_path: Path) -> None:
     pack_path = tmp_path / "mixed.yaml"
     pack_path.write_text(
         yaml.safe_dump(
@@ -127,7 +127,7 @@ def test_generate_prism_config_uses_mlp_and_attention_for_mixed_lm_pack(tmp_path
         budget=4,
     )
     prism_payload = yaml.safe_load(prism_path.read_text(encoding="utf-8"))
-    assert prism_payload["evolution"]["allowed_families"] == ["mlp", "attention"]
+    assert prism_payload["evolution"]["allowed_families"] == ["attention", "sparse_attention"]
 
 
 def test_generate_prism_config_uses_broad_families_when_mixed_lm_budget_allows_it(tmp_path: Path) -> None:
@@ -182,7 +182,7 @@ def test_generate_prism_config_uses_broad_families_when_mixed_lm_budget_allows_i
     ]
 
 
-def test_generate_prism_config_rejects_impossible_mixed_lm_budget(tmp_path: Path) -> None:
+def test_generate_prism_config_uses_attention_only_for_prime_mixed_lm_budget(tmp_path: Path) -> None:
     pack_path = tmp_path / "mixed.yaml"
     pack_path.write_text(
         yaml.safe_dump(
@@ -207,7 +207,7 @@ def test_generate_prism_config_rejects_impossible_mixed_lm_budget(tmp_path: Path
                     },
                 ],
                 "budget_policy": {
-                    "evaluation_count": 2,
+                    "evaluation_count": 82,
                     "epochs_per_candidate": 1,
                 },
                 "seed_policy": {
@@ -219,17 +219,17 @@ def test_generate_prism_config_rejects_impossible_mixed_lm_budget(tmp_path: Path
         ),
         encoding="utf-8",
     )
-    try:
-        generate_prism_config(
-            output_path=tmp_path / "configs" / "prism.yaml",
-            pack_path=pack_path,
-            seed=42,
-            budget=2,
-        )
-    except ValueError as exc:
-        assert "too small for prism pack coverage" in str(exc)
-    else:
-        raise AssertionError("expected ValueError")
+    prism_path = generate_prism_config(
+        output_path=tmp_path / "configs" / "prism.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=82,
+    )
+    prism_payload = yaml.safe_load(prism_path.read_text(encoding="utf-8"))
+
+    assert prism_payload["evolution"]["allowed_families"] == ["attention"]
+    assert prism_payload["evolution"]["population_size"] == 1
+    assert prism_payload["evolution"]["num_generations"] == 41
 
 
 def test_generate_stratograph_and_contender_configs_match_budget(tmp_path: Path) -> None:

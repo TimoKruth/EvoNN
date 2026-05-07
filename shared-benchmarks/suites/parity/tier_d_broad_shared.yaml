@@ -3,10 +3,10 @@ tier: 3
 ladder_tier: D
 description: Special-only broad shared lane containing only benchmarks with explicit contender-floor admission metadata.
 usage_classification:
-  special_smoke: {evaluation_count: 328, notes: Lowest planned Tier D special-only broad lane.}
-  special_local: {evaluation_count: 656, notes: Special-only broad lane; keep separate from main leaderboards until repeated clean runs exist.}
-  special_overnight: {evaluation_count: 1312, notes: Thirty-two evaluations per benchmark if the admitted set remains 41 benchmarks.}
-  special_weekend: {evaluation_count: 2624, notes: Weekend-scale broad validation.}
+  special_smoke: {evaluation_count: 320, notes: Lowest planned Tier D special-only broad lane for the current eight-benchmark admitted set; forty evaluations per benchmark keeps Prism mixed-family coverage factorable.}
+  special_local: {evaluation_count: 640, notes: Special-only broad lane; keep separate from main leaderboards until repeated clean runs exist.}
+  special_overnight: {evaluation_count: 1280, notes: Overnight broad validation for the current admitted set.}
+  special_weekend: {evaluation_count: 2560, notes: Weekend-scale broad validation.}
 promotion_requirements:
   clean_repeated_runs_required: 3
   leaderboard_scope: separate_until_promoted
@@ -20,7 +20,7 @@ benchmarks:
   - {benchmark_id: openml_cpu_activity, native_ids: {prism: cpu_performance, topograph: cpu_performance, stratograph: cpu_performance, primordia: cpu_performance, contenders: cpu_performance, evonn: openml_cpu_activity, evonn2: cpu_performance, hybrid: cpu_performance}, task_kind: regression, benchmark_group: tabular, benchmark_family: tabular-regression, domain: openml_regression, difficulty: hard, runtime_class: special, metric_name: mse, metric_direction: min, minimum_required_contenders: [hist_gb, extra_trees, ridge_or_linear, svr_or_nystroem_svr]}
   - {benchmark_id: tinystories_lm_smoke, native_ids: {prism: tinystories_lm_smoke, topograph: tinystories_lm_smoke, stratograph: tinystories_lm_smoke, primordia: tinystories_lm_smoke, contenders: tinystories_lm_smoke, evonn: tinystories_lm_smoke, evonn2: tinystories_lm_smoke, hybrid: tinystories_lm_smoke}, task_kind: language_modeling, benchmark_group: language_modeling, benchmark_family: language-modeling, domain: language_modeling, difficulty: core, runtime_class: special, metric_name: perplexity, metric_direction: min, minimum_required_contenders: [bigram_lm_a01, bigram_lm_a20], enhanced_optional_contenders: [transformer_lm_tiny]}
 budget_policy:
-  evaluation_count: 656
+  evaluation_count: 640
   epochs_per_candidate: 20
   budget_tolerance_pct: 10.0
 seed_policy:

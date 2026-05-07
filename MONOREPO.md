@@ -126,10 +126,10 @@ For the current local-first workflow:
   - `tier_c_overnight` → `tier_c_architecture_sensitive` @ `512`
   - `tier_c_extended` → `tier_c_architecture_sensitive` @ `1024`
   - `tier_c_weekend` → `tier_c_architecture_sensitive` @ `2048`
-  - `tier_d_local` → `tier_d_broad_shared` @ `328`
-  - `tier_d_broad` → `tier_d_broad_shared` @ `656`
-  - `tier_d_overnight` → `tier_d_broad_shared` @ `1312`
-  - `tier_d_weekend` → `tier_d_broad_shared` @ `2624`
+  - `tier_d_local` → `tier_d_broad_shared` @ `320`
+  - `tier_d_broad` → `tier_d_broad_shared` @ `640`
+  - `tier_d_overnight` → `tier_d_broad_shared` @ `1280`
+  - `tier_d_weekend` → `tier_d_broad_shared` @ `2560`
 - run `uv run --package evonn-compare evonn-compare benchmark-audit --pack <pack>`
   before treating any expanded pack as decision-grade
 
