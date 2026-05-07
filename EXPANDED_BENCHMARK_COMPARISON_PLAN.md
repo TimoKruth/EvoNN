@@ -292,21 +292,23 @@ Tier C starts as exploratory only. It becomes decision-grade only after two clea
 Purpose: broad benchmark diversity across the existing all-shared surface.
 
 Pack size: start from the audited admitted subset of `all_shared.yaml`.
-The first implemented admitted subset contains 8 benchmarks; broaden it only as
-additional candidates pass `benchmark-audit` and required contender-floor checks.
+The implemented admitted subset contains 26 benchmarks promoted from clean Tier
+B/C evidence; broaden it only as additional candidates pass `benchmark-audit`,
+required contender-floor checks, and at least one clean special-lane proof run.
 
 Budgets:
 
-- 320
-- 640
-- 1280
-- 2560
+- 208
+- 416
+- 832
+- 1664
 
-All are divisible by the current 8-benchmark admitted subset and keep Prism's
+All are divisible by the current 26-benchmark admitted subset and keep Prism's
 mixed-family population factorable. If the admitted set grows, revise these
 presets rather than carrying forward incompatible per-benchmark prime budgets.
 
-Status: special/overnight only at first.
+Status: decision-grade as a separate Tier D leaderboard surface after three
+clean `tier_d_local` proof runs at budget `208`.
 
 Admission:
 
@@ -316,7 +318,9 @@ Admission:
 
 Dashboard:
 
-Tier D results must be shown separately from Tier A/B/C. Do not combine Tier D wins into the main research leaderboard until the pack has at least three clean repeated runs.
+Tier D results must stay visible as a separate broad-lane leaderboard so they do
+not distort Tier A/B/C trend claims. The three-run gate is satisfied for the
+current 26-benchmark admitted pack.
 
 ## Contender Policy
 
@@ -448,7 +452,7 @@ Add presets:
 - `tier_b_weekend_v2`: pack `tier_b_core_v2`, budget `1536`
 - `tier_c_local`: pack `tier_c_architecture_sensitive`, budget `128`
 - `tier_c_overnight`: pack `tier_c_architecture_sensitive`, budget `512`
-- `tier_d_broad`: pack `tier_d_broad_shared`, budget `640`
+- `tier_d_broad`: pack `tier_d_broad_shared`, budget `416`
 
 Acceptance:
 
@@ -516,7 +520,7 @@ Promotion rule:
 - Tier A promoted when one clean run passes.
 - Tier B promoted when two clean runs pass at `96` and one clean run passes at `384`.
 - Tier C remains exploratory until two clean `512` runs and one clean `1024` run exist.
-- Tier D remains special-only until all blocked candidates are resolved and at least three clean runs exist.
+- Tier D is decision-grade for its admitted 26-benchmark pack after three clean `208` runs; remaining blocked candidates require separate admission proof.
 
 ## Testing Plan
 
@@ -584,5 +588,5 @@ This expansion is complete when:
 - Dashboard shows contender-floor status and ceiling ties.
 - Tier B expanded comparison can run cleanly at `96`, `384`, and `1536`.
 - Tier C can run at least exploratory at `128`.
-- Tier D broad suite exists but only admitted benchmarks are included.
+- Tier D broad suite exists, includes 26 admitted benchmarks, and has three clean repeated `208` proof runs.
 - Documentation explains which lanes are trusted, exploratory, overnight, or special-only.

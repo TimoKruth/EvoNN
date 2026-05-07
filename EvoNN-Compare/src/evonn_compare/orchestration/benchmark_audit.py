@@ -71,7 +71,7 @@ def _audit_benchmark(*, pack: ParityPack, benchmark: ParityBenchmark) -> dict[st
 
     if blockers:
         admission_status = "blocked"
-    elif notes or pack.ladder_tier in {"C", "D", "E"}:
+    elif notes or _pack_requires_exploratory_admission(pack):
         admission_status = "exploratory_only"
     else:
         admission_status = "decision_grade"
@@ -187,6 +187,13 @@ def _budget_presets_for_pack(pack: ParityPack) -> list[int]:
     if pack.budget_policy.evaluation_count:
         budgets.add(int(pack.budget_policy.evaluation_count))
     return sorted(budgets)
+
+
+def _pack_requires_exploratory_admission(pack: ParityPack) -> bool:
+    if pack.ladder_tier not in {"C", "D", "E"}:
+        return False
+    requirements = pack.promotion_requirements or {}
+    return requirements.get("promotion_status") != "decision_grade"
 
 
 def _write_audit_outputs(*, payload: dict[str, Any], output: Path) -> None:

@@ -126,12 +126,15 @@ For the current local-first workflow:
   - `tier_c_overnight` → `tier_c_architecture_sensitive` @ `512`
   - `tier_c_extended` → `tier_c_architecture_sensitive` @ `1024`
   - `tier_c_weekend` → `tier_c_architecture_sensitive` @ `2048`
-  - `tier_d_local` → `tier_d_broad_shared` @ `320`
-  - `tier_d_broad` → `tier_d_broad_shared` @ `640`
-  - `tier_d_overnight` → `tier_d_broad_shared` @ `1280`
-  - `tier_d_weekend` → `tier_d_broad_shared` @ `2560`
+  - `tier_d_local` → `tier_d_broad_shared` @ `208`
+  - `tier_d_broad` → `tier_d_broad_shared` @ `416`
+  - `tier_d_overnight` → `tier_d_broad_shared` @ `832`
+  - `tier_d_weekend` → `tier_d_broad_shared` @ `1664`
 - run `uv run --package evonn-compare evonn-compare benchmark-audit --pack <pack>`
   before treating any expanded pack as decision-grade
+- `tier_d_broad_shared` is decision-grade for the current 26-benchmark admitted
+  pack after three clean `tier_d_local` proof runs, but it stays on a separate
+  broad-lane leaderboard from Tier A/B/C.
 
 Install package dev dependencies from root:
 

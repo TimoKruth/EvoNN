@@ -76,6 +76,8 @@ uv run --package evonn-compare python -m evonn_compare fair-matrix \
   `tier_d_local`, `tier_d_broad`, `tier_d_overnight`, and `tier_d_weekend`.
 - Use `evonn-compare benchmark-audit --pack <pack>` before promoting a new pack;
   promoted packs require explicit required contender-floor metadata.
+- Tier D is promoted for the current 26-benchmark admitted broad pack, but it
+  remains a separate broad-lane leaderboard from Tier A/B/C trend claims.
 - Shared infrastructure should converge where it improves trust, parity, and
   maintenance, while search-core logic stays package-local.
 
