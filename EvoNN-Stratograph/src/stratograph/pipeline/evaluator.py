@@ -875,7 +875,7 @@ def _classifier_train_steps(spec: BenchmarkSpec, epochs: int) -> int:
 
 def _lm_train_steps(epochs: int) -> int:
     policy = runtime_execution_policy()
-    return max(policy.lm_step_floor, epochs * 10)
+    return max(1, min(max(1, epochs), policy.lm_step_floor))
 
 
 def _safe_stratify_labels(labels: np.ndarray) -> np.ndarray | None:

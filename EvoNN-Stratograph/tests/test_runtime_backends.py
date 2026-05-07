@@ -12,10 +12,19 @@ from stratograph.pipeline import run_evolution
 from stratograph.runtime import compile_genome
 from stratograph.runtime.backends import (
     FALLBACK_LIMITATIONS,
+    runtime_execution_policy,
     resolve_runtime_backend,
     resolve_runtime_backend_with_policy,
 )
 from stratograph.storage import RunStore
+from stratograph.pipeline.evaluator import _lm_train_steps
+
+
+def test_lm_train_steps_are_capped_for_promotion_lanes() -> None:
+    policy = runtime_execution_policy()
+    assert _lm_train_steps(1) == 1
+    assert _lm_train_steps(20) == policy.lm_step_floor
+    assert _lm_train_steps(1000) == policy.lm_step_floor
 
 
 def test_resolve_runtime_backend_rejects_missing_mlx(monkeypatch) -> None:
