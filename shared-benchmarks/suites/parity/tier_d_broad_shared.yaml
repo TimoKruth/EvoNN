@@ -2,7 +2,8 @@ name: tier_d_broad_shared
 tier: 3
 ladder_tier: D
 description: Special-only broad shared lane containing audited benchmarks promoted
-  from clean Tier B/C evidence with explicit contender-floor admission metadata.
+  from clean Tier B/C evidence with explicit contender-floor admission metadata,
+  including full byte-level TinyStories and WikiText2 LM caches.
 usage_classification:
   special_smoke:
     evaluation_count: 208
@@ -22,9 +23,9 @@ promotion_requirements:
   clean_repeated_runs_completed: 3
   promotion_status: decision_grade
   promoted_from_runs:
-  - .tmp/comparison-ladder/runs/tier_d_208_seed42
-  - .tmp/comparison-ladder/runs/tier_d_208_seed43
-  - .tmp/comparison-ladder/runs/tier_d_208_seed44
+  - .tmp/comparison-ladder/runs/tier_d_real_lm_208_seed42
+  - .tmp/comparison-ladder/runs/tier_d_real_lm_208_seed43
+  - .tmp/comparison-ladder/runs/tier_d_real_lm_208_seed44
   leaderboard_scope: decision_grade_separate_tier
   admission_source: benchmarks must have clean Tier B/C evidence or a fresh benchmark-audit
     proof before inclusion
@@ -640,16 +641,16 @@ benchmarks:
   - hist_gb
   - extra_trees
   - ridge_or_linear
-- benchmark_id: tinystories_lm_smoke
+- benchmark_id: tinystories_lm
   native_ids:
-    prism: tinystories_lm_smoke
-    topograph: tinystories_lm_smoke
-    stratograph: tinystories_lm_smoke
-    primordia: tinystories_lm_smoke
-    contenders: tinystories_lm_smoke
-    evonn: tinystories_lm_smoke
-    evonn2: tinystories_lm_smoke
-    hybrid: tinystories_lm_smoke
+    prism: tinystories_lm
+    topograph: tinystories_lm
+    stratograph: tinystories_lm
+    primordia: tinystories_lm
+    contenders: tinystories_lm
+    evonn: tinystories_lm
+    evonn2: tinystories_lm
+    hybrid: tinystories_lm
   task_kind: language_modeling
   benchmark_group: language_modeling
   benchmark_family: language-modeling
@@ -663,16 +664,17 @@ benchmarks:
   - bigram_lm_a20
   enhanced_optional_contenders:
   - transformer_lm_tiny
-- benchmark_id: wikitext2_lm_smoke
+  admission_notes: full-cache byte-level real-text LM benchmark; cache must pass LM admission audit
+- benchmark_id: wikitext2_lm
   native_ids:
-    prism: wikitext2_lm_smoke
-    topograph: wikitext2_lm_smoke
-    stratograph: wikitext2_lm_smoke
-    primordia: wikitext2_lm_smoke
-    contenders: wikitext2_lm_smoke
-    evonn: wikitext2_lm_smoke
-    evonn2: wikitext2_lm_smoke
-    hybrid: wikitext2_lm_smoke
+    prism: wikitext2_lm
+    topograph: wikitext2_lm
+    stratograph: wikitext2_lm
+    primordia: wikitext2_lm
+    contenders: wikitext2_lm
+    evonn: wikitext2_lm
+    evonn2: wikitext2_lm
+    hybrid: wikitext2_lm
   task_kind: language_modeling
   benchmark_group: language_modeling
   benchmark_family: language-modeling
@@ -686,9 +688,10 @@ benchmarks:
   - bigram_lm_a20
   enhanced_optional_contenders:
   - transformer_lm_tiny
+  admission_notes: full-cache byte-level real-text LM benchmark; cache must pass LM admission audit
 budget_policy:
   evaluation_count: 416
-  epochs_per_candidate: 20
+  epochs_per_candidate: 4
   budget_tolerance_pct: 10.0
 seed_policy:
   mode: shared

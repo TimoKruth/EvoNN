@@ -93,6 +93,7 @@ def build_dashboard_payload(
             "all_systems": build_scope_run_summaries(all_rows, systems=ALL_SYSTEMS),
             "projects_only": build_scope_run_summaries(all_rows, systems=PROJECT_SYSTEMS),
         },
+        "evidence_explorer": _build_evidence_explorer(runs),
         "transfer": transfer,
         "campaign_state": campaign_state_payload,
     }
@@ -151,6 +152,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
         _stat_card("Repeatable", str(lane_counts["repeatable"])),
         _stat_card("Runs Loaded", str(summary_count)),
         "</section>",
+        _evidence_explorer_panel(payload.get("evidence_explorer") or {}),
         "<section class='panel'>",
         "<h2>Campaign State</h2>",
         "<p>Workspace state is the live orchestration surface. It stays meaningful before summary JSON exists, so interrupted or in-flight cases can be resumed without guessing from partial artifacts.</p>",
@@ -281,6 +283,8 @@ def _build_run_entry(*, path: Path, payload: dict[str, Any], output_path: Path) 
         "budget": int(lane.get("expected_budget") or _infer_budget(payload)),
         "seed": int(lane.get("expected_seed") or _infer_seed(payload)),
         "summary_json_path": str(path.resolve()),
+        "summary_mtime": path.stat().st_mtime,
+        "summary_modified_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
         "summary_md_path": _relative_path(summary_md_path, output_parent),
         "report_dir": _relative_path(report_dir, output_parent),
         "lane": {
@@ -485,6 +489,215 @@ def _aggregate_leaderboard(runs: list[dict[str, Any]], *, scope_key: str, system
         leaderboard,
         key=lambda item: (-item["score"], -item["solo_wins"], item["benchmark_failures"], item["system"]),
     )
+
+
+def _build_evidence_explorer(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build graph-ready budget/benchmark rows from fair-matrix trend rows."""
+
+    cases: list[dict[str, Any]] = []
+    graph_rows: list[dict[str, Any]] = []
+    for case_index, run in enumerate(runs):
+        tier = _tier_label(str(run["pack_name"]))
+        case_label = f"{tier.replace('Tier ', '')}{run['budget']}/s{run['seed']}"
+        floor_rows = {
+            str(row.get("benchmark_id")): row
+            for row in ((run.get("contender_floor") or {}).get("benchmarks") or [])
+            if row.get("benchmark_id")
+        }
+        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in list(run.get("trend_rows") or []):
+            grouped[str(row.get("benchmark_id") or "unknown")].append(row)
+
+        case_wins = {system: 0 for system in ALL_SYSTEMS}
+        case_shared_wins = {system: 0 for system in ALL_SYSTEMS}
+        tie_count = 0
+        for benchmark_id, benchmark_rows in sorted(grouped.items()):
+            ok_rows = _metric_rows(benchmark_rows)
+            scores = _normalized_scores(ok_rows)
+            winners = _winner_systems(ok_rows)
+            if len(winners) == 1 and winners[0] in case_wins:
+                case_wins[winners[0]] += 1
+            elif len(winners) > 1:
+                tie_count += 1
+                for winner in winners:
+                    if winner in case_shared_wins:
+                        case_shared_wins[winner] += 1
+            floor = floor_rows.get(benchmark_id) or {}
+            for row in benchmark_rows:
+                system = str(row.get("system") or "unknown")
+                fairness = dict(row.get("fairness_metadata") or {})
+                graph_rows.append(
+                    {
+                        "case_index": case_index,
+                        "case_label": case_label,
+                        "tier": tier,
+                        "pack": str(run["pack_name"]),
+                        "budget": int(run["budget"]),
+                        "seed": int(run["seed"]),
+                        "benchmark": benchmark_id,
+                        "task": str(row.get("task_kind") or "unknown"),
+                        "family": str(row.get("benchmark_family") or "unknown"),
+                        "metric_name": str(row.get("metric_name") or "metric"),
+                        "metric_direction": str(row.get("metric_direction") or "max"),
+                        "winner": ", ".join(winners) if winners else "none",
+                        "system": system,
+                        "status": str(row.get("outcome_status") or "unknown"),
+                        "metric": _optional_float(row.get("metric_value")),
+                        "score": scores.get(system),
+                        "architecture": str(row.get("architecture_summary") or ""),
+                        "is_lm": row.get("task_kind") == "language_modeling",
+                        "floor_status": floor.get("floor_status"),
+                        "admission_status": floor.get("admission_status"),
+                        "best_required_contender": floor.get("best_required_contender"),
+                        "best_required_contender_metric": _optional_float(floor.get("best_required_contender_metric")),
+                        "lane_state": str(row.get("lane_operating_state") or fairness.get("lane_operating_state") or run["lane"]["operating_state"]),
+                        "system_state": str(row.get("system_operating_state") or fairness.get("system_operating_state") or "unknown"),
+                    }
+                )
+        systems_seen = {str(row.get("system")) for row in run.get("trend_rows", []) if row.get("system")}
+        case_scores = {
+            system: round(float(case_wins[system]) + 0.5 * float(case_shared_wins[system]), 3)
+            for system in ALL_SYSTEMS
+        }
+        full_comparison = all(system in systems_seen for system in ALL_SYSTEMS)
+        cases.append(
+            {
+                "tier": tier,
+                "label": case_label,
+                "pack": str(run["pack_name"]),
+                "budget": int(run["budget"]),
+                "seed": int(run["seed"]),
+                "benchmarks": len(grouped),
+                "state": str(run["lane"]["operating_state"]),
+                "repeatability_ready": bool(run["lane"]["repeatability_ready"]),
+                "wins": case_wins,
+                "shared_wins": case_shared_wins,
+                "scores": case_scores,
+                "ties": tie_count,
+                "full_comparison": full_comparison,
+                "summary_mtime": float(run["summary_mtime"]),
+                "summary_modified_at": str(run["summary_modified_at"]),
+                "report_dir": run["report_dir"],
+            }
+        )
+
+    recent_full_runs = sorted(
+        [case for case in cases if case["full_comparison"]],
+        key=lambda item: (-float(item["summary_mtime"]), str(item["pack"]), int(item["budget"]), int(item["seed"])),
+    )[:20]
+    return {
+        "cases": cases,
+        "recent_full_runs": recent_full_runs,
+        "budget_overview": _budget_performance_overview(recent_full_runs),
+        "rows": graph_rows,
+        "benchmarks": sorted({row["benchmark"] for row in graph_rows}),
+        "tasks": sorted({row["task"] for row in graph_rows}),
+        "families": sorted({row["family"] for row in graph_rows}),
+        "tiers": sorted({row["tier"] for row in graph_rows}),
+        "systems": list(ALL_SYSTEMS),
+    }
+
+
+def _budget_performance_overview(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[int, dict[str, Any]] = {}
+    for case in cases:
+        budget = int(case["budget"])
+        group = grouped.setdefault(
+            budget,
+            {
+                "budget": budget,
+                "run_count": 0,
+                "systems": {system: {"score_sum": 0.0, "runs": 0} for system in ALL_SYSTEMS},
+            },
+        )
+        group["run_count"] += 1
+        scores = dict(case.get("scores") or {})
+        for system in ALL_SYSTEMS:
+            value = scores.get(system)
+            if value is None:
+                continue
+            group["systems"][system]["score_sum"] += float(value)
+            group["systems"][system]["runs"] += 1
+
+    overview = []
+    for budget in sorted(grouped):
+        group = grouped[budget]
+        system_scores = {}
+        for system, values in group["systems"].items():
+            runs = int(values["runs"])
+            system_scores[system] = None if runs == 0 else round(float(values["score_sum"]) / runs, 3)
+        scored = [(system, score) for system, score in system_scores.items() if score is not None]
+        best_score = max((score for _, score in scored), default=None)
+        winners = sorted(system for system, score in scored if score == best_score)
+        overview.append(
+            {
+                "budget": budget,
+                "run_count": int(group["run_count"]),
+                "scores": system_scores,
+                "leader": ", ".join(winners) if winners else "none",
+                "leader_score": best_score,
+            }
+        )
+    return overview
+
+
+def _metric_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rows
+        if row.get("outcome_status") == "ok" and _optional_float(row.get("metric_value")) is not None
+    ]
+
+
+def _normalized_scores(rows: list[dict[str, Any]]) -> dict[str, float]:
+    values = [(str(row.get("system")), float(row["metric_value"])) for row in rows if row.get("system")]
+    if not values:
+        return {}
+    metric_min = min(value for _, value in values)
+    metric_max = max(value for _, value in values)
+    if metric_max == metric_min:
+        return {system: 1.0 for system, _ in values}
+    direction = str(rows[0].get("metric_direction") or "max")
+    if direction == "min":
+        return {system: (metric_max - value) / (metric_max - metric_min) for system, value in values}
+    return {system: (value - metric_min) / (metric_max - metric_min) for system, value in values}
+
+
+def _winner_systems(rows: list[dict[str, Any]]) -> list[str]:
+    values = [(str(row.get("system")), float(row["metric_value"]), dict(row.get("fairness_metadata") or {})) for row in rows if row.get("system")]
+    if not values:
+        return []
+    direction = str(rows[0].get("metric_direction") or "max")
+    best = min(value for _, value, _ in values) if direction == "min" else max(value for _, value, _ in values)
+    fairness = values[0][2]
+    abs_tol = float(fairness.get("tie_tolerance_abs") or 1e-12)
+    rel_tol = float(fairness.get("tie_tolerance_rel") or 1e-12)
+    tolerance = max(abs_tol, rel_tol * abs(best))
+    return sorted(system for system, value, _ in values if abs(value - best) <= tolerance)
+
+
+def _tier_label(pack_name: str) -> str:
+    lowered = pack_name.lower()
+    if "tier_a" in lowered:
+        return "Tier A"
+    if "tier_b" in lowered:
+        return "Tier B"
+    if "tier_c" in lowered:
+        return "Tier C"
+    if "tier_d" in lowered:
+        return "Tier D"
+    if "tier1" in lowered:
+        return "Tier 1"
+    return "Other"
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _build_transfer_dashboard_payload(summary_paths: list[Path], *, output_path: Path) -> dict[str, Any]:
@@ -722,6 +935,253 @@ def _campaign_state_overview(campaign_state: dict[str, Any]) -> str:
         "</ul>",
     ]
     return "\n".join(lines)
+
+
+def _evidence_explorer_panel(explorer: dict[str, Any]) -> str:
+    rows = list(explorer.get("rows") or [])
+    if not rows:
+        return (
+            "<section class='panel evidence-panel'>"
+            "<h2>Evidence Explorer</h2>"
+            "<p>No graphable benchmark rows found.</p>"
+            "</section>"
+        )
+    payload = json.dumps(explorer, separators=(",", ":"), default=str).replace("</", "<\\/")
+    return "\n".join(
+        [
+            "<section class='panel evidence-panel'>",
+            "<div class='panel-heading-row'>",
+            "<div>",
+            "<p class='eyebrow'>Decision Surface</p>",
+            "<h2>Evidence Explorer</h2>",
+            "<p>Graph-first view over budgets and benchmarks. Use normalized score to compare mixed metrics; switch to raw metric only when a single benchmark is selected.</p>",
+            "</div>",
+            "<div class='evidence-summary' id='evidence-summary'></div>",
+            "</div>",
+            _recent_full_runs_overview(explorer),
+            "<div class='evidence-controls'>",
+            "<label>Tier <select id='ev-tier'></select></label>",
+            "<label>Benchmark <select id='ev-benchmark'></select></label>",
+            "<label>Task <select id='ev-task'></select></label>",
+            "<label>Mode <select id='ev-mode'><option value='score'>Normalized score</option><option value='metric'>Raw metric</option></select></label>",
+            "<label>Budget View <select id='ev-budget-mode'><option value='budget'>By budget</option><option value='case'>By run case</option></select></label>",
+            "</div>",
+            "<div class='system-toggles' id='ev-systems'></div>",
+            "<div class='evidence-chart-wrap'><svg id='evidence-chart' viewBox='0 0 1180 430' role='img' aria-label='Engine performance over budgets'></svg></div>",
+            "<div id='evidence-detail'></div>",
+            f"<script type='application/json' id='evidence-data'>{payload}</script>",
+            "<script>",
+            _evidence_explorer_script(),
+            "</script>",
+            "</section>",
+        ]
+    )
+
+
+def _recent_full_runs_overview(explorer: dict[str, Any]) -> str:
+    budget_rows = list(explorer.get("budget_overview") or [])
+    recent_runs = list(explorer.get("recent_full_runs") or [])
+    if not budget_rows and not recent_runs:
+        return "<p>No complete five-system comparison runs found for the recent-run overview.</p>"
+    score_headers = "".join(f"<th>{html.escape(_titleize(system))}</th>" for system in ALL_SYSTEMS)
+    budget_lines = [
+        "<div class='evidence-overview-grid'>",
+        "<div>",
+        "<h3>Budget Performance: Last 20 Full Runs</h3>",
+        "<table class='compact-table'>",
+        f"<thead><tr><th>Budget</th><th>Runs</th>{score_headers}<th>Leader</th></tr></thead>",
+        "<tbody>",
+    ]
+    for row in budget_rows:
+        score_cells = "".join(_score_td((row.get("scores") or {}).get(system)) for system in ALL_SYSTEMS)
+        budget_lines.append(
+            "<tr>"
+            f"<td>{int(row['budget'])}</td>"
+            f"<td>{int(row['run_count'])}</td>"
+            f"{score_cells}"
+            f"<td>{html.escape(str(row.get('leader') or 'none'))} {_parenthetical_float(row.get('leader_score'))}</td>"
+            "</tr>"
+        )
+    budget_lines.extend(["</tbody>", "</table>", "</div>"])
+
+    recent_lines = [
+        "<div>",
+        "<h3>Recent Full Comparison Runs</h3>",
+        "<table class='compact-table'>",
+        f"<thead><tr><th>Run</th><th>Pack</th><th>Budget</th>{score_headers}<th>State</th></tr></thead>",
+        "<tbody>",
+    ]
+    for row in recent_runs:
+        score_cells = "".join(_score_td((row.get("scores") or {}).get(system)) for system in ALL_SYSTEMS)
+        recent_lines.append(
+            "<tr>"
+            f"<td>{html.escape(str(row['label']))}</td>"
+            f"<td><code>{html.escape(str(row['pack']))}</code></td>"
+            f"<td>{int(row['budget'])}</td>"
+            f"{score_cells}"
+            f"<td><span class='tag tag-{html.escape(str(row['state']))}'>{html.escape(str(row['state']))}</span></td>"
+            "</tr>"
+        )
+    recent_lines.extend(["</tbody>", "</table>", "</div>", "</div>"])
+    return "\n".join(budget_lines + recent_lines)
+
+
+def _score_td(value: Any) -> str:
+    return f"<td>{_optional_float_cell(value)}</td>"
+
+
+def _parenthetical_float(value: Any) -> str:
+    parsed = _optional_float(value)
+    return "" if parsed is None else f"({_float_cell(parsed)})"
+
+
+def _evidence_explorer_script() -> str:
+    return r"""
+(function () {
+  const dataNode = document.getElementById('evidence-data');
+  if (!dataNode) return;
+  const data = JSON.parse(dataNode.textContent);
+  const rows = data.rows || [];
+  const systems = data.systems || [];
+  const colors = {
+    prism: '#9b3d23',
+    topograph: '#1f6b52',
+    stratograph: '#4f5d75',
+    primordia: '#b7791f',
+    contenders: '#111827'
+  };
+  const labels = {
+    prism: 'Prism',
+    topograph: 'Topograph',
+    stratograph: 'Stratograph',
+    primordia: 'Primordia',
+    contenders: 'Contenders'
+  };
+  const byId = (id) => document.getElementById(id);
+  const unique = (values) => Array.from(new Set(values.filter(Boolean))).sort();
+  function fillSelect(id, values, allLabel) {
+    const el = byId(id);
+    el.innerHTML = '';
+    const all = document.createElement('option');
+    all.value = '__all__';
+    all.textContent = allLabel;
+    el.appendChild(all);
+    values.forEach((value) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = value;
+      el.appendChild(opt);
+    });
+  }
+  fillSelect('ev-tier', data.tiers || unique(rows.map((row) => row.tier)), 'All tiers');
+  fillSelect('ev-benchmark', data.benchmarks || unique(rows.map((row) => row.benchmark)), 'All benchmarks');
+  fillSelect('ev-task', data.tasks || unique(rows.map((row) => row.task)), 'All tasks');
+  const systemHost = byId('ev-systems');
+  systemHost.innerHTML = systems.map((system) => (
+    `<label class="system-toggle"><input type="checkbox" value="${system}" checked>` +
+    `<span style="--system-color:${colors[system] || '#555'}">${labels[system] || system}</span></label>`
+  )).join('');
+  function selectedSystems() {
+    return Array.from(systemHost.querySelectorAll('input:checked')).map((input) => input.value);
+  }
+  function filteredRows() {
+    const tier = byId('ev-tier').value;
+    const benchmark = byId('ev-benchmark').value;
+    const task = byId('ev-task').value;
+    const allowedSystems = new Set(selectedSystems());
+    return rows.filter((row) =>
+      allowedSystems.has(row.system) &&
+      row.status === 'ok' &&
+      row.metric !== null &&
+      (tier === '__all__' || row.tier === tier) &&
+      (benchmark === '__all__' || row.benchmark === benchmark) &&
+      (task === '__all__' || row.task === task)
+    );
+  }
+  function aggregate() {
+    const mode = byId('ev-mode').value;
+    const budgetMode = byId('ev-budget-mode').value;
+    const groups = new Map();
+    for (const row of filteredRows()) {
+      const x = budgetMode === 'case' ? row.case_label : String(row.budget);
+      const value = mode === 'metric' ? row.metric : row.score;
+      if (value === null || value === undefined || Number.isNaN(Number(value))) continue;
+      const key = `${row.system}||${x}`;
+      if (!groups.has(key)) groups.set(key, {system: row.system, x, values: [], rows: []});
+      const group = groups.get(key);
+      group.values.push(Number(value));
+      group.rows.push(row);
+    }
+    const xValues = unique(Array.from(groups.values()).map((group) => group.x)).sort((a, b) => {
+      const na = Number(a); const nb = Number(b);
+      if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+      return String(a).localeCompare(String(b));
+    });
+    const points = Array.from(groups.values()).map((group) => ({
+      system: group.system,
+      x: group.x,
+      y: group.values.reduce((sum, value) => sum + value, 0) / group.values.length,
+      n: group.values.length,
+      benchmarks: unique(group.rows.map((row) => row.benchmark))
+    }));
+    return {xValues, points};
+  }
+  function renderChart() {
+    const svg = byId('evidence-chart');
+    const {xValues, points} = aggregate();
+    const width = 1180, height = 430;
+    const pad = {left: 74, right: 28, top: 32, bottom: 68};
+    const chartW = width - pad.left - pad.right;
+    const chartH = height - pad.top - pad.bottom;
+    const ys = points.map((point) => point.y);
+    const mode = byId('ev-mode').value;
+    let minY = ys.length ? Math.min(...ys) : 0;
+    let maxY = ys.length ? Math.max(...ys) : 1;
+    if (mode === 'score') { minY = 0; maxY = 1; }
+    if (maxY === minY) { maxY += 1; minY -= 1; }
+    const xPos = (x) => pad.left + (xValues.length <= 1 ? chartW / 2 : chartW * xValues.indexOf(x) / (xValues.length - 1));
+    const yPos = (y) => pad.top + chartH - ((y - minY) / (maxY - minY)) * chartH;
+    const lines = [];
+    lines.push(`<rect x="0" y="0" width="${width}" height="${height}" rx="18" fill="rgba(255,252,246,0.72)"/>`);
+    for (let i = 0; i <= 4; i += 1) {
+      const y = pad.top + chartH * i / 4;
+      const value = maxY - (maxY - minY) * i / 4;
+      lines.push(`<line x1="${pad.left}" x2="${width - pad.right}" y1="${y}" y2="${y}" class="chart-grid"/>`);
+      lines.push(`<text x="${pad.left - 12}" y="${y + 4}" text-anchor="end" class="chart-axis">${value.toFixed(mode === 'score' ? 2 : 3)}</text>`);
+    }
+    xValues.forEach((x) => {
+      const xp = xPos(x);
+      lines.push(`<line x1="${xp}" x2="${xp}" y1="${pad.top}" y2="${height - pad.bottom}" class="chart-grid faint"/>`);
+      lines.push(`<text x="${xp}" y="${height - 30}" text-anchor="middle" class="chart-axis">${x}</text>`);
+    });
+    for (const system of selectedSystems()) {
+      const systemPoints = points.filter((point) => point.system === system).sort((a, b) => xValues.indexOf(a.x) - xValues.indexOf(b.x));
+      const path = systemPoints.map((point, index) => `${index ? 'L' : 'M'} ${xPos(point.x).toFixed(2)} ${yPos(point.y).toFixed(2)}`).join(' ');
+      if (path) lines.push(`<path d="${path}" fill="none" stroke="${colors[system] || '#555'}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>`);
+      systemPoints.forEach((point) => {
+        lines.push(`<circle cx="${xPos(point.x)}" cy="${yPos(point.y)}" r="5.5" fill="${colors[system] || '#555'}"><title>${labels[system] || system} ${point.x}: ${point.y.toFixed(4)} (${point.n} cells)</title></circle>`);
+      });
+    }
+    svg.innerHTML = lines.join('');
+    renderDetail(points, xValues);
+  }
+  function renderDetail(points, xValues) {
+    const summary = byId('evidence-summary');
+    const detail = byId('evidence-detail');
+    const selected = filteredRows();
+    const lmCount = selected.filter((row) => row.is_lm).length;
+    const floorBlocked = selected.filter((row) => ['missing', 'failed'].includes(row.floor_status)).length;
+    summary.innerHTML = `<strong>${selected.length}</strong> cells<br><span>${xValues.length} budgets/cases · ${lmCount} LM · ${floorBlocked} floor issues</span>`;
+    const recent = selected.slice(0, 240);
+    detail.innerHTML = `<table class="evidence-table"><thead><tr><th>Tier</th><th>Budget</th><th>Benchmark</th><th>System</th><th>Metric</th><th>Score</th><th>Winner</th><th>Floor</th></tr></thead><tbody>` +
+      recent.map((row) => `<tr><td>${row.tier}</td><td>${row.budget}</td><td><code>${row.benchmark}</code></td><td>${labels[row.system] || row.system}</td><td>${row.metric === null ? '---' : Number(row.metric).toFixed(5)}</td><td>${row.score === null ? '---' : Number(row.score).toFixed(3)}</td><td>${row.winner}</td><td>${row.floor_status || '---'}</td></tr>`).join('') +
+      `</tbody></table>`;
+  }
+  ['ev-tier', 'ev-benchmark', 'ev-task', 'ev-mode', 'ev-budget-mode'].forEach((id) => byId(id).addEventListener('change', renderChart));
+  systemHost.addEventListener('change', renderChart);
+  renderChart();
+})();
+"""
 
 
 def _campaign_case_table(campaign_state: dict[str, Any]) -> str:
@@ -1501,9 +1961,115 @@ h1 {
   margin-top: 1rem;
   overflow-x: auto;
 }
+.panel-heading-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
 .panel p {
   color: var(--muted);
   line-height: 1.6;
+}
+.evidence-panel {
+  background:
+    linear-gradient(135deg, rgba(255, 252, 246, 0.96), rgba(249, 238, 219, 0.82)),
+    radial-gradient(circle at 82% 8%, rgba(31, 107, 82, 0.12), transparent 18rem);
+}
+.evidence-summary {
+  min-width: 10rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.52);
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  color: var(--muted);
+}
+.evidence-summary strong {
+  display: block;
+  color: var(--ink);
+  font-size: 1.8rem;
+  letter-spacing: -0.04em;
+}
+.evidence-controls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(9rem, 1fr));
+  gap: 0.8rem;
+  margin: 1.1rem 0 0.8rem;
+}
+.evidence-controls label, .system-toggle {
+  display: grid;
+  gap: 0.32rem;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.evidence-controls select {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: rgba(255, 252, 246, 0.88);
+  color: var(--ink);
+  padding: 0.55rem 0.6rem;
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.system-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  margin-bottom: 1rem;
+}
+.system-toggle {
+  display: inline-flex;
+  grid-template-columns: none;
+  flex-direction: row;
+  align-items: center;
+}
+.system-toggle span {
+  color: var(--system-color);
+}
+.evidence-chart-wrap {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.42);
+  overflow-x: auto;
+}
+.evidence-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(20rem, 0.9fr) minmax(34rem, 1.5fr);
+  gap: 1rem;
+  margin: 1rem 0 1.15rem;
+}
+.evidence-overview-grid h3 {
+  margin: 0 0 0.55rem;
+  font-size: 1rem;
+}
+.compact-table {
+  min-width: 0;
+}
+.compact-table th, .compact-table td {
+  padding: 0.55rem 0.5rem;
+  font-size: 0.76rem;
+}
+#evidence-chart {
+  width: 100%;
+  min-width: 840px;
+  display: block;
+}
+.chart-grid {
+  stroke: rgba(29, 26, 23, 0.15);
+  stroke-width: 1;
+}
+.chart-grid.faint {
+  stroke: rgba(29, 26, 23, 0.08);
+}
+.chart-axis {
+  fill: var(--muted);
+  font: 12px "SFMono-Regular", Menlo, Consolas, monospace;
+}
+.evidence-table {
+  margin-top: 1rem;
 }
 .meta-list {
   margin: 0 0 1rem;
@@ -1602,6 +2168,9 @@ code {
 @media (max-width: 980px) {
   .shell { width: min(100vw - 1rem, 100%); padding-top: 1rem; }
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .panel-heading-row { display: block; }
+  .evidence-controls { grid-template-columns: 1fr; }
+  .evidence-overview-grid { grid-template-columns: 1fr; }
   .hero, .panel, .card { padding-left: 1rem; padding-right: 1rem; }
 }
 """

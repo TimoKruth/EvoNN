@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Shared substrate contracts and helpers for the EvoNN monorepo"
 requires-python = ">=3.13"
 dependencies = [
+    "numpy>=2.2.0",
     "pydantic>=2.10.0",
     "pyyaml>=6.0.2",
 ]

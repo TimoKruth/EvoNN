@@ -1860,6 +1860,118 @@ def test_dashboard_payload_adds_multi_seed_statistics(tmp_path: Path) -> None:
     assert "42, 43" in html
 
 
+def test_dashboard_payload_adds_evidence_explorer(tmp_path: Path) -> None:
+    for budget, prism_score, contender_score in ((64, 0.81, 0.83), (256, 0.87, 0.84)):
+        summary_dir = tmp_path / "workspace" / "reports" / f"tier_b_core_eval{budget}_seed42"
+        summary_dir.mkdir(parents=True)
+        (summary_dir / "fair_matrix_summary.json").write_text(
+            json.dumps(
+                {
+                    "pack_name": f"tier_b_core_eval{budget}",
+                    "systems": ["prism", "contenders"],
+                    "lane": {
+                        "preset": "tier_b_local",
+                        "pack_name": f"tier_b_core_eval{budget}",
+                        "expected_budget": budget,
+                        "expected_seed": 42,
+                        "operating_state": "trusted-extended",
+                        "artifact_completeness_ok": True,
+                        "fairness_ok": True,
+                        "task_coverage_ok": True,
+                        "budget_consistency_ok": True,
+                        "seed_consistency_ok": True,
+                        "budget_accounting_ok": True,
+                        "core_systems_complete_ok": True,
+                        "extended_systems_complete_ok": True,
+                        "observed_task_kinds": ["classification", "language_modeling"],
+                        "system_operating_states": {
+                            "prism": "benchmark-complete",
+                            "contenders": "benchmark-complete",
+                        },
+                        "acceptance_notes": [],
+                        "repeatability_ready": True,
+                    },
+                    "fair_rows": [],
+                    "reference_rows": [],
+                    "parity_rows": [],
+                    "trend_rows": [
+                        _dashboard_row("prism", "openml_gas_sensor", prism_score, pack_name=f"tier_b_core_eval{budget}", budget=budget),
+                        _dashboard_row("topograph", "openml_gas_sensor", 0.80, pack_name=f"tier_b_core_eval{budget}", budget=budget),
+                        _dashboard_row("stratograph", "openml_gas_sensor", 0.79, pack_name=f"tier_b_core_eval{budget}", budget=budget),
+                        _dashboard_row("primordia", "openml_gas_sensor", 0.78, pack_name=f"tier_b_core_eval{budget}", budget=budget),
+                        _dashboard_row("contenders", "openml_gas_sensor", contender_score, pack_name=f"tier_b_core_eval{budget}", budget=budget),
+                        _dashboard_row(
+                            "prism",
+                            "tinystories_lm",
+                            9.5,
+                            pack_name=f"tier_b_core_eval{budget}",
+                            budget=budget,
+                            task_kind="language_modeling",
+                            benchmark_family="language-modeling",
+                        ),
+                        _dashboard_row(
+                            "topograph",
+                            "tinystories_lm",
+                            10.5,
+                            pack_name=f"tier_b_core_eval{budget}",
+                            budget=budget,
+                            task_kind="language_modeling",
+                            benchmark_family="language-modeling",
+                        ),
+                        _dashboard_row(
+                            "stratograph",
+                            "tinystories_lm",
+                            11.0,
+                            pack_name=f"tier_b_core_eval{budget}",
+                            budget=budget,
+                            task_kind="language_modeling",
+                            benchmark_family="language-modeling",
+                        ),
+                        _dashboard_row(
+                            "primordia",
+                            "tinystories_lm",
+                            9.8,
+                            pack_name=f"tier_b_core_eval{budget}",
+                            budget=budget,
+                            task_kind="language_modeling",
+                            benchmark_family="language-modeling",
+                        ),
+                        _dashboard_row(
+                            "contenders",
+                            "tinystories_lm",
+                            10.2,
+                            pack_name=f"tier_b_core_eval{budget}",
+                            budget=budget,
+                            task_kind="language_modeling",
+                            benchmark_family="language-modeling",
+                        ),
+                    ],
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+    output_path = tmp_path / "dashboard.html"
+
+    result = runner.invoke(app, ["dashboard", str(tmp_path / "workspace"), "--output", str(output_path), "--no-open"])
+
+    assert result.exit_code == 0
+    payload = json.loads(output_path.with_suffix(".json").read_text(encoding="utf-8"))
+    explorer = payload["evidence_explorer"]
+    assert explorer["benchmarks"] == ["openml_gas_sensor", "tinystories_lm"]
+    assert len(explorer["rows"]) == 20
+    lm_rows = [row for row in explorer["rows"] if row["is_lm"]]
+    assert len(lm_rows) == 10
+    assert {row["budget"] for row in explorer["rows"]} == {64, 256}
+    assert len(explorer["recent_full_runs"]) == 2
+    assert {row["budget"] for row in explorer["budget_overview"]} == {64, 256}
+    html = output_path.read_text(encoding="utf-8")
+    assert "Evidence Explorer" in html
+    assert "Budget Performance: Last 20 Full Runs" in html
+    assert "evidence-chart" in html
+
+
 def test_dashboard_opens_browser_by_default(tmp_path: Path, monkeypatch) -> None:
     summary_dir = tmp_path / "workspace" / "reports" / "tier1_core_eval64_seed42"
     summary_dir.mkdir(parents=True)

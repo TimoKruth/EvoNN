@@ -3,10 +3,10 @@ task: language_modeling
 source: lm_cache
 dataset: wikitext2_lm
 input_dim: 256
-num_classes: 4096
-max_train_samples: 10000
-max_val_samples: 2000
-description: Cached WikiText-2 next-token prediction windows shared with EvoNN LM cache.
+num_classes: 256
+max_train_samples: 512
+max_val_samples: 128
+description: Byte-tokenized WikiText-2 next-token prediction windows shared with EvoNN LM cache; capped above smoke size for local recurring lanes.
 domain: text
 tags:
   - language_modeling

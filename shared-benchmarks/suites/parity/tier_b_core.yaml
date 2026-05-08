@@ -33,8 +33,16 @@ benchmarks:
       evonn2: gas_sensor
       hybrid: gas_sensor
     task_kind: classification
+    benchmark_group: tabular
+    benchmark_family: tabular
+    domain: openml_tabular
+    difficulty: hard
+    runtime_class: local
     metric_name: accuracy
     metric_direction: max
+    minimum_required_contenders: [hist_gb, extra_trees, linear_svc]
+    enhanced_optional_contenders: [xgb_small, lgbm_small, catboost_small]
+    score_ceiling: 1.0
     notes: >
       Harder tabular classification anchor. Gas Sensor is a real 128-feature,
       6-class OpenML task that is still local-safe but punishes brittle
@@ -50,8 +58,14 @@ benchmarks:
       evonn2: cpu_performance
       hybrid: cpu_performance
     task_kind: regression
+    benchmark_group: tabular
+    benchmark_family: tabular-regression
+    domain: openml_regression
+    difficulty: hard
+    runtime_class: local
     metric_name: mse
     metric_direction: min
+    minimum_required_contenders: [hist_gb, extra_trees, ridge_or_linear, svr_or_nystroem_svr]
     notes: >
       Harder tabular regression anchor. CPU Activity is a real OpenML
       regression task with broader feature interactions and noisier fit quality
@@ -68,32 +82,48 @@ benchmarks:
       evonn2: fashion_mnist
       hybrid: fashion_mnist
     task_kind: classification
+    benchmark_group: image
+    benchmark_family: image-classification
+    domain: small_image
+    difficulty: hard
+    runtime_class: local
     metric_name: accuracy
     metric_direction: max
+    minimum_required_contenders: [mlp_wide, extra_trees]
+    enhanced_optional_contenders: [cnn_small]
+    score_ceiling: 1.0
     notes: >
       Small image classification anchor. Fashion-MNIST is materially harder
       than digits or MNIST while remaining lightweight enough for Apple Silicon
       local research loops and contender comparisons.
-  - benchmark_id: tinystories_lm_smoke
+  - benchmark_id: tinystories_lm
     native_ids:
-      prism: tinystories_lm_smoke
-      topograph: tinystories_lm_smoke
-      stratograph: tinystories_lm_smoke
-      primordia: tinystories_lm_smoke
-      contenders: tinystories_lm_smoke
-      evonn: tinystories_lm_smoke
-      evonn2: tinystories_lm_smoke
-      hybrid: tinystories_lm_smoke
+      prism: tinystories_lm
+      topograph: tinystories_lm
+      stratograph: tinystories_lm
+      primordia: tinystories_lm
+      contenders: tinystories_lm
+      evonn: tinystories_lm
+      evonn2: tinystories_lm
+      hybrid: tinystories_lm
     task_kind: language_modeling
+    benchmark_group: language_modeling
+    benchmark_family: language-modeling
+    domain: language_modeling
+    difficulty: core
+    runtime_class: local
     metric_name: perplexity
     metric_direction: min
+    minimum_required_contenders: [bigram_lm_a01, bigram_lm_a20]
+    enhanced_optional_contenders: [transformer_lm_tiny]
+    admission_notes: full-cache byte-level real-text LM benchmark; cache must pass LM admission audit
     notes: >
-      Runtime-safe sequence/text sidecar. TinyStories LM smoke keeps Tier B
-      honest about sequence support without turning the default local pack into
-      an LM-heavy workflow.
+      Runtime-safe sequence/text sidecar using the full TinyStories cache.
+      Tier B still stays lightweight, but it no longer relies on smoke-only LM
+      evidence.
 budget_policy:
   evaluation_count: 64
-  epochs_per_candidate: 20
+  epochs_per_candidate: 4
   budget_tolerance_pct: 10.0
 seed_policy:
   mode: shared

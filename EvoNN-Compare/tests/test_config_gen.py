@@ -356,7 +356,7 @@ def test_generate_tier_b_configs_resolve_supported_benchmark_ids_across_systems(
         "gas_sensor",
         "cpu_performance",
         "fashion_mnist",
-        "tinystories_lm_smoke",
+        "tinystories_lm",
     ]
 
     assert prism_payload["benchmark_pack"]["benchmark_ids"] == expected

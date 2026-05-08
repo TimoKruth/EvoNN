@@ -43,10 +43,10 @@ _BUILTIN_BENCHMARKS: dict[str, BenchmarkSpec] = {
     "wine": BenchmarkSpec(name="wine", task="classification", source="sklearn", dataset="load_wine", input_dim=13, num_classes=3),
     "circles_n02_f3": BenchmarkSpec(name="circles_n02_f3", task="classification", source="sklearn", dataset="make_circles", input_dim=2, num_classes=2, n_samples=1200, noise=0.2, factor=0.3),
     "tiny_lm_synthetic": BenchmarkSpec(name="tiny_lm_synthetic", task="language_modeling", source="lm_synthetic", input_dim=128, num_classes=256, n_samples=2048),
-    "tinystories_lm": BenchmarkSpec(name="tinystories_lm", task="language_modeling", source="lm_cache", dataset="tinystories_lm", input_dim=256, num_classes=8192, max_train_samples=4096, max_val_samples=512),
-    "tinystories_lm_smoke": BenchmarkSpec(name="tinystories_lm_smoke", task="language_modeling", source="lm_cache", dataset="tinystories_lm_smoke", input_dim=256, num_classes=8192, max_train_samples=1024, max_val_samples=256),
-    "wikitext2_lm": BenchmarkSpec(name="wikitext2_lm", task="language_modeling", source="lm_cache", dataset="wikitext2_lm", input_dim=256, num_classes=32768, max_train_samples=4096, max_val_samples=512),
-    "wikitext2_lm_smoke": BenchmarkSpec(name="wikitext2_lm_smoke", task="language_modeling", source="lm_cache", dataset="wikitext2_lm_smoke", input_dim=256, num_classes=32768, max_train_samples=4096, max_val_samples=512),
+    "tinystories_lm": BenchmarkSpec(name="tinystories_lm", task="language_modeling", source="lm_cache", dataset="tinystories_lm", input_dim=256, num_classes=256, max_train_samples=512, max_val_samples=128),
+    "tinystories_lm_smoke": BenchmarkSpec(name="tinystories_lm_smoke", task="language_modeling", source="lm_cache", dataset="tinystories_lm_smoke", input_dim=256, num_classes=256, max_train_samples=128, max_val_samples=32),
+    "wikitext2_lm": BenchmarkSpec(name="wikitext2_lm", task="language_modeling", source="lm_cache", dataset="wikitext2_lm", input_dim=256, num_classes=256, max_train_samples=512, max_val_samples=128),
+    "wikitext2_lm_smoke": BenchmarkSpec(name="wikitext2_lm_smoke", task="language_modeling", source="lm_cache", dataset="wikitext2_lm_smoke", input_dim=256, num_classes=256, max_train_samples=128, max_val_samples=32),
 }
 
 _PACKAGE_DIR = Path(__file__).resolve().parent

@@ -4,6 +4,7 @@ import json
 from typer.testing import CliRunner
 
 from evonn_contenders.benchmarks.parity import fallback_native_id, load_parity_pack
+from evonn_contenders.benchmarks.lm import resolve_lm_cache_path
 from evonn_contenders.cli import app
 from evonn_contenders.config import load_config
 from evonn_contenders.export.report import write_report
@@ -506,7 +507,7 @@ def test_official_lane_config_resolves_benchmark_pack_names() -> None:
         "gas_sensor",
         "cpu_performance",
         "fashion_mnist",
-        "tinystories_lm_smoke",
+        "tinystories_lm",
     ]
     assert tier_b.baseline.target_evaluation_count == 256
 
@@ -692,6 +693,25 @@ def test_official_lane_pack_prefers_contender_resolvable_aliases() -> None:
     diabetes_entry = next(entry for entry in pack.benchmarks if entry.benchmark_id == "diabetes_regression")
 
     assert fallback_native_id(diabetes_entry) == "diabetes"
+
+
+def test_lm_cache_prefers_shared_benchmark_cache(tmp_path: Path, monkeypatch) -> None:
+    shared_root = tmp_path / "shared-benchmarks"
+    shared_cache = shared_root / "lm_cache"
+    old_cache = tmp_path / "old"
+    shared_cache.mkdir(parents=True)
+    old_cache.mkdir()
+    expected = shared_cache / "tinystories_lm.npz"
+    expected.write_bytes(b"shared")
+    (old_cache / "tinystories_lm.npz").write_bytes(b"old")
+
+    monkeypatch.setenv("EVONN_SHARED_BENCHMARKS_DIR", str(shared_root))
+    monkeypatch.setenv("EVONN_CONTENDERS_LM_CACHE_DIR", str(old_cache))
+
+    assert resolve_lm_cache_path("tinystories_lm") == old_cache / "tinystories_lm.npz"
+
+    monkeypatch.delenv("EVONN_CONTENDERS_LM_CACHE_DIR")
+    assert resolve_lm_cache_path("tinystories_lm") == expected
 
 
 def test_run_contenders_emits_progress_lines(tmp_path: Path, capsys) -> None:

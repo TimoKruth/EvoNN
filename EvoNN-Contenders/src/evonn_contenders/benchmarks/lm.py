@@ -8,11 +8,14 @@ from pathlib import Path
 import numpy as np
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_SUPERPROJECT_ROOT = _PROJECT_ROOT.parent
+_DEFAULT_SHARED_LM_CACHE_DIR = _SUPERPROJECT_ROOT / "shared-benchmarks" / "lm_cache"
 _DEFAULT_SHARED_CACHE_DIRS = [
     _PROJECT_ROOT.parent / "EvoNN" / ".cache" / "evonn" / "datasets",
     _PROJECT_ROOT.parent / "deprecated" / "EvoNN" / ".cache" / "evonn" / "datasets",
 ]
 _DEFAULT_LOCAL_CACHE_DIR = Path.home() / ".evonn-contenders" / "datasets"
+_SHARED_ROOT_ENV_VAR = "EVONN_SHARED_BENCHMARKS_DIR"
 
 
 def generate_synthetic_lm_dataset(
@@ -119,7 +122,13 @@ def resolve_lm_cache_path(dataset: str) -> Path:
     if env_root:
         root = Path(env_root).expanduser()
         roots.extend([root, root / "datasets"])
-    roots.extend([*_DEFAULT_SHARED_CACHE_DIRS, _DEFAULT_LOCAL_CACHE_DIR])
+
+    shared_root = os.environ.get(_SHARED_ROOT_ENV_VAR)
+    if shared_root:
+        root = Path(shared_root).expanduser()
+        roots.append(root if root.name == "lm_cache" else root / "lm_cache")
+
+    roots.extend([_DEFAULT_SHARED_LM_CACHE_DIR, *_DEFAULT_SHARED_CACHE_DIRS, _DEFAULT_LOCAL_CACHE_DIR])
 
     for root in roots:
         path = root / f"{dataset}.npz"

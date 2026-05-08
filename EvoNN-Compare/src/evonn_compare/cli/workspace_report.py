@@ -112,6 +112,17 @@ def refresh_workspace_reports(
         },
         "multi_seed": {"all_systems": [], "projects_only": []},
         "seed_scorecards": {"all_systems": [], "projects_only": []},
+        "evidence_explorer": {
+            "cases": [],
+            "recent_full_runs": [],
+            "budget_overview": [],
+            "rows": [],
+            "benchmarks": [],
+            "tasks": [],
+            "families": [],
+            "tiers": [],
+            "systems": [],
+        },
         "transfer": {"case_count": 0, "cases": [], "regimes": {}, "family_rows": []},
         "campaign_state": {
             "available": False,

@@ -204,6 +204,14 @@ Use the workspace trend report and dashboard first for questions like:
 - did fairness/accounting status drift?
 - which lane operating state are we actually in?
 - are failures or missing benchmarks increasing over time?
+- how does each engine move over budgets, benchmarks, and real LM sidecars?
+
+The dashboard includes an **Evidence Explorer** section backed by the same
+`fair_matrix_summary.json` trend rows. It plots normalized engine score over
+budgets or run cases, can filter to individual benchmarks or task kinds, and
+keeps raw metrics available for single-benchmark inspection. This replaces the
+temporary one-off ladder dashboards; rerun `workspace-report` to rebuild the
+canonical graph from stored artifacts without rerunning engines.
 
 For branch-advancement claims, this workspace-first review flow feeds the
 repo-wide [research decision gate](../RESEARCH_DECISION_GATE.md). PRs should

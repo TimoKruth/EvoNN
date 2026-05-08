@@ -9,6 +9,7 @@ from typing import Any
 from evonn_compare.contracts.parity import ParityBenchmark, ParityPack, load_parity_pack
 from evonn_compare.orchestration.benchmark_resolution import resolve_benchmark_support
 from evonn_compare.orchestration.lane_presets import LANE_PRESETS
+from evonn_shared.lm_cache import validate_default_lm_cache
 from evonn_shared.manifests import write_json
 
 SYSTEMS = ("prism", "topograph", "stratograph", "primordia", "contenders")
@@ -56,6 +57,7 @@ def _audit_benchmark(*, pack: ParityPack, benchmark: ParityBenchmark) -> dict[st
     optional_contenders = tuple(benchmark.enhanced_optional_contenders)
     score_ceiling = _score_ceiling(pack=pack, benchmark=benchmark)
     contender_floor = _contender_floor_status(benchmark=benchmark, required_contenders=required_contenders)
+    lm_cache_health = _lm_cache_health(benchmark)
     blockers = []
     notes = []
     if any(not row["supported"] for row in support.values()):
@@ -66,8 +68,12 @@ def _audit_benchmark(*, pack: ParityPack, benchmark: ParityBenchmark) -> dict[st
         blockers.append("score-ceiling-missing")
     if contender_floor["floor_status"] in {"missing", "failed"}:
         blockers.append("required-contender-floor-missing")
+    if lm_cache_health is not None and not lm_cache_health["ok"]:
+        blockers.append("lm-cache-invalid")
     if not required_contenders:
         notes.append("missing required contender metadata keeps benchmark exploratory")
+    if lm_cache_health is not None:
+        notes.extend(str(item) for item in lm_cache_health.get("warnings", []))
 
     if blockers:
         admission_status = "blocked"
@@ -88,10 +94,36 @@ def _audit_benchmark(*, pack: ParityPack, benchmark: ParityBenchmark) -> dict[st
         "floor_status": contender_floor["floor_status"],
         "required_contender_resolution": contender_floor["required_contender_resolution"],
         "enhanced_optional_resolution": contender_floor["enhanced_optional_resolution"],
+        "lm_cache_health": lm_cache_health,
         "admission_status": admission_status,
         "blockers": blockers,
         "notes": notes,
         "admission_notes": benchmark.admission_notes,
+    }
+
+
+def _lm_cache_health(benchmark: ParityBenchmark) -> dict[str, Any] | None:
+    if benchmark.task_kind != "language_modeling":
+        return None
+    if benchmark.benchmark_id == "tiny_lm_synthetic":
+        return None
+    dataset = benchmark.benchmark_id.removesuffix("_smoke")
+    try:
+        report = validate_default_lm_cache(dataset)
+    except Exception as exc:
+        return {
+            "dataset": dataset,
+            "ok": False,
+            "blockers": [f"cache validation failed: {exc}"],
+            "warnings": [],
+        }
+    return {
+        "dataset": dataset,
+        "ok": bool(report.get("ok")),
+        "blockers": list(report.get("blockers", [])),
+        "warnings": list(report.get("warnings", [])),
+        "stats": report.get("stats", {}),
+        "path": report.get("path"),
     }
 
 

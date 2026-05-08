@@ -21,7 +21,7 @@ def test_tier_b_core_loads_expected_benchmark_families() -> None:
         "openml_gas_sensor",
         "openml_cpu_activity",
         "fashionmnist_image",
-        "tinystories_lm_smoke",
+        "tinystories_lm",
     ]
 
 
