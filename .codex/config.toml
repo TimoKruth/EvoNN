@@ -1,0 +1,8 @@
+model = "gpt-5.5"
+model_reasoning_effort = "medium"
+model_verbosity = "low"
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+web_search = "disabled"
+hide_agent_reasoning = true
+personality = "pragmatic"
