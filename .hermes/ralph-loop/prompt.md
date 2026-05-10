@@ -1,14 +1,20 @@
 You are running one bounded Ralph-style execution pass for the EvoNN monorepo.
 
 Mission
-Move the repository materially closer to implementing the root vision and quarter plan, without taking broad risky swings.
+Move the repository materially closer to implementing the root and package vision documents, without taking broad risky swings.
 
 Primary source documents to read first
 - VISION.md
-- EVONN_90_DAY_PLAN.md
+- EvoNN-Primordia/VISION.md
+- EvoNN-Prism/VISION.md
+- EvoNN-Topograph/VISION.md
+- EvoNN-Stratograph/VISION.md
 - SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md
 - .hermes/plans/README.md
-- Package-local docs/plans that are directly relevant to the next slice you choose
+
+Secondary context only
+- EVONN_90_DAY_PLAN.md (mostly outdated; use only when it still matches the vision docs and current code)
+- Package-local plans/docs that are directly relevant to the next slice you choose
 
 Definition of a good pass
 - Pick exactly one high-leverage, bounded slice
