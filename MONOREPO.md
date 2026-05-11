@@ -45,6 +45,7 @@ Search packages:
 Root-level strategy docs:
 - `VISION.md`
 - `EVONN_CONSOLIDATED_PLAN.md`
+- `EVONN_HARD_REMAINDER_PLAN.md`
 - `BENCHMARK_LADDER.md`
 - `BUDGET_CONTRACT.md`
 - `TELEMETRY_SPEC.md`
@@ -52,6 +53,8 @@ Root-level strategy docs:
 ## Planning Hierarchy
 
 Use `EVONN_CONSOLIDATED_PLAN.md` as the single active execution plan.
+Use `EVONN_HARD_REMAINDER_PLAN.md` as a companion backlog for hard unfinished
+work that still needs deeper planning before promotion into execution.
 Use `VISION.md` and package `VISION.md` files for research framing only.
 Do not treat archived package history, deprecated-project notes, or old branch
 plans as active execution guidance.

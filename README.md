@@ -16,7 +16,9 @@ challenger systems:
 ## Active Execution Docs
 
 Use `EVONN_CONSOLIDATED_PLAN.md` as the single active execution plan.
-`VISION.md` remains product and research framing.
+Use `EVONN_HARD_REMAINDER_PLAN.md` as the companion backlog for hard unfinished
+research and engineering areas that are not yet promoted into the operating
+plan. `VISION.md` remains product and research framing.
 
 ## Quick Start
 
@@ -87,6 +89,8 @@ Engine-advancement PRs must also follow
 - [ARCHITECTURE_OVERVIEW.md](./ARCHITECTURE_OVERVIEW.md): system-level technical framing
 - [VISION.md](./VISION.md): product and research direction
 - [EVONN_CONSOLIDATED_PLAN.md](./EVONN_CONSOLIDATED_PLAN.md): active execution plan
+- [EVONN_HARD_REMAINDER_PLAN.md](./EVONN_HARD_REMAINDER_PLAN.md): companion
+  plan for hard unfinished research/engineering areas
 - [RESEARCH_DECISION_GATE.md](./RESEARCH_DECISION_GATE.md): decision categories,
   evidence bundle, and PR expectations for advancement claims
 

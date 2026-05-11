@@ -20,7 +20,9 @@ It replaces the previous split planning surface:
 - package-local `IMPLEMENTATION_PLAN.md` bootstrap records
 
 `VISION.md` and package `VISION.md` files remain product/research framing. This
-file is the execution plan.
+file is the execution plan. `EVONN_HARD_REMAINDER_PLAN.md` is a companion
+backlog for hard unfinished work that should be promoted here only after it has
+a clear owner, validation lane, and evidence gate.
 
 ## North Star
 
@@ -369,13 +371,15 @@ Acceptance criteria:
 Keep:
 
 - `EVONN_CONSOLIDATED_PLAN.md` as the only active execution plan.
+- `EVONN_HARD_REMAINDER_PLAN.md` as the companion hard-remainder backlog, not as
+  a competing operating checklist.
 - `VISION.md` and package `VISION.md` files for research framing.
 - `README.md`, `MONOREPO.md`, and package READMEs for operational entry points.
 - Specific evidence artifacts in run workspaces when they support claims.
 
 Do not keep:
 
-- competing root planning files
+- competing root planning files that claim to be active execution plans
 - `.hermes` planning hierarchy
 - package-local implementation plans that only record bootstrap history
 - deprecated-project plans from old embedded repos
