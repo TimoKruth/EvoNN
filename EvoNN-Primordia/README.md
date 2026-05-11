@@ -120,7 +120,7 @@ Contenders baseline.
 ## Core Docs
 
 - `VISION.md`
-- `IMPLEMENTATION_PLAN.md`
+- `../EVONN_CONSOLIDATED_PLAN.md`
 - `ARCHITECTURE_RULES.md`
 - `BASELINE_MATRIX.md`
 - `CHANGELOG.md`

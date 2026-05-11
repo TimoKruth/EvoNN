@@ -203,7 +203,7 @@ compare themselves only against weak references or incomparable prior runs.
 
 See:
 - [EvoNN-Contenders/README.md](./EvoNN-Contenders/README.md)
-- [CONTENDER_EXPANSION_PLAN.md](./CONTENDER_EXPANSION_PLAN.md)
+- [EVONN_CONSOLIDATED_PLAN.md](./EVONN_CONSOLIDATED_PLAN.md)
 
 ## The Four Search Bets
 
@@ -433,7 +433,7 @@ Focus:
 - eventually frontier-style tasks under reduced or staged evaluation budgets
 
 See:
-- [ROADMAP.md](./ROADMAP.md)
+- [EVONN_CONSOLIDATED_PLAN.md](./EVONN_CONSOLIDATED_PLAN.md)
 
 ## Strategic Direction
 

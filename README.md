@@ -15,21 +15,8 @@ challenger systems:
 
 ## Active Execution Docs
 
-Use the docs below in this order when deciding what is active versus historical:
-
-- `EVONN_90_DAY_PLAN.md`: current quarter execution source of truth
-- `SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md`: cross-engine output quality and
-  measurability plan
-- `.hermes/plans/README.md`: active branch-plan index for package and subsystem
-  advancement work
-- `ROADMAP.md`: long-horizon umbrella sequencing
-- `VISION.md`: product and research framing
-
-Historical/bootstrap planning records that should not be used as active
-execution plans:
-
-- `EvoNN-Primordia/IMPLEMENTATION_PLAN.md`
-- `EvoNN-Stratograph/IMPLEMENTATION_PLAN.md`
+Use `EVONN_CONSOLIDATED_PLAN.md` as the single active execution plan.
+`VISION.md` remains product and research framing.
 
 ## Quick Start
 
@@ -99,14 +86,8 @@ Engine-advancement PRs must also follow
 - [MONOREPO.md](./MONOREPO.md): workspace structure, commands, and validation matrix
 - [ARCHITECTURE_OVERVIEW.md](./ARCHITECTURE_OVERVIEW.md): system-level technical framing
 - [VISION.md](./VISION.md): product and research direction
-- [ROADMAP.md](./ROADMAP.md): long-horizon execution sequencing
-- [EVONN_90_DAY_PLAN.md](./EVONN_90_DAY_PLAN.md): current delivery window and
-  active execution source of truth
-- [SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md](./SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md):
-  cross-engine plan for comparable, measurable output artifacts
+- [EVONN_CONSOLIDATED_PLAN.md](./EVONN_CONSOLIDATED_PLAN.md): active execution plan
 - [RESEARCH_DECISION_GATE.md](./RESEARCH_DECISION_GATE.md): decision categories,
   evidence bundle, and PR expectations for advancement claims
-- [.hermes/plans/README.md](./.hermes/plans/README.md): active package and
-  subsystem branch plans
 
 Package-specific usage and testing details live in each package README.

@@ -41,7 +41,7 @@ def main(ctx: typer.Context) -> None:
     console.print(table)
     console.print(
         "Run `primordia run --config ...` or inspect VISION.md, "
-        "EVONN_90_DAY_PLAN.md, and .hermes/plans/README.md for active planning."
+        "and EVONN_CONSOLIDATED_PLAN.md for active planning."
     )
 
 

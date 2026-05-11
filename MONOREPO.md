@@ -44,37 +44,17 @@ Search packages:
 
 Root-level strategy docs:
 - `VISION.md`
-- `ROADMAP.md`
+- `EVONN_CONSOLIDATED_PLAN.md`
 - `BENCHMARK_LADDER.md`
 - `BUDGET_CONTRACT.md`
 - `TELEMETRY_SPEC.md`
-- `SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md`
-- `SEEDING_LADDERS_IMPLEMENTATION_PLAN.md`
 
 ## Planning Hierarchy
 
-When execution docs disagree, use this order:
-
-1. `EVONN_90_DAY_PLAN.md` for the active quarter
-2. `SEARCH_ENGINE_OUTPUT_PARITY_PLAN.md` for cross-engine output quality and
-   measurability work
-3. `.hermes/plans/README.md` plus the referenced branch plans for package or
-   subsystem advancement
-4. `ROADMAP.md` for long-horizon sequencing
-5. `VISION.md` for umbrella thesis and product/research framing
-
-Archived bootstrap records:
-
-- `EvoNN-Primordia/IMPLEMENTATION_PLAN.md`
-- `EvoNN-Stratograph/IMPLEMENTATION_PLAN.md`
-
-Supporting long-run strategy docs that are still valid but not the active
-quarter execution source of truth:
-
-- `SHARED_SUBSTRATE_FOUNDATION_PLAN.md`
-- `BENCHMARK_EXTRACTION_PLAN.md`
-- `CONTENDER_EXPANSION_PLAN.md`
-- `SEEDING_LADDERS_IMPLEMENTATION_PLAN.md`
+Use `EVONN_CONSOLIDATED_PLAN.md` as the single active execution plan.
+Use `VISION.md` and package `VISION.md` files for research framing only.
+Do not treat archived package history, deprecated-project notes, or old branch
+plans as active execution guidance.
 
 ## Structural Unification Policy
 

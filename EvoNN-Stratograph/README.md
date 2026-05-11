@@ -24,9 +24,7 @@ Current state:
 
 Core docs:
 - `VISION.md`
-- `IMPLEMENTATION_PLAN.md` (archived bootstrap record only)
-- `../EVONN_90_DAY_PLAN.md`
-- `../.hermes/plans/README.md`
+- `../EVONN_CONSOLIDATED_PLAN.md`
 - `ARCHITECTURE_RULES.md`
 - `RESEARCH_NOTES.md`
 
