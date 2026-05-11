@@ -2036,6 +2036,7 @@ def test_resolve_lane_preset_exposes_tier1_core_budget_ladder() -> None:
     assert resolve_lane_preset("tier_b_local").budgets == (64,)
     assert resolve_lane_preset("tier_b_overnight").budgets == (256,)
     assert resolve_lane_preset("tier_b_weekend").budgets == (1000,)
+    assert resolve_lane_preset("tier_b_local_v2").pack == "tier_b_core_v2"
 
 
 def _dashboard_row(

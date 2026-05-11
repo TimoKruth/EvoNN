@@ -181,12 +181,15 @@ Current benchmark policy:
 - LM claims must distinguish smoke, full-cache byte-level LM, and any later
   larger sequence benchmark.
 
+Resolved Tier B default:
+
+- `tier_b_core` is the default recurring Tier B lane.
+- `tier_b_core_v2` remains the 12-benchmark expanded promotion lane.
+- Add future Tier B variants only after this default split is still clear in
+  presets, docs, benchmark audits, and dashboard labels.
+
 Required work:
 
-- Resolve the Tier B naming split deliberately:
-  - `tier_b_core` is the current compact real-LM research lane.
-  - `tier_b_core_v2` is the 12-benchmark expanded local research lane.
-  - Pick one as the default recurring Tier B lane before adding more tiers.
 - Keep Tier C exploratory until promotion requirements are met:
   - two clean `512` runs
   - one clean `1024` run
@@ -393,7 +396,7 @@ If a new branch needs planning, use either:
 ## Near-Term Execution Order
 
 1. Keep the dashboard/evidence loop healthy after every compare change.
-2. Resolve the Tier B default lane naming split.
+2. Keep the resolved Tier B default lane split visible in presets and docs.
 3. Run/update `tier1_core@64/256/1000` evidence with output-quality checks.
 4. Execute the first Primordia-seeded transfer experiment.
 5. Use the transfer result to decide whether the next major branch emphasizes:
@@ -401,6 +404,58 @@ If a new branch needs planning, use either:
    - target-engine seed consumption,
    - contender pressure,
    - or performance optimization.
+
+## Latest Execution Record
+
+Recorded on 2026-05-11 from branch `implement-evonn-consolidated-plan`.
+
+- Benchmark audits passed with zero blockers for `tier_a_contract`,
+  `tier1_core`, `tier_b_core`, `tier_b_core_v2`, and `tier_d_broad_shared`.
+  `tier_c_architecture_sensitive` remained explicitly exploratory with no
+  blockers.
+- Shared real-LM cache validation passed for `tinystories_lm` and
+  `wikitext2_lm`.
+- Tier A fair-matrix validation completed for `tier_a_contract` at budgets
+  `16,64` with seeds `42,43`; all four cases reached `trusted-extended`,
+  `decision-grade`, and `repeatability_ready=true`.
+- Tier B fair-matrix validation completed for the resolved default
+  `tier_b_core` lane at budgets `64,256` with seeds `42,43`; all four cases
+  reached `trusted-extended`, `decision-grade`, and
+  `repeatability_ready=true`, including the full `tinystories_lm` real-LM
+  sidecar.
+- Output-quality inspection covered 40 run exports from the Tier A and Tier B
+  validation workspaces. All 40 were measurable; Tier B exports reached L4 for
+  all five systems.
+- A performance-baseline bundle was generated from the Tier A and Tier B
+  validation workspaces for budgets `16,64,256`; it accepted 40/40 run records.
+- Tier B transfer-regime evidence was run on `tier_b_core@64` with seeds
+  `42,43`. Direct and staged Primordia-to-Topograph portable transfer regimes
+  both reported repeated `gain` consensus over two seeds.
+
+Primary local validation artifacts:
+
+- Audits: `.tmp/consolidation-pr/audits/`
+- Tier A dashboard:
+  `.tmp/consolidation-pr/runs/tier_a_contract/fair_matrix_dashboard.html`
+- Tier B dashboard:
+  `.tmp/consolidation-pr/runs/tier_b_core/fair_matrix_dashboard.html`
+- Transfer dashboard:
+  `.tmp/consolidation-pr/runs/transfer_regimes_tier_b/fair_matrix_dashboard.html`
+- Output-quality report:
+  `.tmp/consolidation-pr/output-quality/output_quality.md`
+- Performance baseline:
+  `.tmp/consolidation-pr/baseline/20260511T102502-7107c26ab8857309fcc547d2afeb80a8f0177922/performance_baseline.md`
+
+Interpretation:
+
+- The current consolidated-plan branch is sufficient for the practical
+  consolidation acceptance gates: active planning hierarchy, default Tier B
+  lane clarity, real-LM cache admission, decision-grade Tier A/B comparison
+  evidence, output-quality coverage, performance-baseline coverage, and repeated
+  portable transfer-regime evidence.
+- The transfer result remains a portable Topograph seeding-contract result, not
+  native MLX transfer proof. Native target-engine seed consumption and broader
+  statistical research claims belong in `EVONN_HARD_REMAINDER_PLAN.md`.
 
 ## Definition Of Done For This Consolidation
 

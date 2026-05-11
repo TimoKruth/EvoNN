@@ -48,14 +48,14 @@ LANE_PRESETS: dict[str, LanePreset] = {
         pack="tier_b_core",
         seeds=(42,),
         budgets=(64,),
-        description="Default bounded local Tier B research loop on the canonical ladder pack.",
+        description="Default recurring bounded local Tier B research loop on the compact real-LM ladder pack.",
     ),
     "tier_b_overnight": LanePreset(
         name="tier_b_overnight",
         pack="tier_b_core",
         seeds=(42,),
         budgets=(256,),
-        description="Preferred deeper Tier B study preset on the canonical ladder pack.",
+        description="Preferred deeper Tier B study preset on the compact real-LM ladder pack.",
     ),
     "tier_b_weekend": LanePreset(
         name="tier_b_weekend",

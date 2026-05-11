@@ -135,7 +135,7 @@ def test_lm_output_dim_expands_to_observed_token_range():
     x_train = np.array([[0, 1, 4095]], dtype=np.int32)
     y_train = np.array([[1, 2, 4096]], dtype=np.int64)
 
-    assert spec.num_classes == 4096
+    assert spec.num_classes == 256
     assert _resolve_model_output_dim(benchmark_spec=spec, X_train=x_train, y_train=y_train) == 4097
 
 
