@@ -1,0 +1,23 @@
+name: tier_d_broad_shared_cumulative
+tier: 3
+ladder_tier: D
+include_packs:
+  - tier_c_architecture_sensitive_cumulative
+  - tier_d_broad_shared
+description: Cumulative Tier D pack containing all admitted additive Tier A-D benchmarks for one-shot full comparison runs.
+usage_classification:
+  special_smoke: {evaluation_count: 216, notes: Eight evaluations per benchmark across 27 cumulative Tier A-D benchmarks.}
+  special_local: {evaluation_count: 432, notes: Sixteen evaluations per benchmark.}
+  special_overnight: {evaluation_count: 864, notes: Thirty-two evaluations per benchmark.}
+  special_weekend: {evaluation_count: 1728, notes: Sixty-four evaluations per benchmark.}
+promotion_requirements:
+  cumulative_through: D
+  leaderboard_scope: decision_grade_separate_tier
+benchmarks: []
+budget_policy:
+  evaluation_count: 216
+  epochs_per_candidate: 4
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

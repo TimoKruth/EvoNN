@@ -1,6 +1,6 @@
 # EvoNN Consolidated Plan
 
-_Last consolidated: 2026-05-10._
+_Last consolidated: 2026-05-13._
 
 ## Purpose
 
@@ -59,9 +59,75 @@ The trust substrate is now real enough to operate from:
 - Real LM caches are used for `tinystories_lm` and `wikitext2_lm`; smoke-only LM
   evidence is no longer the main LM surface for expanded lanes.
 
-The main remaining strategic gap is not another planning layer. It is executing
-the first real, auditable transfer/seeding loop and then using the evidence
-surface to make research decisions.
+The main remaining strategic gap is not another planning layer. It is turning
+the existing compare, dashboard, performance, and portable transfer surfaces
+into repeated native engine-improvement evidence.
+
+## Latest Run-Derived Planning Signal
+
+Recorded on 2026-05-13 from the recent small-lane and broad-lane comparison
+workspaces.
+
+Use this section as directional planning input, not as a final leaderboard
+claim. Several broad-lane observations are single-seed and were produced before
+the benchmark ladder was refactored into additive tier increments plus
+`_cumulative` one-shot variants.
+
+What is already working:
+
+- The evidence loop is now useful enough to guide planning. Tier A/B/C/D runs
+  reached `trusted-extended` with fair budget accounting, complete artifacts,
+  and contender-floor context.
+- The contender floor is doing its job. Contenders win heavily on Tier C/D,
+  which means EvoNN wins are not being inflated by weak baselines.
+- Tier A and Tier B are practical decision lanes. They surface meaningful
+  engine differences without turning every validation into an overnight run.
+- Prism and Topograph currently show the strongest general-purpose EvoNN signal.
+  Prism improves clearly in small lanes with more budget; Topograph becomes more
+  competitive on Tier B and selected higher-budget lanes.
+- Primordia has visible specialization pockets, especially around image/LM-like
+  behavior and transfer-source usefulness, but those signals must stay separated
+  from broad general-engine claims until repeated real-LM/image evidence exists.
+- Stratograph participates cleanly enough to evaluate, but it remains behind the
+  other EvoNN engines on most broad signals.
+
+What the small runs imply:
+
+- Tier A `16/64` mainly validates contract behavior and simple scaling. Prism is
+  currently the clearest EvoNN performer there.
+- Tier B `96/384` is the most useful near-term engine-development lane. Budget
+  increases change outcomes, and Prism/Topograph improve more visibly than
+  Primordia/Stratograph.
+- Seed variation is visible on Tier B at low budget, so small score deltas need
+  at least two or three seeds before they should steer architecture decisions.
+
+What the broad runs imply:
+
+- Tier C is the best current pressure tier for engine quality. At higher budgets,
+  EvoNN systems gain some contender-floor beats, but contenders remain dominant.
+- Tier D is most useful as a stress/regression detector, not yet as the primary
+  claim surface for EvoNN superiority.
+- More budget does not yet translate monotonically into better engine outcomes.
+  Budget scaling and search efficiency are therefore core research targets, not
+  just performance polish.
+
+Planning consequences:
+
+- Prioritize engine quality on Tier B/C before expanding benchmark breadth again.
+- Focus Prism and Topograph work on budget scaling, candidate selection, and
+  family/topology-specific evidence because they have the strongest general
+  signal.
+- Treat Primordia as a specialization and transfer-source engine first. Validate
+  its image/LM behavior on real non-smoke benchmarks before using it for broad
+  leaderboard claims.
+- Treat Stratograph as a targeted advancement project: improve hierarchy search
+  efficiency, representation quality, and evidence that hierarchy adds something
+  distinct.
+- Keep Tier D broad and cumulative, but use it mainly to find regressions,
+  unsupported families, and contender-floor gaps until Tier C evidence is
+  stronger.
+- Every future engine-improvement branch should include before/after Tier B or
+  Tier C evidence, plus output-quality and budget-accounting checks.
 
 ## Operating Rules
 
@@ -107,10 +173,16 @@ Current accepted lanes:
 - Tier A: `tier_a_contract`, budgets `16`, `64`
 - Trusted daily lane: `tier1_core`, budgets `64`, `256`, `1000`
 - Tier B current local research lane: `tier_b_core`, budgets `64`, `256`, `1000`
-- Tier B expanded v2 lane: `tier_b_core_v2`, budgets `96`, `384`, `768`, `1536`
+- Tier B expanded v2 additive lane: `tier_b_core_v2`, budgets `96`, `384`,
+  `768`, `1536`; cumulative A+B variant: `tier_b_core_v2_cumulative`, budgets
+  `98`, `392`, `784`, `1568`
 - Tier C exploratory lane: `tier_c_architecture_sensitive`, budgets `128`,
-  `512`, `1024`, `2048`
-- Tier D broad lane: `tier_d_broad_shared`, budgets `208`, `416`, `832`, `1664`
+  `512`, `1024`, `2048`; cumulative A+B+C variant:
+  `tier_c_architecture_sensitive_cumulative`, budgets `132`, `528`, `1056`,
+  `2112`
+- Tier D broad additive lane: `tier_d_broad_shared`, budgets `200`, `400`,
+  `800`, `1600`; cumulative A+B+C+D variant:
+  `tier_d_broad_shared_cumulative`, budgets `216`, `432`, `864`, `1728`
 
 Required work:
 
@@ -184,7 +256,8 @@ Current benchmark policy:
 Resolved Tier B default:
 
 - `tier_b_core` is the default recurring Tier B lane.
-- `tier_b_core_v2` remains the 12-benchmark expanded promotion lane.
+- `tier_b_core_v2` remains the expanded additive promotion lane; use
+  `tier_b_core_v2_cumulative` when a run should include Tier A too.
 - Add future Tier B variants only after this default split is still clear in
   presets, docs, benchmark audits, and dashboard labels.
 
@@ -221,6 +294,8 @@ Priorities:
 - Maintain MLX-native truth while preserving Linux-safe fallback/test behavior.
 - Stay benchmark-complete on Tier A and `tier1_core`.
 - Improve candidate selection, family pressure, and per-family evidence.
+- Convert added budget into more reliable Tier B/C gains; recent runs show Prism
+  has the strongest small-lane signal but still needs better broad-lane scaling.
 - Improve runtime maturity without exploding local cost.
 - Remain the default reference engine for broad family-aware search.
 
@@ -233,6 +308,9 @@ Priorities:
 
 - Maintain official-lane benchmark completeness.
 - Improve topology-search quality and budget efficiency.
+- Use Tier B/C as the main proof surface for topology-search improvements;
+  Topograph shows useful higher-budget signals but not yet consistent
+  contender-floor clearance.
 - Keep device/runtime metadata honest.
 - Strengthen topology-specific evidence in summaries and dashboards.
 - Prepare as a direct or staged transfer consumer.
@@ -248,6 +326,9 @@ Priorities:
 - Keep backend portability and official-lane correctness stable.
 - Expose hierarchy evidence: macro depth, cell reuse, motif emergence, and
   hierarchy-vs-flat ablation signals.
+- Prove that hierarchy improves search efficiency or benchmark specialization;
+  recent broad runs show Stratograph is complete enough to evaluate but not yet
+  competitive enough for primary claims.
 - Avoid becoming a weak Topograph clone; hierarchy must produce distinct
   evidence or remain a secondary challenger.
 
@@ -263,6 +344,9 @@ Priorities:
 - Strengthen primitive-bank and seed-candidate artifacts.
 - Become the first credible source for downstream seeded-vs-unseeded
   experiments.
+- Keep image/LM-looking wins under extra scrutiny. Primordia's specialization
+  pockets are valuable, but they must be validated on real non-smoke benchmarks
+  and separated from broad general-engine claims.
 - Avoid turning Primordia into a generic architecture engine; its value is cheap
   low-level structure.
 
@@ -304,18 +388,28 @@ Priorities:
 - Keep seeding, budget, runtime, and telemetry models strict enough for Compare.
 - Avoid importing engine-specific search semantics.
 
-## Execution Horizon 5: First Auditable Transfer/Seeding Loop
+## Execution Horizon 5: Native Transfer/Seeding Proof
 
 Goal:
-prove or falsify the central cumulative-search claim: discovered structure from
-one system can improve another system under fair measurement.
+prove or falsify the central cumulative-search claim at the native engine level:
+discovered structure from one system can improve another system under fair
+measurement.
+
+Current code-backed state:
+
+- Compare can publish seeded-vs-unseeded and transfer-regime workspaces.
+- Trend rows and reports carry seeding metadata, seed source, seed artifact, and
+  overlap policy fields.
+- Portable Primordia-to-Topograph transfer-regime evidence exists.
+- Native target-engine seed consumption is still the next proof step; portable
+  contract evidence is not enough for a broad research claim.
 
 Recommended next stretch:
 
-1. Choose one first path:
+1. Choose one native path:
    - `Primordia -> Prism` for broad family-first performance, or
    - `Primordia -> Topograph` for structural/topology transfer.
-2. Define the seed artifact contract consumed by the target engine.
+2. Implement or harden the seed artifact contract consumed by the target engine.
 3. Run controlled lanes:
    - unseeded control
    - directly seeded
@@ -397,69 +491,60 @@ If a new branch needs planning, use either:
 
 1. Keep the dashboard/evidence loop healthy after every compare change.
 2. Keep the resolved Tier B default lane split visible in presets and docs.
-3. Run/update `tier1_core@64/256/1000` evidence with output-quality checks.
-4. Execute the first Primordia-seeded transfer experiment.
-5. Use the transfer result to decide whether the next major branch emphasizes:
+3. Use additive Tier B/C runs as the default before/after proof for engine
+   quality work; use `_cumulative` variants only when a full A-through-tier
+   comparison is needed.
+4. Run/update `tier1_core@64/256/1000` evidence with output-quality checks.
+5. Repeat promising Tier B/C signals across at least two or three seeds before
+   using them as architecture evidence.
+6. Execute the first native Primordia-seeded transfer experiment beyond the
+   portable contract proof.
+7. Use the transfer result and Tier B/C scaling evidence to decide whether the
+   next major branch emphasizes:
    - seed-source quality,
    - target-engine seed consumption,
    - contender pressure,
+   - budget-scaling/search-efficiency,
    - or performance optimization.
 
 ## Latest Execution Record
 
-Recorded on 2026-05-11 from branch `implement-evonn-consolidated-plan`.
+Recorded on 2026-05-13 from branch `implement-evonn-consolidated-plan`, checked
+against the actual CLI, lane presets, pack definitions, and benchmark-audit
+behavior.
 
-- Benchmark audits passed with zero blockers for `tier_a_contract`,
-  `tier1_core`, `tier_b_core`, `tier_b_core_v2`, and `tier_d_broad_shared`.
-  `tier_c_architecture_sensitive` remained explicitly exploratory with no
-  blockers.
-- Shared real-LM cache validation passed for `tinystories_lm` and
-  `wikitext2_lm`.
-- Tier A fair-matrix validation completed for `tier_a_contract` at budgets
-  `16,64` with seeds `42,43`; all four cases reached `trusted-extended`,
-  `decision-grade`, and `repeatability_ready=true`.
-- Tier B fair-matrix validation completed for the resolved default
-  `tier_b_core` lane at budgets `64,256` with seeds `42,43`; all four cases
-  reached `trusted-extended`, `decision-grade`, and
-  `repeatability_ready=true`, including the full `tinystories_lm` real-LM
-  sidecar.
-- Output-quality inspection covered 40 run exports from the Tier A and Tier B
-  validation workspaces. All 40 were measurable; Tier B exports reached L4 for
-  all five systems.
-- A performance-baseline bundle was generated from the Tier A and Tier B
-  validation workspaces for budgets `16,64,256`; it accepted 40/40 run records.
-- Tier B transfer-regime evidence was run on `tier_b_core@64` with seeds
-  `42,43`. Direct and staged Primordia-to-Topograph portable transfer regimes
-  both reported repeated `gain` consensus over two seeds.
+Code-backed checks:
 
-Primary local validation artifacts:
+- Root planning files are reduced to `EVONN_CONSOLIDATED_PLAN.md` and
+  `EVONN_HARD_REMAINDER_PLAN.md`; no `.hermes` plan hierarchy remains.
+- `evonn-compare --help` exposes the active evidence commands:
+  `benchmark-audit`, `fair-matrix`, `dashboard`, `workspace-report`,
+  `output-quality`, `performance-baseline`, `seeded-compare`, and
+  `transfer-regimes`.
+- Current additive pack counts are:
+  - `tier_a_contract`: 8
+  - `tier_b_core_v2`: 6
+  - `tier_c_architecture_sensitive`: 8
+  - `tier_d_broad_shared`: 5
+- Current cumulative pack counts are:
+  - `tier_a_contract_cumulative`: 8
+  - `tier_b_core_v2_cumulative`: 14
+  - `tier_c_architecture_sensitive_cumulative`: 22
+  - `tier_d_broad_shared_cumulative`: 27
+- Current benchmark-audit state:
+  - `tier_a_contract`: passed, 8 benchmarks, 0 blockers
+  - `tier_b_core`: passed, 4 benchmarks, 0 blockers
+  - `tier_b_core_v2`: passed, 6 benchmarks, 0 blockers
+  - `tier_c_architecture_sensitive`: exploratory, 8 benchmarks, 0 blockers
+  - `tier_d_broad_shared`: passed, 5 benchmarks, 0 blockers
+  - `tier_d_broad_shared_cumulative`: exploratory, 27 benchmarks, 0 blockers
 
-- Audits: `.tmp/consolidation-pr/audits/`
-- Tier A dashboard:
-  `.tmp/consolidation-pr/runs/tier_a_contract/fair_matrix_dashboard.html`
-- Tier B dashboard:
-  `.tmp/consolidation-pr/runs/tier_b_core/fair_matrix_dashboard.html`
-- Transfer dashboard:
-  `.tmp/consolidation-pr/runs/transfer_regimes_tier_b/fair_matrix_dashboard.html`
-- Output-quality report:
-  `.tmp/consolidation-pr/output-quality/output_quality.md`
-- Performance baseline:
-  `.tmp/consolidation-pr/baseline/20260511T102502-7107c26ab8857309fcc547d2afeb80a8f0177922/performance_baseline.md`
+Current interpretation:
 
-Interpretation:
-
-- The current consolidated-plan branch is sufficient for the practical
-  consolidation acceptance gates: active planning hierarchy, default Tier B
-  lane clarity, real-LM cache admission, decision-grade Tier A/B comparison
-  evidence, output-quality coverage, performance-baseline coverage, and repeated
-  portable transfer-regime evidence.
-- The transfer result remains a portable Topograph seeding-contract result, not
-  native MLX transfer proof. Native target-engine seed consumption and broader
-  statistical research claims belong in `EVONN_HARD_REMAINDER_PLAN.md`.
-
-## Definition Of Done For This Consolidation
-
-- Active planning points to this file.
-- Obsolete plan files and obsolete plan directories are removed.
-- Active README/MONOREPO/package references do not point to removed plans.
-- The repo has one execution plan and no competing active plan hierarchy.
+- The planning cleanup itself is complete: this file is the active execution
+  plan, and `EVONN_HARD_REMAINDER_PLAN.md` is the only companion backlog.
+- The compare substrate is operational enough to guide engine work.
+- Tier B/C, not new benchmark breadth, should drive the next engine-quality
+  cycle.
+- Native seed consumption and repeated multi-seed Tier B/C evidence remain the
+  main unfinished research proof items.

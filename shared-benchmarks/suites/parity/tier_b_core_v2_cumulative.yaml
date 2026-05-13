@@ -1,0 +1,22 @@
+name: tier_b_core_v2_cumulative
+tier: 2
+ladder_tier: B
+include_packs:
+  - tier_a_contract
+  - tier_b_core_v2
+description: Cumulative Tier B pack containing Tier A plus the additive Tier B increment.
+usage_classification:
+  local: {evaluation_count: 98, notes: Seven evaluations per benchmark across 14 cumulative Tier A+B benchmarks.}
+  overnight: {evaluation_count: 392, notes: Twenty-eight evaluations per benchmark.}
+  extended: {evaluation_count: 784, notes: Fifty-six evaluations per benchmark.}
+  weekend: {evaluation_count: 1568, notes: One hundred twelve evaluations per benchmark.}
+promotion_requirements:
+  cumulative_through: B
+benchmarks: []
+budget_policy:
+  evaluation_count: 98
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

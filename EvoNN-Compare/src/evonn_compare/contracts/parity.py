@@ -81,6 +81,7 @@ class ParityPack(BaseModel):
     name: str
     tier: Literal[1, 2, 3]
     ladder_tier: Literal["A", "B", "C", "D", "E"] | None = None
+    include_packs: tuple[str, ...] = ()
     usage_classification: dict[str, Any] | None = None
     promotion_requirements: dict[str, Any] | None = None
     description: str
@@ -128,11 +129,48 @@ def resolve_pack_path(pack_name: str, packs_dir: Path | None = None) -> Path:
     raise FileNotFoundError(f"Parity pack '{pack_name}' not found in {search_dirs}")
 
 
+def _resolve_included_pack_path(include: str, *, current_path: Path, packs_dir: Path | None = None) -> Path:
+    candidate = Path(include)
+    if candidate.suffix in {".yaml", ".yml"}:
+        if candidate.is_absolute() and candidate.exists():
+            return candidate.resolve()
+        relative = current_path.parent / candidate
+        if relative.exists():
+            return relative.resolve()
+    return resolve_pack_path(include, packs_dir=packs_dir)
+
+
+def _expanded_pack_payload(path: Path, *, packs_dir: Path | None = None, seen: tuple[Path, ...] = ()) -> dict[str, Any]:
+    if path in seen:
+        chain = " -> ".join(str(item) for item in (*seen, path))
+        raise ValueError(f"cyclic parity pack include detected: {chain}")
+
+    payload = yaml.safe_load(path.read_text()) or {}
+    include_names = tuple(str(name) for name in payload.get("include_packs", ()) or ())
+    included_benchmarks: list[dict[str, Any]] = []
+    for include in include_names:
+        include_path = _resolve_included_pack_path(include, current_path=path, packs_dir=packs_dir)
+        include_payload = _expanded_pack_payload(include_path, packs_dir=packs_dir, seen=(*seen, path))
+        included_benchmarks.extend(include_payload.get("benchmarks", []) or [])
+
+    if include_names:
+        deduped: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for benchmark in [*included_benchmarks, *(payload.get("benchmarks", []) or [])]:
+            benchmark_id = str(benchmark.get("benchmark_id", ""))
+            if benchmark_id in seen_ids:
+                continue
+            seen_ids.add(benchmark_id)
+            deduped.append(benchmark)
+        payload = {**payload, "benchmarks": deduped}
+    return payload
+
+
 def load_parity_pack(path_or_name: str | Path, packs_dir: Path | None = None) -> ParityPack:
-    """Load a parity pack from YAML."""
+    """Load a parity pack from YAML, expanding any included lower-tier packs."""
 
     path = resolve_pack_path(str(path_or_name), packs_dir=packs_dir)
-    data = yaml.safe_load(path.read_text())
+    data = _expanded_pack_payload(path, packs_dir=packs_dir)
     return ParityPack.model_validate(data)
 
 
@@ -161,6 +199,8 @@ def parity_summary(pack: ParityPack) -> str:
         "| Benchmark ID | Task | Family | Metric | Direction | Status |",
         "|---|---|---|---|---|---|",
     ]
+    if pack.include_packs:
+        lines.insert(4, f"**Includes:** {', '.join(pack.include_packs)}")
     for benchmark in pack.benchmarks:
         lines.append(
             f"| {benchmark.benchmark_id} | {benchmark.task_kind} | {benchmark.benchmark_family or '---'} | "
