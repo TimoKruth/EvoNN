@@ -101,8 +101,11 @@ def test_entrypoint_docs_point_to_the_consolidated_plan() -> None:
         assert "EVONN_CONSOLIDATED_PLAN.md" in text
 
     plan_text = CONSOLIDATED_PLAN.read_text(encoding="utf-8")
-    assert "Definition Of Done For This Consolidation" in plan_text
-    assert "The repo has one execution plan and no competing active plan hierarchy." in plan_text
+    assert "Latest Execution Record" in plan_text
+    assert "against the actual CLI" in plan_text
+    assert "lane presets, pack definitions, and benchmark-audit" in plan_text
+    assert "this file is the active execution" in plan_text
+    assert "`EVONN_HARD_REMAINDER_PLAN.md` is the only companion backlog" in plan_text
 
 
 def test_hard_remainder_plan_is_non_executing_backlog() -> None:
