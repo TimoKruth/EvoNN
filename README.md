@@ -58,15 +58,23 @@ uv run --package evonn-compare python -m evonn_compare fair-matrix \
 - Topograph is the primary challenger on the shared compare surface.
 - `fair-matrix` and `campaign` default to the trusted daily `local` lane
   (`tier1_core` @ `64`) when no pack or preset is supplied.
-- Expanded benchmark-ladder presets are available for staged research:
-  `tier_a_smoke`, `tier_a_contract`, `tier_b_local_v2`,
-  `tier_b_overnight_v2`, `tier_b_extended_v2`, `tier_b_weekend_v2`,
-  `tier_c_local`, `tier_c_overnight`, `tier_c_extended`, `tier_c_weekend`,
-  `tier_d_local`, `tier_d_broad`, `tier_d_overnight`, and `tier_d_weekend`.
+- Expanded benchmark-ladder presets are available for staged research. Tier
+  A/B/C/D packs are additive increments, so running higher tiers after lower
+  tiers does not rerun the same benchmarks. Use the matching `_cumulative`
+  presets when a one-shot run should include all lower tiers too.
+  `tier_b_local`, `tier_b_overnight`, and `tier_b_weekend` remain the compact
+  recurring Tier B presets on `tier_b_core`; the `_v2` Tier B presets are the
+  expanded additive lane. Available expanded presets include `tier_a_smoke`,
+  `tier_a_contract`, `tier_b_local_v2`, `tier_b_overnight_v2`,
+  `tier_b_extended_v2`, `tier_b_weekend_v2`, `tier_c_local`,
+  `tier_c_overnight`, `tier_c_extended`, `tier_c_weekend`, `tier_d_local`,
+  `tier_d_broad`, `tier_d_overnight`, and `tier_d_weekend`, plus `_cumulative`
+  variants for one-shot A-through-current-tier comparisons.
 - Use `evonn-compare benchmark-audit --pack <pack>` before promoting a new pack;
   promoted packs require explicit required contender-floor metadata.
-- Tier D is promoted for the current 26-benchmark admitted broad pack, but it
-  remains a separate broad-lane leaderboard from Tier A/B/C trend claims.
+- Tier D's additive increment is promoted for its admitted broad benchmarks,
+  while `tier_d_broad_shared_cumulative` is the full A+B+C+D pack for complete
+  broad comparisons.
 - Shared infrastructure should converge where it improves trust, parity, and
   maintenance, while search-core logic stays package-local.
 

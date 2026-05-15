@@ -88,9 +88,9 @@ What is now solid:
 
 What is still not fully finished:
 
-- The first real seeded-vs-unseeded transfer result is not yet a scientific
-  proof point. The reporting surface exists, but the hard part is showing that
-  a seed artifact is consumed by a downstream engine and changes outcomes under
+- Portable seeded-vs-unseeded and transfer-regime reporting exists, but this is
+  not yet a native scientific proof point. The hard part is showing that a seed
+  artifact is consumed by a downstream engine and changes outcomes under
   repeated controlled runs.
 - Evidence is still too workspace-local. There is no durable run registry with
   retention policy, canonical promotion records, and stable references to
@@ -101,11 +101,12 @@ What is still not fully finished:
 - Tier B naming and status should remain watched. The code has `tier_b_core_v2`
   as the expanded lane, while older docs and mental models can still refer to
   `tier_b_core`.
-- Tier C is still the most important stress lane because it mixes harder
-  tabular, image, regression, and real LM. It should not be treated as routine
-  until repeated runs prove stability.
-- Tier D is broad and useful, but it must stay separate from primary claims
-  unless repeated evidence remains clean under the admitted benchmark list.
+- Tier C is still the most important architecture-sensitive stress lane because
+  it mixes harder tabular and image benchmarks. It should not be treated as
+  routine until repeated runs prove stability.
+- Tier D is broad and useful, and now carries the hard regression plus real-LM
+  sidecars. It must stay separate from primary claims unless repeated evidence
+  remains clean under the admitted benchmark list.
 - Contender pressure is good enough for a floor, but not always good enough for
   strong claims. Optional enhanced baselines such as CNN/Transformer/boosted
   tree libraries still matter for image, LM, and harder tabular claims.

@@ -1,0 +1,23 @@
+name: tier_c_architecture_sensitive_cumulative
+tier: 3
+ladder_tier: C
+include_packs:
+  - tier_b_core_v2_cumulative
+  - tier_c_architecture_sensitive
+description: Cumulative Tier C pack containing Tier A, Tier B, and the additive Tier C architecture-sensitive increment.
+usage_classification:
+  local: {evaluation_count: 132, notes: Six evaluations per benchmark across 22 cumulative Tier A+B+C benchmarks.}
+  overnight: {evaluation_count: 528, notes: Twenty-four evaluations per benchmark.}
+  extended: {evaluation_count: 1056, notes: Forty-eight evaluations per benchmark.}
+  weekend: {evaluation_count: 2112, notes: Ninety-six evaluations per benchmark.}
+promotion_requirements:
+  cumulative_through: C
+  starts_as: exploratory_only
+benchmarks: []
+budget_policy:
+  evaluation_count: 132
+  epochs_per_candidate: 4
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

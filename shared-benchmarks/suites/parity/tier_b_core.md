@@ -36,7 +36,7 @@ A benchmark family belongs in `tier_b_core` only when all of these are true:
 | Harder tabular classification | `openml_gas_sensor` | High-dimensional multiclass real-data task that exposes feature-interaction quality without exceeding local-safe runtime. |
 | Harder tabular regression | `openml_cpu_activity` | Real regression task with broader interaction structure than toy fixtures and enough difficulty to surface underfit/overfit tradeoffs. |
 | Small image classification | `fashionmnist_image` | Harder than `digits_image` or `mnist_image`, but still small enough for repeated local architecture loops. |
-| Runtime-safe sequence/text | `tinystories_lm_smoke` | Keeps Tier B honest about sequence support while avoiding a full LM-heavy default loop. |
+| Runtime-safe sequence/text | `tinystories_lm` | Uses the full byte-tokenized TinyStories cache so Tier B real-LM evidence is not smoke-only. |
 
 ## Minimum Contender Expectations
 

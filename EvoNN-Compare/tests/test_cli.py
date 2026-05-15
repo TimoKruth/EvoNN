@@ -235,18 +235,32 @@ def test_expanded_benchmark_ladder_presets_dry_run(tmp_path) -> None:
     presets = {
         "tier_a_smoke": "tier_a_contract_eval16",
         "tier_a_contract": "tier_a_contract_eval64",
+        "tier_a_smoke_cumulative": "tier_a_contract_cumulative_eval16",
+        "tier_a_contract_cumulative": "tier_a_contract_cumulative_eval64",
         "tier_b_local_v2": "tier_b_core_v2_eval96",
         "tier_b_overnight_v2": "tier_b_core_v2_eval384",
         "tier_b_extended_v2": "tier_b_core_v2_eval768",
         "tier_b_weekend_v2": "tier_b_core_v2_eval1536",
+        "tier_b_local_v2_cumulative": "tier_b_core_v2_cumulative_eval98",
+        "tier_b_overnight_v2_cumulative": "tier_b_core_v2_cumulative_eval392",
+        "tier_b_extended_v2_cumulative": "tier_b_core_v2_cumulative_eval784",
+        "tier_b_weekend_v2_cumulative": "tier_b_core_v2_cumulative_eval1568",
         "tier_c_local": "tier_c_architecture_sensitive_eval128",
         "tier_c_overnight": "tier_c_architecture_sensitive_eval512",
         "tier_c_extended": "tier_c_architecture_sensitive_eval1024",
         "tier_c_weekend": "tier_c_architecture_sensitive_eval2048",
-        "tier_d_local": "tier_d_broad_shared_eval208",
-        "tier_d_broad": "tier_d_broad_shared_eval416",
-        "tier_d_overnight": "tier_d_broad_shared_eval832",
-        "tier_d_weekend": "tier_d_broad_shared_eval1664",
+        "tier_c_local_cumulative": "tier_c_architecture_sensitive_cumulative_eval132",
+        "tier_c_overnight_cumulative": "tier_c_architecture_sensitive_cumulative_eval528",
+        "tier_c_extended_cumulative": "tier_c_architecture_sensitive_cumulative_eval1056",
+        "tier_c_weekend_cumulative": "tier_c_architecture_sensitive_cumulative_eval2112",
+        "tier_d_local": "tier_d_broad_shared_eval200",
+        "tier_d_broad": "tier_d_broad_shared_eval400",
+        "tier_d_overnight": "tier_d_broad_shared_eval800",
+        "tier_d_weekend": "tier_d_broad_shared_eval1600",
+        "tier_d_local_cumulative": "tier_d_broad_shared_cumulative_eval216",
+        "tier_d_broad_cumulative": "tier_d_broad_shared_cumulative_eval432",
+        "tier_d_overnight_cumulative": "tier_d_broad_shared_cumulative_eval864",
+        "tier_d_weekend_cumulative": "tier_d_broad_shared_cumulative_eval1728",
     }
     for preset, expected_case in presets.items():
         result = runner.invoke(app, ["fair-matrix", "--preset", preset, "--workspace", str(tmp_path / preset), "--dry-run"])
@@ -2036,6 +2050,10 @@ def test_resolve_lane_preset_exposes_tier1_core_budget_ladder() -> None:
     assert resolve_lane_preset("tier_b_local").budgets == (64,)
     assert resolve_lane_preset("tier_b_overnight").budgets == (256,)
     assert resolve_lane_preset("tier_b_weekend").budgets == (1000,)
+    assert resolve_lane_preset("tier_b_local_v2").pack == "tier_b_core_v2"
+    assert resolve_lane_preset("tier_b_local_v2_cumulative").pack == "tier_b_core_v2_cumulative"
+    assert resolve_lane_preset("tier_d_local").budgets == (200,)
+    assert resolve_lane_preset("tier_d_local_cumulative").budgets == (216,)
 
 
 def _dashboard_row(

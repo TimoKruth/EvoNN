@@ -1,0 +1,18 @@
+name: tier_a_contract_cumulative
+tier: 1
+ladder_tier: A
+include_packs:
+  - tier_a_contract
+description: Cumulative Tier A pack. Alias for the Tier A contract pack.
+usage_classification:
+  local: {evaluation_count: 64, notes: Eight evaluations per benchmark across the 8-benchmark Tier A cumulative lane.}
+promotion_requirements:
+  cumulative_through: A
+benchmarks: []
+budget_policy:
+  evaluation_count: 64
+  epochs_per_candidate: 20
+  budget_tolerance_pct: 10.0
+seed_policy:
+  mode: shared
+  required: true

@@ -98,26 +98,41 @@ For the current local-first workflow:
   - `local` → `64`
   - `overnight` → `256`
   - `weekend` → `1000`
-- expanded benchmark-ladder presets are staged:
+- expanded benchmark-ladder presets are staged. The expanded A/B/C/D packs are
+  additive increments; use `_cumulative` presets for one-shot comparisons that
+  include all lower tiers:
   - `tier_a_smoke` → `tier_a_contract` @ `16`
   - `tier_a_contract` → `tier_a_contract` @ `64`
   - `tier_b_local_v2` → `tier_b_core_v2` @ `96`
   - `tier_b_overnight_v2` → `tier_b_core_v2` @ `384`
   - `tier_b_extended_v2` → `tier_b_core_v2` @ `768`
   - `tier_b_weekend_v2` → `tier_b_core_v2` @ `1536`
+  - `tier_b_local_v2_cumulative` → `tier_b_core_v2_cumulative` @ `98`
+  - `tier_b_overnight_v2_cumulative` → `tier_b_core_v2_cumulative` @ `392`
+  - `tier_b_extended_v2_cumulative` → `tier_b_core_v2_cumulative` @ `784`
+  - `tier_b_weekend_v2_cumulative` → `tier_b_core_v2_cumulative` @ `1568`
   - `tier_c_local` → `tier_c_architecture_sensitive` @ `128`
   - `tier_c_overnight` → `tier_c_architecture_sensitive` @ `512`
   - `tier_c_extended` → `tier_c_architecture_sensitive` @ `1024`
   - `tier_c_weekend` → `tier_c_architecture_sensitive` @ `2048`
-  - `tier_d_local` → `tier_d_broad_shared` @ `208`
-  - `tier_d_broad` → `tier_d_broad_shared` @ `416`
-  - `tier_d_overnight` → `tier_d_broad_shared` @ `832`
-  - `tier_d_weekend` → `tier_d_broad_shared` @ `1664`
+  - `tier_c_local_cumulative` → `tier_c_architecture_sensitive_cumulative` @ `132`
+  - `tier_c_overnight_cumulative` → `tier_c_architecture_sensitive_cumulative` @ `528`
+  - `tier_c_extended_cumulative` → `tier_c_architecture_sensitive_cumulative` @ `1056`
+  - `tier_c_weekend_cumulative` → `tier_c_architecture_sensitive_cumulative` @ `2112`
+  - `tier_d_local` → `tier_d_broad_shared` @ `200`
+  - `tier_d_broad` → `tier_d_broad_shared` @ `400`
+  - `tier_d_overnight` → `tier_d_broad_shared` @ `800`
+  - `tier_d_weekend` → `tier_d_broad_shared` @ `1600`
+  - `tier_d_local_cumulative` → `tier_d_broad_shared_cumulative` @ `216`
+  - `tier_d_broad_cumulative` → `tier_d_broad_shared_cumulative` @ `432`
+  - `tier_d_overnight_cumulative` → `tier_d_broad_shared_cumulative` @ `864`
+  - `tier_d_weekend_cumulative` → `tier_d_broad_shared_cumulative` @ `1728`
 - run `uv run --package evonn-compare evonn-compare benchmark-audit --pack <pack>`
   before treating any expanded pack as decision-grade
-- `tier_d_broad_shared` is decision-grade for the current 26-benchmark admitted
-  pack after three clean `tier_d_local` proof runs, but it stays on a separate
-  broad-lane leaderboard from Tier A/B/C.
+- `tier_d_broad_shared` is decision-grade for the current Tier D-only admitted
+  increment after clean proof runs; `tier_d_broad_shared_cumulative` is the
+  full A+B+C+D comparison pack and stays on a separate broad-lane leaderboard
+  from narrower Tier A/B/C claims.
 
 Install package dev dependencies from root:
 
