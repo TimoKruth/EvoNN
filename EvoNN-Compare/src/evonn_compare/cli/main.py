@@ -9,6 +9,7 @@ from evonn_compare.cli.campaign_state import campaign_inspect, campaign_stop
 from evonn_compare.cli.benchmark_audit import benchmark_audit
 from evonn_compare.cli.compare import compare
 from evonn_compare.cli.dashboard import dashboard
+from evonn_compare.cli.evidence import evidence_app
 from evonn_compare.cli.fair_matrix import fair_matrix
 from evonn_compare.cli.historical_baseline import historical_baseline
 from evonn_compare.cli.hybrid import run as hybrid_run
@@ -42,6 +43,7 @@ app.command("performance-baseline")(performance_baseline)
 app.command("trend-report")(trend_report)
 app.command("dashboard")(dashboard)
 app.command("workspace-report")(workspace_report)
+app.add_typer(evidence_app, name="evidence")
 
 hybrid_app = typer.Typer(help="Fused hybrid commands")
 hybrid_app.command("run")(hybrid_run)

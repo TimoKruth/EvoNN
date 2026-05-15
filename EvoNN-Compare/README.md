@@ -258,11 +258,44 @@ Key outputs:
 
 Current comparison semantics:
 
+- `historical-baseline` is for workspace-local before/after review.
+- `evidence promote/report/validate` is for durable promoted-run memory across
+  workspaces.
 - seed ids are preserved exactly as emitted by the historical run
 - overlapping numeric seeds stay separate because compare now carries
   `comparison_case_id` and `comparison_label` through the trend pipeline
 - compatibility assumptions and integrity findings are written into the baseline
   manifest and surfaced in imported summary artifacts
+
+### Promoted evidence registry
+
+Use the evidence registry when a fair-matrix run is important enough to keep as
+decision evidence instead of leaving it in `.tmp` or a one-off manual workspace:
+
+```bash
+uv run --package evonn-compare evonn-compare evidence promote \
+  .tmp/fair-matrix-local \
+  --registry evidence \
+  --label tier-b-engine-quality
+```
+
+That writes:
+
+- `evidence/index.jsonl`
+- `evidence/registry_manifest.json`
+- `evidence/evidence_report.json`
+- `evidence/evidence_report.md`
+- copied compact summaries under `evidence/runs/...` when `--copy-artifacts`
+  is enabled
+
+The evidence report groups promoted runs by label, pack, and budget; surfaces
+minimum-seed blockers; emits conservative decision labels; records transfer
+proof state and seed sources; flags LM flatline patterns; and assigns first-pass
+engine roles from promoted evidence. Validate the registry shape with:
+
+```bash
+uv run --package evonn-compare evonn-compare evidence validate --registry evidence
+```
 
 ### Performance baseline workflow
 

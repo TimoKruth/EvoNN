@@ -138,6 +138,21 @@ This plan is complete when EvoNN can make these claims honestly:
 
 ## Workstream 1: Durable Evidence Registry
 
+### Implemented Baseline
+
+`EvoNN-Compare` now exposes `evonn-compare evidence promote`,
+`evonn-compare evidence report`, and `evonn-compare evidence validate`.
+Promoted fair-matrix summaries are recorded in `evidence/index.jsonl`, compact
+summary artifacts can be copied into `evidence/runs/...`, and
+`evidence/evidence_report.json` plus `evidence/evidence_report.md` rebuild the
+current promoted-evidence view.
+
+The registry deliberately starts compact: it records pack, budget, seed,
+systems, lane trust state, budget-accounting state, summary checksum, source
+paths, copied registry paths, task families, and per-system score summaries.
+This is enough to make Phase 1 executable without committing large raw run
+directories.
+
 ### Problem
 
 The current workspace/run-artifact model is useful for local work, but it is
@@ -186,19 +201,20 @@ Each registry row should include:
 
 ### Implementation Plan
 
-1. Add evidence registry schema in `EvoNN-Compare` or `EvoNN-Shared`.
-2. Add CLI command:
+1. Extend the current `EvoNN-Compare` registry row with explicit git commit,
+   branch, backend class, host/runtime fingerprint, contender-floor state, and
+   output-quality level when those fields are present in artifacts.
+2. Use the current CLI command:
 
    ```bash
-   uv run --package evonn-compare evonn-compare evidence promote \
-     --workspace <run-workspace> \
-     --run-id <run-id> \
-     --decision candidate
+   uv run --package evonn-compare evonn-compare evidence promote <workspace-or-summary> \
+     --registry evidence \
+     --label <stable-cohort-label>
    ```
 
-3. Add dashboard support for loading both live workspaces and promoted evidence
-   registry rows.
-4. Add a CI-safe schema validation test for evidence rows.
+3. Connect the dashboard directly to promoted registry rows, not only copied
+   summary directories.
+4. Keep and expand the CI-safe schema validation tests for evidence rows.
 5. Add a pruning/export command so large local artifacts can be moved without
    breaking the registry.
 
@@ -213,6 +229,21 @@ Each registry row should include:
   rerunning the whole suite.
 
 ## Workstream 2: L4 Statistical Decision Layer
+
+### Implemented Baseline
+
+The evidence registry report now aggregates promoted runs by label, pack, and
+budget, computes repeated-seed groups from the existing fair-matrix trend rows,
+and emits conservative decision labels:
+
+- `blocked`
+- `inconclusive`
+- `no_material_change`
+- `gain`
+
+This is intentionally not the final L4 layer. It gives the project a first
+machine-readable decision surface so promoted runs no longer collapse into a
+manual dashboard reading.
 
 ### Problem
 
@@ -256,11 +287,15 @@ overclaiming from noisy small runs.
    - Tier C: 3 seeds at local budget, 2 seeds at overnight budget before
      decision-grade promotion.
    - Tier D: stays broad-lane only unless 3 clean repeated runs exist.
-2. Add `evonn-compare evidence analyze` to aggregate promoted runs.
+2. Continue using `evonn-compare evidence report` as the aggregation command;
+   only split out `evidence analyze` if the statistical layer becomes too large
+   for the report command.
 3. Add rank/effect-size summaries to JSON, markdown, and dashboard.
-4. Add "not enough evidence" states instead of silently ranking uncertain
+4. Add explicit regression and likely-gain labels once before/after cohorts are
+   represented, not just within-cohort leaders.
+5. Add "not enough evidence" states instead of silently ranking uncertain
    comparisons.
-5. Add tests with synthetic run fixtures covering ceiling ties, missing runs,
+6. Add tests with synthetic run fixtures covering ceiling ties, missing runs,
    backend drift, and mixed-budget ambiguity.
 
 ### Acceptance Criteria
@@ -273,6 +308,19 @@ overclaiming from noisy small runs.
   statistical decision labels.
 
 ## Workstream 3: Real Transfer/Seeding Proof
+
+### Implemented Baseline
+
+The first path is fixed as `Primordia -> Topograph`. The compare layer already
+has portable seeded-vs-unseeded and transfer-regime reporting, Primordia exports
+seed candidates, and Topograph has seed metadata ingestion in the portable path.
+The new evidence report records seeded trend rows, seed sources, transfer
+boundaries, proof states, and whether any promoted evidence is native-transfer
+claim ready.
+
+Current status: this is still portable transfer plumbing unless promoted
+artifacts carry a native transfer proof state. The registry now makes that
+distinction explicit instead of burying it in run directories.
 
 ### Problem
 
@@ -340,13 +388,17 @@ Default for first research run:
 
 ### Implementation Plan
 
-1. Formalize seed artifact schema in `EvoNN-Shared`.
-2. Add Primordia seed export command with motif bank filtering.
-3. Add Topograph seed import path that visibly changes initialization or search
+1. Keep hardening the seed artifact schema in `EvoNN-Shared` as the native path
+   needs stricter target-engine compatibility checks.
+2. Extend the existing Primordia seed export with motif bank filtering where
+   current artifacts are too broad.
+3. Harden the existing Topograph seed import path so it visibly changes
+   initialization or search
    bias.
-4. Add Compare transfer-run command that launches unseeded and seeded variants
-   with identical pack/budget/seed/backend.
-5. Add transfer dashboard section with:
+4. Use the existing Compare transfer-regime command for portable validation,
+   then add the native execution path with identical pack/budget/seed/backend.
+5. Keep the existing transfer dashboard section and registry report aligned
+   around:
    - source artifact provenance
    - target run mode
    - benchmark-level deltas
@@ -370,6 +422,21 @@ Default for first research run:
   quality, target ingestion, benchmark mismatch, or budget accounting.
 
 ## Workstream 4: Engine Portfolio Quality Plan
+
+### Implemented Baseline
+
+The evidence registry report now derives first-pass engine role labels from
+promoted evidence groups and benchmark-family leads:
+
+- `leader_candidate`
+- `challenger`
+- `specialist`
+- `seed_source_specialist`
+- `watch`
+
+It also emits LM flatline diagnostics from promoted LM rows and detects
+descriptor/archive evidence hooks in summaries and trend metadata. This is the
+Phase 3 audit surface; the deeper engine work below remains open.
 
 ### Problem
 

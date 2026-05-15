@@ -45,6 +45,10 @@ The trust substrate is now real enough to operate from:
 - `EvoNN-Compare` owns fair-matrix execution, trend artifacts, dashboards,
   benchmark audit, output-quality inspection, performance-baseline surfaces, and
   seeded/transfer compare surfaces.
+- `EvoNN-Compare` now also owns the promoted evidence registry:
+  `evonn-compare evidence promote/report/validate` turns fair-matrix summaries
+  into durable registry rows, repeated-seed decision groups, transfer proof
+  status, LM flatline diagnostics, and first-pass engine-role labels.
 - `EvoNN-Shared` owns shared contracts, budget/run identity helpers, manifest
   helpers, JSON writers, and real-LM cache validation.
 - `shared-benchmarks` owns benchmark catalog and parity suites.
@@ -520,7 +524,8 @@ Code-backed checks:
 - `evonn-compare --help` exposes the active evidence commands:
   `benchmark-audit`, `fair-matrix`, `dashboard`, `workspace-report`,
   `output-quality`, `performance-baseline`, `seeded-compare`, and
-  `transfer-regimes`.
+  `transfer-regimes`; the next-step execution slice adds
+  `evidence promote/report/validate` for promoted-run registry handling.
 - Current additive pack counts are:
   - `tier_a_contract`: 8
   - `tier_b_core_v2`: 6
@@ -546,5 +551,6 @@ Current interpretation:
 - The compare substrate is operational enough to guide engine work.
 - Tier B/C, not new benchmark breadth, should drive the next engine-quality
   cycle.
-- Native seed consumption and repeated multi-seed Tier B/C evidence remain the
-  main unfinished research proof items.
+- Native seed consumption remains the main unfinished research proof item.
+  Repeated multi-seed Tier B/C evidence now has a registry/reporting surface,
+  but still needs real promoted runs before it can support strong claims.
