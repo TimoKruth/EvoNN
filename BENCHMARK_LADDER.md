@@ -21,6 +21,16 @@ A benchmark pack is useful when it helps answer at least one of these:
 - what transfers upward?
 - what baseline strength is required to keep the result honest?
 
+## Tier Summary
+
+| Tier | Role | Default use |
+| --- | --- | --- |
+| A | Smoke and sanity checks | CI, local smoke, minimal parity checks |
+| B | Core local research | Default day-to-day EvoNN workbench |
+| C | Architecture-sensitive stress | Transfer, reuse, and inductive-bias studies |
+| D | System-like evaluation | Structured capability surfaces with staged or proxy scoring |
+| E | Frontier and aspirational direction | Reduced or staged studies, not routine inner-loop evaluation |
+
 ## Tier A: Smoke And Sanity Packs
 
 Purpose:

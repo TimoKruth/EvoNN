@@ -19,6 +19,9 @@ on:
 jobs:
   prism:
     runs-on: macos-14
+    env:
+      PRISM_CHECK_SCRIPT: scripts/ci/prism-checks.sh
+      PRISM_PACKAGE: prism
     steps:
       - uses: actions/checkout@v4
 
@@ -29,10 +32,10 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       - name: Install Prism dev dependencies
-        run: uv sync --package prism --extra dev
+        run: uv sync --package "${PRISM_PACKAGE}" --extra dev
 
       - name: Ruff
-        run: bash scripts/ci/prism-checks.sh ruff
+        run: bash "${PRISM_CHECK_SCRIPT}" ruff
 
       - name: Pytest
-        run: bash scripts/ci/prism-checks.sh pytest
+        run: bash "${PRISM_CHECK_SCRIPT}" pytest

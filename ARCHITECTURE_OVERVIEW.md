@@ -53,23 +53,23 @@ The compiler enforces family/modality compatibility. For example, image convolut
 Prism runtime has four main layers:
 
 1. Genome layer
-- immutable genome definition and mutation/crossover logic
+   - immutable genome definition and mutation/crossover logic
 
 2. Family layer
-- concrete MLX `nn.Module` implementations for each family
-- compiler that validates family/task/modality and instantiates the module
+   - concrete MLX `nn.Module` implementations for each family
+   - compiler that validates family/task/modality and instantiates the module
 
 3. Pipeline layer
-- generation state
-- benchmark selection
-- evaluation
-- archive building
-- reproduction
+   - generation state
+   - benchmark selection
+   - evaluation
+   - archive building
+   - reproduction
 
 4. Run boundary
-- DuckDB metrics store
-- checkpoint files
-- markdown/symbiosis export
+   - DuckDB metrics store
+   - checkpoint files
+   - markdown/symbiosis export
 
 ### Evolution loop
 
@@ -81,9 +81,9 @@ Prism uses a straightforward generational pipeline:
 4. Optionally transfer inherited weights from parent genomes.
 5. Train and evaluate on selected benchmarks.
 6. Build three archive views:
-- per-benchmark elites
-- Pareto front on quality vs parameter count
-- family-level niche archive
+   - per-benchmark elites
+   - Pareto front on quality vs parameter count
+   - family-level niche archive
 7. Reproduce through tournament selection, crossover, and single-step mutation.
 8. Checkpoint state and persist metrics.
 
@@ -177,30 +177,30 @@ Topograph is built as a typed staged pipeline. The main state object for each ge
 The overall module structure is:
 
 1. Genome
-- genes, genome, serialization
+   - genes, genome, serialization
 
 2. Operators
-- mutation and crossover over graph structure
+   - mutation and crossover over graph structure
 
 3. NN runtime
-- genome compiler
-- quantized/ternary layers
-- MoE support
-- MLX training loop
+   - genome compiler
+   - quantized/ternary layers
+   - MoE support
+   - MLX training loop
 
 4. Pipeline
-- evaluate
-- score
-- archive
-- select
-- reproduce
-- mutation scheduling
+   - evaluate
+   - score
+   - archive
+   - select
+   - reproduce
+   - mutation scheduling
 
 5. Run boundary
-- cache
-- parallel evaluator
-- DuckDB storage
-- report/export
+   - cache
+   - parallel evaluator
+   - DuckDB storage
+   - report/export
 
 ### Compilation model
 
@@ -224,9 +224,9 @@ Topograph runs a fuller evolutionary loop than Prism:
 2. Evaluate genomes on one benchmark or a sampled benchmark pool.
 3. Score fitness, optionally blending task fitness with novelty.
 4. Update archives:
-- novelty archive
-- MAP-Elites archive
-- per-benchmark elite archive
+   - novelty archive
+   - MAP-Elites archive
+   - per-benchmark elite archive
 5. Adapt mutation statistics from observed outcomes.
 6. Reproduce into the next population.
 7. Persist state, scheduler state, archives, and innovation counters.
@@ -337,27 +337,27 @@ Current Stratograph architecture is intentionally distinct from Topograph, but i
 The main runtime layers are:
 
 1. Hierarchical genome layer
-- macro graph + cell library models
-- codec and digesting
+   - macro graph + cell library models
+   - codec and digesting
 
 2. Hierarchical compiler
-- compile each cell independently
-- compile macro graph over compiled cells
-- deterministic NumPy execution path
+   - compile each cell independently
+   - compile macro graph over compiled cells
+   - deterministic NumPy execution path
 
 3. Search layer
-- hierarchy-aware mutation
-- hierarchy-aware crossover
-- novelty descriptor and niche key
+   - hierarchy-aware mutation
+   - hierarchy-aware crossover
+   - novelty descriptor and niche key
 
 4. Evaluation layer
-- fast evaluator for tabular, image, and language-modeling tasks
-- compare-compatible outputs
+   - fast evaluator for tabular, image, and language-modeling tasks
+   - compare-compatible outputs
 
 5. Run boundary
-- DuckDB storage
-- report/export
-- ladder workflow for compare validation
+   - DuckDB storage
+   - report/export
+   - ladder workflow for compare validation
 
 ### Compilation model
 
@@ -431,8 +431,8 @@ The three systems are intentionally different reference architectures:
 - Topograph: topology-first, richest flat-graph search, heaviest evolutionary runtime
 - Stratograph: hierarchy-first, reusable-cell search, currently prototype runtime with real compare surface
 
-If you want, I can next split this into three separate files as well:
+Package-specific architecture guardrails live in:
 
-- `PRISM_ARCHITECTURE.md`
-- `TOPOGRAPH_ARCHITECTURE.md`
-- `STRATOGRAPH_ARCHITECTURE.md`
+- `EvoNN-Prism/ARCHITECTURE_RULES.md`
+- `EvoNN-Topograph/ARCHITECTURE_RULES.md`
+- `EvoNN-Stratograph/ARCHITECTURE_RULES.md`
