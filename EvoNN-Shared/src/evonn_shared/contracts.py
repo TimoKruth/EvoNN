@@ -34,6 +34,16 @@ SeedOverlapPolicy = Literal[
     "unknown",
 ]
 
+_NON_NEGATIVE_BUDGET_FIELDS = (
+    "evaluation_count",
+    "epochs_per_candidate",
+    "actual_evaluations",
+    "cached_evaluations",
+    "failed_evaluations",
+    "invalid_evaluations",
+    "resumed_evaluations",
+)
+
 
 class BenchmarkEntry(BaseModel):
     """Manifest-level benchmark coverage entry."""
@@ -70,15 +80,7 @@ class BudgetEnvelope(BaseModel):
 
     @model_validator(mode="after")
     def validate_accounting_fields(self) -> "BudgetEnvelope":
-        for field_name in (
-            "evaluation_count",
-            "epochs_per_candidate",
-            "actual_evaluations",
-            "cached_evaluations",
-            "failed_evaluations",
-            "invalid_evaluations",
-            "resumed_evaluations",
-        ):
+        for field_name in _NON_NEGATIVE_BUDGET_FIELDS:
             value = getattr(self, field_name)
             if value is not None and value < 0:
                 raise ValueError(f"{field_name} must be >= 0")
@@ -249,15 +251,17 @@ class SeedingEnvelope(BaseModel):
     def validate_shape(self) -> "SeedingEnvelope":
         if self.seed_rank is not None and self.seed_rank < 1:
             raise ValueError("seed_rank must be >= 1 when provided")
-        if self.seeding_enabled:
-            if self.seeding_ladder == "none":
-                raise ValueError("seeding_ladder must not be 'none' when seeding_enabled is true")
-            if self.seed_source_system is None:
-                raise ValueError("seed_source_system is required when seeding_enabled is true")
-            if self.seed_artifact_path is None:
-                raise ValueError("seed_artifact_path is required when seeding_enabled is true")
-        elif self.seeding_ladder != "none":
-            raise ValueError("seeding_ladder must be 'none' when seeding_enabled is false")
+        if not self.seeding_enabled:
+            if self.seeding_ladder != "none":
+                raise ValueError("seeding_ladder must be 'none' when seeding_enabled is false")
+            return self
+
+        if self.seeding_ladder == "none":
+            raise ValueError("seeding_ladder must not be 'none' when seeding_enabled is true")
+        if self.seed_source_system is None:
+            raise ValueError("seed_source_system is required when seeding_enabled is true")
+        if self.seed_artifact_path is None:
+            raise ValueError("seed_artifact_path is required when seeding_enabled is true")
         return self
 
 

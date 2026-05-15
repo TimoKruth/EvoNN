@@ -38,6 +38,18 @@ def test_validate_lm_cache_rejects_linear_successor_fixture(tmp_path: Path) -> N
     assert any("linear successor pattern" in blocker for blocker in report["blockers"])
 
 
+def test_validate_lm_cache_reports_empty_arrays(tmp_path: Path) -> None:
+    empty = np.empty((0, 32), dtype=np.int32)
+    path = tmp_path / "empty.npz"
+    np.savez_compressed(path, x_train=empty, y_train=empty, x_val=empty, y_val=empty)
+
+    report = validate_lm_cache(path)
+
+    assert report["ok"] is False
+    assert any("train arrays are empty" in blocker for blocker in report["blockers"])
+    assert any("val arrays are empty" in blocker for blocker in report["blockers"])
+
+
 def test_generate_lm_cache_from_local_text_passes_validation(tmp_path: Path) -> None:
     text_path = tmp_path / "corpus.txt"
     text_path.write_text(

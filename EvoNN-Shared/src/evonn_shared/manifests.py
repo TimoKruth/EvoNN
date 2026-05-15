@@ -9,6 +9,40 @@ from pathlib import Path
 from typing import Any
 
 
+def _median_float(values: list[float]) -> float | None:
+    """Return the conventional median for floats, or None for no values."""
+
+    if not values:
+        return None
+    sorted_values = sorted(values)
+    mid = len(sorted_values) // 2
+    if len(sorted_values) % 2:
+        return float(sorted_values[mid])
+    return float((sorted_values[mid - 1] + sorted_values[mid]) / 2)
+
+
+def _median_int_truncated(values: list[int]) -> int:
+    """Return the legacy integer median, truncating even-sized averages."""
+
+    if not values:
+        return 0
+    sorted_values = sorted(values)
+    mid = len(sorted_values) // 2
+    if len(sorted_values) % 2:
+        return int(sorted_values[mid])
+    return int((sorted_values[mid - 1] + sorted_values[mid]) / 2)
+
+
+def _first_truthy_mapping_value(payload: Mapping[str, Any], *keys: str) -> Any:
+    """Return the first truthy value for legacy alias chains."""
+
+    for key in keys:
+        value = payload.get(key)
+        if value:
+            return value
+    return None
+
+
 def default_artifact(run_dir: Path, *candidates: str) -> str:
     """Return the first existing relative artifact path, or the first candidate."""
 
@@ -47,22 +81,10 @@ def summary_core_from_results(
             failure_labels[label] = failure_labels.get(label, 0) + 1
 
     sorted_failures = dict(sorted(failure_labels.items(), key=lambda item: (-item[1], item[0])))
-    params = list(parameter_counts or [])
-    params.sort()
-    median_param_count = params[len(params) // 2] if params else 0
-    if params and len(params) % 2 == 0:
-        median_param_count = int((params[len(params) // 2 - 1] + params[len(params) // 2]) / 2)
-
-    qualities = sorted(best_fitness.values())
-    median_quality = None
-    if qualities:
-        mid = len(qualities) // 2
-        median_quality = float(qualities[mid]) if len(qualities) % 2 else float((qualities[mid - 1] + qualities[mid]) / 2)
-
     return {
         "best_fitness": best_fitness,
-        "median_parameter_count": int(median_param_count),
-        "median_benchmark_quality": median_quality,
+        "median_parameter_count": _median_int_truncated(list(parameter_counts or [])),
+        "median_benchmark_quality": _median_float(list(best_fitness.values())),
         "failure_count": sum(1 for record in results if record.get("status") != "ok"),
         "failure_patterns": sorted_failures,
         "benchmarks_evaluated": len(best_fitness),
@@ -159,7 +181,12 @@ def legacy_topograph_primordia_seeding_manifest(payload: Any) -> dict[str, Any] 
     if not isinstance(payload, Mapping):
         return None
     seed_artifact_path = _optional_string(
-        payload.get("seed_artifact_path") or payload.get("seed_path") or payload.get("seed_source_path")
+        _first_truthy_mapping_value(
+            payload,
+            "seed_artifact_path",
+            "seed_path",
+            "seed_source_path",
+        )
     )
     if seed_artifact_path is None:
         return None
