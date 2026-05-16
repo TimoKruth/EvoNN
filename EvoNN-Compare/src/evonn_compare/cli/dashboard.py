@@ -9,6 +9,7 @@ import webbrowser
 import typer
 
 from evonn_compare.orchestration.campaign_state import load_workspace_state
+from evonn_compare.orchestration.evidence_registry import discover_registry_summaries
 from evonn_compare.reporting.fair_matrix_dashboard import (
     build_dashboard_payload,
     discover_fair_matrix_summaries,
@@ -36,7 +37,12 @@ def dashboard(
 
     output_path = Path(output)
     input_paths = [Path(value) for value in inputs] if inputs else None
-    summary_paths = discover_fair_matrix_summaries(input_paths)
+    summary_paths = sorted(
+        {
+            *discover_fair_matrix_summaries(input_paths),
+            *discover_registry_summaries(input_paths),
+        }
+    )
     campaign_state = None
     if input_paths:
         for path in input_paths:

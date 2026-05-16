@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import platform
 import re
 import shutil
+import socket
+import subprocess
 from statistics import mean
 from typing import Any
 
@@ -84,6 +87,7 @@ def build_evidence_report(*, registry: Path, min_seeds: int = 2) -> dict[str, An
     registry_path = registry.resolve()
     records = list(_load_index(registry_path).values())
     summary_payloads = [_load_record_summary(record) for record in records]
+    transfer_cases = _load_transfer_case_payloads(records)
     trend_rows = [row for payload in summary_payloads for row in payload.get("trend_rows") or []]
     groups = _decision_groups(records=records, trend_rows=trend_rows, min_seeds=min_seeds)
     payload = {
@@ -93,10 +97,12 @@ def build_evidence_report(*, registry: Path, min_seeds: int = 2) -> dict[str, An
         "summary_count": len(summary_payloads),
         "min_seeds": min_seeds,
         "groups": groups,
+        "before_after_comparisons": _before_after_comparisons(groups),
         "engine_roles": _engine_roles(groups, trend_rows),
         "lm_flatline_diagnostics": _lm_flatline_diagnostics(trend_rows),
-        "transfer_evidence": _transfer_evidence(summary_payloads, trend_rows),
+        "transfer_evidence": _transfer_evidence(summary_payloads, trend_rows, transfer_cases),
         "quality_diversity_evidence": _quality_diversity_evidence(summary_payloads, trend_rows),
+        "artifact_validation": validate_registry(registry=registry_path),
     }
     registry_path.mkdir(parents=True, exist_ok=True)
     (registry_path / "evidence_report.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -107,8 +113,43 @@ def build_evidence_report(*, registry: Path, min_seeds: int = 2) -> dict[str, An
 def validate_registry(*, registry: Path) -> dict[str, Any]:
     """Validate registry rows without requiring copied artifacts to exist."""
 
+    return _validate_registry(registry=registry, require_artifacts=False)
+
+
+def validate_registry_artifacts(*, registry: Path) -> dict[str, Any]:
+    """Validate registry rows and artifact pointers."""
+
+    return _validate_registry(registry=registry, require_artifacts=True)
+
+
+def discover_registry_summaries(inputs: list[Path] | None) -> list[Path]:
+    """Resolve copied or source fair-matrix summaries from evidence registries."""
+
+    roots = inputs or [Path("evidence")]
+    found: dict[Path, None] = {}
+    for root in roots:
+        index_path = root if root.name == "index.jsonl" else root / "index.jsonl"
+        if not index_path.exists():
+            continue
+        for line in index_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            path_value = record.get("registry_summary_path") or record.get("source_summary_path")
+            if not path_value:
+                continue
+            path = Path(str(path_value))
+            if path.exists():
+                found[path.resolve()] = None
+    return sorted(found)
+
+
+def _validate_registry(*, registry: Path, require_artifacts: bool) -> dict[str, Any]:
+    """Validate registry rows and optionally check artifact pointers."""
+
     registry_path = registry.resolve()
     issues: list[str] = []
+    warnings: list[str] = []
     records = list(_load_index(registry_path).values())
     seen: set[str] = set()
     for record in records:
@@ -121,7 +162,24 @@ def validate_registry(*, registry: Path) -> dict[str, Any]:
         for field in ("label", "pack_name", "budget", "seed", "systems", "summary_sha256"):
             if record.get(field) in (None, "", []):
                 issues.append(f"{record_id or '<unknown>'} missing {field}")
-    return {"ok": not issues, "record_count": len(records), "issues": issues}
+        artifact_paths = [
+            value
+            for value in (record.get("registry_summary_path"), record.get("source_summary_path"))
+            if value
+        ]
+        existing_paths = [Path(str(value)) for value in artifact_paths if Path(str(value)).exists()]
+        if require_artifacts and not existing_paths:
+            issues.append(f"{record_id or '<unknown>'} has no readable summary artifact")
+        elif not existing_paths:
+            warnings.append(f"{record_id or '<unknown>'} has no currently readable summary artifact")
+        for path in existing_paths:
+            current_sha = _sha256(path)
+            expected_sha = str(record.get("summary_sha256") or "")
+            if path == Path(str(record.get("registry_summary_path") or "")) and expected_sha and current_sha != expected_sha:
+                issues.append(f"{record_id or '<unknown>'} copied summary checksum drifted: {path}")
+            elif path == Path(str(record.get("source_summary_path") or "")) and expected_sha and current_sha != expected_sha:
+                warnings.append(f"{record_id or '<unknown>'} source summary checksum drifted: {path}")
+    return {"ok": not issues, "record_count": len(records), "issues": issues, "warnings": warnings}
 
 
 def _record_from_summary(
@@ -147,6 +205,9 @@ def _record_from_summary(
     task_kinds = sorted({str(row.get("task_kind") or "unknown") for row in trend_rows})
     families = sorted({str(row.get("benchmark_family") or "unknown") for row in trend_rows})
     score_by_system = _score_systems(trend_rows, tuple(systems))
+    source_context = _source_context(payload=payload, trend_rows=trend_rows, summary_path=source_summary_path)
+    contender_floor = _contender_floor_context(source_summary_path)
+    output_quality = _output_quality_context(source_summary_path)
     return {
         "record_id": record_id,
         "label": label,
@@ -168,6 +229,10 @@ def _record_from_summary(
         "budget_accounting_ok": budget_accounting_ok,
         "decision_eligible": operating_state in DECISION_READY_STATES and budget_accounting_ok and row_count > 0,
         "score_by_system": score_by_system,
+        "git": source_context["git"],
+        "runtime": source_context["runtime"],
+        "contender_floor": contender_floor,
+        "output_quality": output_quality,
     }
 
 
@@ -211,9 +276,58 @@ def _decision_groups(*, records: list[dict[str, Any]], trend_rows: list[dict[str
                 "leader": ranked[0]["system"] if ranked else None,
                 "system_rows": system_rows,
                 "pairwise": list(stats.get("pairwise") or []) if stats else [],
+                "last_promoted_at": max(str(record.get("promoted_at") or "") for record in group_records),
             }
         )
     return groups
+
+
+def _before_after_comparisons(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+    for group in groups:
+        grouped[(str(group["pack_name"]), int(group["budget"]))].append(group)
+
+    comparisons: list[dict[str, Any]] = []
+    for (pack_name, budget), rows in sorted(grouped.items()):
+        ordered = sorted(rows, key=lambda row: (str(row.get("last_promoted_at") or ""), str(row["label"])))
+        for before, after in zip(ordered, ordered[1:], strict=False):
+            before_scores = _mean_scores_by_system(before)
+            after_scores = _mean_scores_by_system(after)
+            common_systems = sorted(set(before_scores) & set(after_scores))
+            deltas = {system: round(after_scores[system] - before_scores[system], 6) for system in common_systems}
+            aggregate_delta = round(mean(deltas.values()), 6) if deltas else 0.0
+            best_system_delta = max(deltas.values(), default=0.0)
+            worst_system_delta = min(deltas.values(), default=0.0)
+            if before.get("decision_blockers") or after.get("decision_blockers"):
+                decision = "inconclusive"
+            elif best_system_delta >= 0.25:
+                decision = "likely_gain"
+            elif aggregate_delta <= -0.1 or worst_system_delta <= -0.25:
+                decision = "regression"
+            else:
+                decision = "no_material_change"
+            comparisons.append(
+                {
+                    "pack_name": pack_name,
+                    "budget": budget,
+                    "before_label": before["label"],
+                    "after_label": after["label"],
+                    "common_systems": common_systems,
+                    "system_score_deltas": deltas,
+                    "aggregate_score_delta": aggregate_delta,
+                    "best_system_score_delta": round(best_system_delta, 6),
+                    "worst_system_score_delta": round(worst_system_delta, 6),
+                    "decision_label": decision,
+                }
+            )
+    return comparisons
+
+
+def _mean_scores_by_system(group: dict[str, Any]) -> dict[str, float]:
+    return {
+        str(row["system"]): float(row.get("mean_score") or 0.0)
+        for row in group.get("system_rows") or []
+    }
 
 
 def _group_blockers(records: list[dict[str, Any]], *, min_seeds: int) -> list[str]:
@@ -363,7 +477,11 @@ def _lm_flatline_diagnostics(trend_rows: list[dict[str, Any]]) -> list[dict[str,
     return diagnostics
 
 
-def _transfer_evidence(summary_payloads: list[dict[str, Any]], trend_rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _transfer_evidence(
+    summary_payloads: list[dict[str, Any]],
+    trend_rows: list[dict[str, Any]],
+    transfer_cases: list[dict[str, Any]],
+) -> dict[str, Any]:
     seeded_rows = [
         row
         for row in trend_rows
@@ -390,13 +508,42 @@ def _transfer_evidence(summary_payloads: list[dict[str, Any]], trend_rows: list[
             if payload.get("transfer_proof_state")
         }
     )
+    case_verdicts = Counter(str(case.get("verdict") or "unknown") for case in transfer_cases)
+    regime_counts = Counter(str(case.get("regime") or "unknown") for case in transfer_cases)
     return {
         "seeded_trend_row_count": len(seeded_rows),
         "seed_sources": seed_sources,
         "transfer_boundaries": transfer_boundaries,
         "proof_states": proof_states,
         "native_transfer_claim_ready": any(state == "native-transfer-evidence" for state in proof_states),
+        "portable_transfer_case_count": len(transfer_cases),
+        "portable_transfer_verdict_counts": dict(sorted(case_verdicts.items())),
+        "portable_transfer_regime_counts": dict(sorted(regime_counts.items())),
+        "portable_transfer_consensus": _portable_transfer_consensus(transfer_cases),
     }
+
+
+def _portable_transfer_consensus(transfer_cases: list[dict[str, Any]]) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for case in transfer_cases:
+        grouped[str(case.get("regime") or "unknown")].append(case)
+    consensus = {}
+    for regime, cases in sorted(grouped.items()):
+        verdict_counts = Counter(str(case.get("verdict") or "unknown") for case in cases)
+        if verdict_counts.get("regression", 0):
+            label = "regression"
+        elif verdict_counts.get("gain", 0) > verdict_counts.get("inconclusive", 0):
+            label = "portable_gain_signal"
+        elif verdict_counts.get("gain", 0):
+            label = "inconclusive_with_gain_signal"
+        else:
+            label = "inconclusive"
+        consensus[regime] = {
+            "case_count": len(cases),
+            "verdict_counts": dict(sorted(verdict_counts.items())),
+            "consensus": label,
+        }
+    return consensus
 
 
 def _quality_diversity_evidence(summary_payloads: list[dict[str, Any]], trend_rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -450,6 +597,37 @@ def _load_record_summary(record: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _load_transfer_case_payloads(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    found: dict[Path, None] = {}
+    for record in records:
+        for key in ("registry_summary_path", "source_summary_path"):
+            path_value = record.get(key)
+            if not path_value:
+                continue
+            path = Path(str(path_value))
+            workspace_root = _workspace_root_from_summary(path)
+            if workspace_root is None:
+                continue
+            reports_dir = workspace_root / "reports"
+            if reports_dir.exists():
+                for case_path in reports_dir.rglob("*_vs_control.json"):
+                    found[case_path.resolve()] = None
+    cases = []
+    for path in sorted(found):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload.setdefault("summary_path", str(path))
+        cases.append(payload)
+    return cases
+
+
+def _workspace_root_from_summary(path: Path) -> Path | None:
+    current = path.resolve()
+    for parent in current.parents:
+        if parent.name == "reports":
+            return parent.parent.resolve()
+    return None
+
+
 def _copy_summary_artifacts(*, summary_path: Path, registry: Path, label: str, digest: str) -> Path:
     destination = registry / "runs" / _slugify(label) / f"{summary_path.parent.name}-{digest[:12]}"
     destination.mkdir(parents=True, exist_ok=True)
@@ -459,7 +637,100 @@ def _copy_summary_artifacts(*, summary_path: Path, registry: Path, label: str, d
         sibling = summary_path.with_name(sibling_name)
         if sibling.exists():
             shutil.copy2(sibling, destination / sibling_name)
+    _copy_transfer_case_siblings(summary_path=summary_path, destination=destination)
     return destination_summary
+
+
+def _copy_transfer_case_siblings(*, summary_path: Path, destination: Path) -> None:
+    if summary_path.parent.name not in {"02-direct", "03-staged"}:
+        return
+    prefix = summary_path.parent.name
+    source_dir = summary_path.parent.parent
+    for suffix in (".json", ".md"):
+        source = source_dir / f"{prefix}_vs_control{suffix}"
+        if source.exists():
+            shutil.copy2(source, destination / source.name)
+
+
+def _source_context(*, payload: dict[str, Any], trend_rows: list[dict[str, Any]], summary_path: Path) -> dict[str, Any]:
+    code_versions = sorted(
+        {
+            str((row.get("fairness_metadata") or {}).get("code_version") or row.get("code_version"))
+            for row in trend_rows
+            if ((row.get("fairness_metadata") or {}).get("code_version") or row.get("code_version"))
+        }
+    )
+    backend_labels = sorted(
+        {
+            str(
+                row.get("runtime_backend")
+                or row.get("backend")
+                or (row.get("fairness_metadata") or {}).get("runtime_backend")
+                or "unknown"
+            )
+            for row in trend_rows
+        }
+    )
+    hardware_labels = sorted(
+        {
+            str(
+                row.get("hardware_class")
+                or row.get("device_name")
+                or (row.get("fairness_metadata") or {}).get("hardware_class")
+                or "unknown"
+            )
+            for row in trend_rows
+        }
+    )
+    return {
+        "git": {
+            "code_version": code_versions[0] if len(code_versions) == 1 else ("mixed" if code_versions else _git(["rev-parse", "HEAD"])),
+            "code_versions": code_versions,
+            "branch": _git(["branch", "--show-current"]),
+            "dirty": _git_dirty(),
+        },
+        "runtime": {
+            "backend_labels": backend_labels,
+            "hardware_labels": hardware_labels,
+            "host": socket.gethostname(),
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "summary_path": str(summary_path),
+            "lane_preset": (payload.get("lane") or {}).get("preset"),
+        },
+    }
+
+
+def _contender_floor_context(summary_path: Path) -> dict[str, Any]:
+    report_path = summary_path.with_name("contender_floor_report.json")
+    if not report_path.exists():
+        return {"available": False, "path": str(report_path)}
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    benchmarks = list(payload.get("benchmarks") or [])
+    statuses = sorted({str(row.get("floor_status") or "unknown") for row in benchmarks})
+    return {
+        "available": True,
+        "path": str(report_path),
+        "lane_floor_status": payload.get("lane_floor_status"),
+        "floor_statuses": statuses,
+        "blocked_count": sum(1 for row in benchmarks if row.get("floor_status") in {"missing", "failed"}),
+    }
+
+
+def _output_quality_context(summary_path: Path) -> dict[str, Any]:
+    report_paths = sorted(summary_path.parents[2].rglob("output_quality_report.json")) if len(summary_path.parents) >= 3 else []
+    levels = []
+    systems = []
+    for report_path in report_paths:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+        levels.append(str(payload.get("quality_level") or "L0"))
+        systems.append(str(payload.get("system") or "unknown"))
+    return {
+        "available": bool(report_paths),
+        "report_count": len(report_paths),
+        "quality_levels": sorted(set(levels)),
+        "systems": sorted(set(systems)),
+    }
 
 
 def _load_index(registry: Path) -> dict[str, dict[str, Any]]:
@@ -492,6 +763,43 @@ def _write_index(registry: Path, records: list[dict[str, Any]]) -> None:
         ),
         encoding="utf-8",
     )
+    readme = registry / "README.md"
+    if not readme.exists():
+        readme.write_text(_registry_readme(), encoding="utf-8")
+
+
+def _registry_readme() -> str:
+    return (
+        "# EvoNN Evidence Registry\n\n"
+        "This directory stores promoted comparison evidence, not every local run artifact.\n\n"
+        "## Promotion\n\n"
+        "Promote a clean fair-matrix workspace with:\n\n"
+        "```bash\n"
+        "uv run --package evonn-compare evonn-compare evidence promote <workspace-or-summary> --registry evidence --label <cohort>\n"
+        "```\n\n"
+        "## Retention\n\n"
+        "- `index.jsonl` is the compact durable registry.\n"
+        "- `runs/` stores copied compact summaries when promotion uses `--copy-artifacts`.\n"
+        "- Large raw run directories should stay outside git unless intentionally curated.\n"
+        "- Do not edit existing rows by hand; add a new promoted row or supersession metadata in a follow-up command.\n\n"
+        "## Review\n\n"
+        "Use `evonn-compare evidence report --registry evidence` and then inspect `evidence_report.md`.\n"
+        "Use `evonn-compare evidence validate --registry evidence --require-artifacts` before citing evidence in a PR.\n"
+    )
+
+
+def _git(args: list[str]) -> str | None:
+    try:
+        return subprocess.check_output(["git", *args], cwd=Path(__file__).resolve().parents[4], text=True).strip()
+    except Exception:
+        return None
+
+
+def _git_dirty() -> bool | None:
+    status = _git(["status", "--short"])
+    if status is None:
+        return None
+    return bool(status.strip())
 
 
 def _summary_budget(payload: dict[str, Any]) -> int:
@@ -553,6 +861,20 @@ def _render_report_markdown(payload: dict[str, Any]) -> str:
         f"| {row['system']} | {row['lm_row_count']} | {row['unique_metric_value_count']} | {row['flatline_suspected']} |"
         for row in payload["lm_flatline_diagnostics"]
     )
+    comparison_rows = "\n".join(
+        "| {before} -> {after} | {pack} | {budget} | {delta} | {decision} |".format(
+            before=row["before_label"],
+            after=row["after_label"],
+            pack=row["pack_name"],
+            budget=row["budget"],
+            delta=row["aggregate_score_delta"],
+            decision=row["decision_label"],
+        )
+        for row in payload["before_after_comparisons"]
+    )
+    artifact_validation = payload.get("artifact_validation") or {}
+    validation_issues = "; ".join(artifact_validation.get("issues") or []) or "none"
+    validation_warnings = "; ".join(artifact_validation.get("warnings") or []) or "none"
     return (
         "# EvoNN Evidence Registry Report\n\n"
         f"- Generated At: `{payload['generated_at']}`\n"
@@ -563,6 +885,10 @@ def _render_report_markdown(payload: dict[str, Any]) -> str:
         "| Label | Pack | Budget | Seeds | Decision | Leader | Blockers |\n"
         "| --- | --- | ---: | --- | --- | --- | --- |\n"
         f"{group_rows or '| n/a | n/a | 0 | n/a | inconclusive | n/a | no promoted runs |'}\n\n"
+        "## Before/After Comparisons\n\n"
+        "| Comparison | Pack | Budget | Aggregate Delta | Decision |\n"
+        "| --- | --- | ---: | ---: | --- |\n"
+        f"{comparison_rows or '| n/a | n/a | 0 | 0 | inconclusive |'}\n\n"
         "## Engine Roles\n\n"
         "| System | Role | Leader Groups | Family Leads |\n"
         "| --- | --- | ---: | --- |\n"
@@ -575,9 +901,16 @@ def _render_report_markdown(payload: dict[str, Any]) -> str:
         f"- Seeded Trend Rows: `{payload['transfer_evidence']['seeded_trend_row_count']}`\n"
         f"- Seed Sources: `{', '.join(payload['transfer_evidence']['seed_sources']) or 'none'}`\n"
         f"- Proof States: `{', '.join(payload['transfer_evidence']['proof_states']) or 'none'}`\n"
-        f"- Native Transfer Claim Ready: `{payload['transfer_evidence']['native_transfer_claim_ready']}`\n\n"
+        f"- Native Transfer Claim Ready: `{payload['transfer_evidence']['native_transfer_claim_ready']}`\n"
+        f"- Portable Transfer Cases: `{payload['transfer_evidence']['portable_transfer_case_count']}`\n"
+        f"- Portable Verdict Counts: `{payload['transfer_evidence']['portable_transfer_verdict_counts']}`\n"
+        f"- Portable Consensus: `{payload['transfer_evidence']['portable_transfer_consensus']}`\n\n"
         "## Quality Diversity Evidence\n\n"
         f"- Descriptor Or Archive Rows: `{payload['quality_diversity_evidence']['descriptor_or_archive_row_count']}`\n"
         f"- Summary Archive Evidence Count: `{payload['quality_diversity_evidence']['summary_archive_evidence_count']}`\n"
-        f"- Claim Ready: `{payload['quality_diversity_evidence']['claim_ready']}`\n"
+        f"- Claim Ready: `{payload['quality_diversity_evidence']['claim_ready']}`\n\n"
+        "## Artifact Validation\n\n"
+        f"- OK: `{artifact_validation.get('ok')}`\n"
+        f"- Issues: `{validation_issues}`\n"
+        f"- Warnings: `{validation_warnings}`\n"
     )

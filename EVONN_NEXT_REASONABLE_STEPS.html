@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EvoNN Next Reasonable Steps</title>
+  <style>
+    :root {
+      --paper: #f4efe3;
+      --ink: #17130d;
+      --muted: #706858;
+      --rule: #cbbf9d;
+      --panel: rgba(255, 252, 244, 0.78);
+      --panel-strong: rgba(255, 249, 231, 0.94);
+      --green: #2c7a55;
+      --blue: #285f8f;
+      --amber: #b36a16;
+      --red: #9f3f2f;
+      --violet: #735476;
+      --shadow: 0 24px 70px rgba(44, 33, 14, 0.18);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(82, 70, 41, 0.045) 1px, transparent 1px) 0 0 / 42px 42px,
+        linear-gradient(rgba(82, 70, 41, 0.045) 1px, transparent 1px) 0 0 / 42px 42px,
+        radial-gradient(circle at 15% 10%, rgba(179, 106, 22, 0.22), transparent 34rem),
+        radial-gradient(circle at 85% 20%, rgba(40, 95, 143, 0.18), transparent 32rem),
+        var(--paper);
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+      line-height: 1.5;
+    }
+
+    .shell {
+      width: min(1180px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 44px 0 70px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: clamp(32px, 7vw, 78px);
+      border: 1px solid rgba(23, 19, 13, 0.18);
+      border-radius: 36px;
+      background: linear-gradient(135deg, rgba(255, 252, 244, 0.92), rgba(236, 225, 197, 0.78));
+      box-shadow: var(--shadow);
+    }
+
+    .hero:before {
+      content: "";
+      position: absolute;
+      width: 440px;
+      height: 440px;
+      right: -190px;
+      top: -180px;
+      border: 34px solid rgba(44, 122, 85, 0.18);
+      border-radius: 50%;
+    }
+
+    .eyebrow,
+    .kicker,
+    .card-label,
+    th {
+      font-family: Optima, Candara, "Trebuchet MS", sans-serif;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-size: 0.76rem;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    h1 {
+      max-width: 920px;
+      margin: 10px 0 18px;
+      font-size: clamp(3.1rem, 8vw, 7.5rem);
+      line-height: 0.88;
+      letter-spacing: -0.065em;
+    }
+
+    .lede {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(1.1rem, 2vw, 1.55rem);
+      color: #3c3529;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin: 26px 0 34px;
+    }
+
+    .status-card,
+    .step,
+    .note,
+    .lane,
+    .table-wrap {
+      border: 1px solid rgba(23, 19, 13, 0.16);
+      background: var(--panel);
+      box-shadow: 0 14px 40px rgba(44, 33, 14, 0.09);
+    }
+
+    .status-card {
+      min-height: 130px;
+      padding: 20px;
+      border-radius: 24px;
+    }
+
+    .status-card strong {
+      display: block;
+      margin-top: 12px;
+      font-family: Optima, Candara, "Trebuchet MS", sans-serif;
+      font-size: 2rem;
+      letter-spacing: -0.04em;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.18fr 0.82fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .step {
+      position: relative;
+      padding: 28px;
+      border-radius: 28px;
+      margin-bottom: 18px;
+      overflow: hidden;
+    }
+
+    .step:before {
+      content: attr(data-index);
+      position: absolute;
+      right: 22px;
+      top: 8px;
+      font-family: Optima, Candara, "Trebuchet MS", sans-serif;
+      font-size: 5rem;
+      line-height: 1;
+      font-weight: 900;
+      color: rgba(23, 19, 13, 0.06);
+      letter-spacing: -0.08em;
+    }
+
+    h2 {
+      margin: 0 0 8px;
+      font-size: clamp(1.55rem, 3vw, 2.3rem);
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+
+    .step p,
+    .note p,
+    .lane p {
+      margin: 0 0 14px;
+      color: #3f382c;
+    }
+
+    ul {
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    li {
+      position: relative;
+      padding: 8px 0 8px 24px;
+      border-top: 1px solid rgba(23, 19, 13, 0.08);
+    }
+
+    li:before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 17px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 5px 11px;
+      border: 1px solid rgba(23, 19, 13, 0.18);
+      border-radius: 999px;
+      background: rgba(255, 252, 244, 0.72);
+      font-family: Optima, Candara, "Trebuchet MS", sans-serif;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .side {
+      position: sticky;
+      top: 18px;
+    }
+
+    .note {
+      padding: 24px;
+      border-radius: 28px;
+      margin-bottom: 18px;
+      background: var(--panel-strong);
+    }
+
+    .lane {
+      padding: 18px;
+      border-radius: 22px;
+      margin-top: 12px;
+    }
+
+    .lane strong {
+      display: block;
+      margin-bottom: 4px;
+      font-family: Optima, Candara, "Trebuchet MS", sans-serif;
+      letter-spacing: 0.02em;
+    }
+
+    .command {
+      display: block;
+      margin-top: 12px;
+      padding: 14px;
+      border-radius: 16px;
+      color: #f8f0dc;
+      background: #1e1a14;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.82rem;
+      overflow-x: auto;
+    }
+
+    .table-wrap {
+      margin-top: 22px;
+      border-radius: 28px;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(255, 252, 244, 0.72);
+    }
+
+    th,
+    td {
+      padding: 16px 18px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid rgba(23, 19, 13, 0.1);
+    }
+
+    td:first-child {
+      font-family: Optima, Candara, "Trebuchet MS", sans-serif;
+      font-weight: 800;
+    }
+
+    .priority {
+      color: var(--red);
+      font-weight: 800;
+    }
+
+    .footer {
+      margin-top: 34px;
+      padding: 22px;
+      border-top: 1px solid var(--rule);
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    @media (max-width: 920px) {
+      .status-grid,
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .side {
+        position: static;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="eyebrow">EvoNN roadmap brief</div>
+      <h1>Next reasonable steps after Phases 0-3</h1>
+      <p class="lede">
+        The project should now stop adding planning layers and use the new promoted evidence registry to prove or reject engine changes. The next work is native proof, repeated evidence, and focused search quality.
+      </p>
+    </section>
+
+    <section class="status-grid" aria-label="Current status">
+      <article class="status-card">
+        <div class="card-label">Done</div>
+        <strong>Registry</strong>
+        <p>Promote, report, and validate comparison evidence.</p>
+      </article>
+      <article class="status-card">
+        <div class="card-label">Done</div>
+        <strong>Transfer surface</strong>
+        <p>Seed provenance and proof state are visible in evidence reports.</p>
+      </article>
+      <article class="status-card">
+        <div class="card-label">Open</div>
+        <strong>Native proof</strong>
+        <p>Portable transfer is not yet enough for a research claim.</p>
+      </article>
+      <article class="status-card">
+        <div class="card-label">Focus</div>
+        <strong>Tier B/C</strong>
+        <p>Use repeated runs before steering architecture decisions.</p>
+      </article>
+    </section>
+
+    <section class="main-grid">
+      <div>
+        <article class="step" data-index="01">
+          <div class="kicker">Immediate foundation</div>
+          <h2>Make promoted evidence the default review surface</h2>
+          <p>
+            Every serious compare run should be promoted into the registry, then reviewed from the registry report rather than from transient workspaces.
+          </p>
+          <ul>
+            <li>Add git commit, branch, backend, hardware, output-quality level, and contender-floor state into registry rows when available.</li>
+            <li>Connect the canonical dashboard directly to registry rows, not only copied fair-matrix summaries.</li>
+            <li>Add `evidence/README.md` with retention, promotion, and cleanup rules.</li>
+            <li>Add stale-artifact and missing-artifact warnings to `evidence validate`.</li>
+          </ul>
+          <code class="command">uv run --package evonn-compare evonn-compare evidence promote .tmp/fair-matrix-local --registry evidence --label tier-b-engine-quality</code>
+        </article>
+
+        <article class="step" data-index="02">
+          <div class="kicker">Decision loop</div>
+          <h2>Run repeated Tier B and Tier C evidence campaigns</h2>
+          <p>
+            The next useful comparison work is not broader benchmark breadth. It is repeated evidence on the tiers that already expose engine differences.
+          </p>
+          <ul>
+            <li>Run `tier_b_core_v2` at budget `96` with three seeds.</li>
+            <li>Run `tier_b_core_v2` at budget `384` with two seeds if the low-budget signal is meaningful.</li>
+            <li>Run `tier_c_architecture_sensitive` at budget `128` as exploratory pressure.</li>
+            <li>Promote all clean summaries into one registry label and inspect decision blockers.</li>
+          </ul>
+          <div class="tag-row">
+            <span class="tag">Tier B first</span>
+            <span class="tag">multiple seeds</span>
+            <span class="tag">registry promoted</span>
+            <span class="tag">no broad claims yet</span>
+          </div>
+        </article>
+
+        <article class="step" data-index="03">
+          <div class="kicker">Research proof</div>
+          <h2>Prove or reject Primordia to Topograph transfer</h2>
+          <p>
+            This is the most important scientific gap. The system needs to show whether primitive motifs discovered by Primordia actually improve Topograph under fair accounting.
+          </p>
+          <ul>
+            <li>Harden the seed artifact contract with target compatibility, checksum, source budget, descriptor, and contamination policy.</li>
+            <li>Make Topograph's native seed ingestion visibly change initialization or search bias.</li>
+            <li>Run unseeded, directly seeded, and staged-seeded variants with identical pack, budget, seed, and backend.</li>
+            <li>Classify the result as gain, no material change, regression, or inconclusive in the evidence registry.</li>
+          </ul>
+        </article>
+
+        <article class="step" data-index="04">
+          <div class="kicker">Engine quality</div>
+          <h2>Use evidence to split engine work by role</h2>
+          <p>
+            Avoid making all engines weak variants of the same loop. Each engine should earn a role from repeated evidence.
+          </p>
+          <ul>
+            <li>Prism: improve budget allocation, family diagnostics, and Pareto scoring.</li>
+            <li>Topograph: add topology descriptors, quality-diversity archive evidence, and seed ingestion ablations.</li>
+            <li>Stratograph: diagnose LM flatline behavior and prove whether hierarchy adds value.</li>
+            <li>Primordia: focus on motif bank quality, seed-source usefulness, and real LM/image validation.</li>
+            <li>Contenders: keep the floor strong enough that EvoNN wins mean something.</li>
+          </ul>
+        </article>
+
+        <article class="step" data-index="05">
+          <div class="kicker">L4 evidence</div>
+          <h2>Upgrade decision labels before optimizing performance</h2>
+          <p>
+            Performance work is valuable, but only after the comparison layer can distinguish real gains from noisy wins.
+          </p>
+          <ul>
+            <li>Add before/after cohort comparisons with explicit regression and likely-gain labels.</li>
+            <li>Add effect sizes against best required contender and against previous engine baseline.</li>
+            <li>Make ceiling ties non-promotional evidence.</li>
+            <li>Detect backend drift, mixed-budget ambiguity, and missing repeated seeds as blockers.</li>
+          </ul>
+        </article>
+      </div>
+
+      <aside class="side">
+        <section class="note">
+          <div class="kicker">Recommended two-week slice</div>
+          <h2>Do this next</h2>
+          <div class="lane">
+            <strong>1. Registry hardening</strong>
+            <p>Add missing metadata fields, registry README, stale artifact validation, and dashboard loading from registry rows.</p>
+          </div>
+          <div class="lane">
+            <strong>2. Tier B repeated run</strong>
+            <p>Run `tier_b_core_v2@96` with three seeds and promote the evidence.</p>
+          </div>
+          <div class="lane">
+            <strong>3. Native transfer branch</strong>
+            <p>Make Topograph consume Primordia seeds natively and run one controlled transfer experiment.</p>
+          </div>
+        </section>
+
+        <section class="note">
+          <div class="kicker">Do not prioritize</div>
+          <h2>Things to avoid now</h2>
+          <ul>
+            <li>Adding many new benchmark tiers before Tier B/C repeated evidence is stable.</li>
+            <li>Claiming superiority from single-seed broad-lane runs.</li>
+            <li>Creating new markdown-only plans without executable gates.</li>
+            <li>Doing large performance refactors before budget truth and L4 labels are stronger.</li>
+          </ul>
+        </section>
+      </aside>
+    </section>
+
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Workstream</th>
+            <th>Why it matters</th>
+            <th>Exit gate</th>
+            <th>Priority</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Evidence registry</td>
+            <td>Turns run artifacts into durable project memory.</td>
+            <td>Dashboard and report can rebuild recent claims from promoted evidence.</td>
+            <td class="priority">Highest</td>
+          </tr>
+          <tr>
+            <td>Repeated Tier B/C runs</td>
+            <td>Separates real engine changes from seed noise.</td>
+            <td>Three Tier B local seeds and clear decision blockers or labels.</td>
+            <td class="priority">Highest</td>
+          </tr>
+          <tr>
+            <td>Native transfer</td>
+            <td>Tests the core EvoNN claim that discovered structure compounds.</td>
+            <td>Primordia to Topograph classified as gain, no change, regression, or inconclusive.</td>
+            <td class="priority">Highest</td>
+          </tr>
+          <tr>
+            <td>Engine roles</td>
+            <td>Prevents unfocused engine sprawl.</td>
+            <td>Each engine has an evidence-backed role or downgrade path.</td>
+            <td>High</td>
+          </tr>
+          <tr>
+            <td>Performance</td>
+            <td>Useful once quality comparisons are trustworthy.</td>
+            <td>Baseline, one optimization, remeasure, keep or scrap.</td>
+            <td>Medium</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Executed step</th>
+            <th>Result</th>
+            <th>Evidence path</th>
+            <th>Interpretation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Tier B repeated run</td>
+            <td>`tier_b_core_v2@96`, seeds `42,43,44`, completed and promoted.</td>
+            <td>`.tmp/next-steps/tier_b_96` and `.tmp/next-steps/evidence`</td>
+            <td>Decision group is unblocked; contenders remain the leader, so EvoNN work should focus on search quality before claims.</td>
+          </tr>
+          <tr>
+            <td>Tier C exploratory run</td>
+            <td>`tier_c_architecture_sensitive@128`, seed `42`, completed and promoted.</td>
+            <td>`.tmp/next-steps/tier_c_128`</td>
+            <td>Correctly blocked as exploratory because it lacks the required repeated seeds and is not yet a decision-grade lane.</td>
+          </tr>
+          <tr>
+            <td>Transfer-regime run</td>
+            <td>`Primordia -> Topograph`, direct and staged portable regimes, seeds `42,43,44`, completed.</td>
+            <td>`.tmp/next-steps/transfer_tier_b_96`</td>
+            <td>Portable direct and staged regimes both show `portable_gain_signal`, but native transfer claim readiness remains false.</td>
+          </tr>
+          <tr>
+            <td>Registry hardening</td>
+            <td>Implemented richer registry metadata, artifact validation, registry-backed dashboard discovery, before/after labels, and portable transfer case aggregation.</td>
+            <td>`EvoNN-Compare/src/evonn_compare/orchestration/evidence_registry.py`</td>
+            <td>The next engineering branch can now cite promoted evidence with explicit blockers instead of manual dashboard interpretation.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer class="footer">
+      Generated from the current consolidated and hard-remainder plans after the promoted evidence registry implementation. This page is an execution brief, not a replacement for `EVONN_CONSOLIDATED_PLAN.md`.
+    </footer>
+  </main>
+</body>
+</html>

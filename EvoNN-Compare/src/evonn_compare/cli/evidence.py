@@ -10,6 +10,7 @@ from evonn_compare.orchestration.evidence_registry import (
     build_evidence_report,
     promote_evidence,
     validate_registry,
+    validate_registry_artifacts,
 )
 
 evidence_app = typer.Typer(help="Promote and analyze decision-grade comparison evidence")
@@ -57,12 +58,15 @@ def report(
 @evidence_app.command("validate")
 def validate(
     registry: str = typer.Option("evidence", "--registry", help="Evidence registry directory"),
+    require_artifacts: bool = typer.Option(False, "--require-artifacts/--no-require-artifacts", help="Fail when no registered summary artifact is readable"),
 ) -> None:
     """Validate evidence registry row shape."""
 
-    result = validate_registry(registry=Path(registry))
+    result = validate_registry_artifacts(registry=Path(registry)) if require_artifacts else validate_registry(registry=Path(registry))
     typer.echo(f"ok\t{result['ok']}")
     typer.echo(f"records\t{result['record_count']}")
+    for warning in result.get("warnings", []):
+        typer.echo(f"warning\t{warning}")
     for issue in result["issues"]:
         typer.echo(f"issue\t{issue}")
     if not result["ok"]:
