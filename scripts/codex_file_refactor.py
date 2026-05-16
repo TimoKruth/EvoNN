@@ -19,7 +19,6 @@ import argparse
 import fnmatch
 import hashlib
 import json
-import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -389,6 +388,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     root = git_root(Path.cwd())
+
+    if args.apply and args.branch:
+        if has_uncommitted_changes(root) and not args.allow_dirty:
+            print(
+                "Refusing to switch/create a branch with uncommitted changes. "
+                "Commit/stash first or pass --allow-dirty.",
+                file=sys.stderr,
+            )
+            return 2
+        create_branch(root, args.branch)
+
     state_file = root / args.state_file
     log_dir = root / args.log_dir
 
@@ -435,16 +445,6 @@ def main(argv: list[str]) -> int:
             print(f"... and {len(files) - 20} more")
         print("\nRun with --apply to start Codex sessions.")
         return 0
-
-    if args.branch:
-        if has_uncommitted_changes(root) and not args.allow_dirty:
-            print(
-                "Refusing to switch/create a branch with uncommitted changes. "
-                "Commit/stash first or pass --allow-dirty.",
-                file=sys.stderr,
-            )
-            return 2
-        create_branch(root, args.branch)
 
     if has_uncommitted_changes(root) and not args.allow_dirty:
         print(
