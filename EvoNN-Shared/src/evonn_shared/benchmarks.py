@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict
 
 TaskKind = Literal["classification", "regression", "language_modeling"]
 MetricDirection = Literal["max", "min"]
+BenchmarkGroup = Literal["tabular", "synthetic", "image", "language_modeling"]
+BenchmarkDifficulty = Literal["smoke", "core", "hard", "stress"]
+RuntimeClass = Literal["ci", "local", "overnight", "weekend", "special"]
 
 
 class BenchmarkDescriptor(BaseModel):
@@ -22,10 +25,10 @@ class BenchmarkDescriptor(BaseModel):
     task_kind: TaskKind
     metric_name: str
     metric_direction: MetricDirection
-    benchmark_group: Literal["tabular", "synthetic", "image", "language_modeling"] | None = None
+    benchmark_group: BenchmarkGroup | None = None
     domain: str | None = None
-    difficulty: Literal["smoke", "core", "hard", "stress"] | None = None
-    runtime_class: Literal["ci", "local", "overnight", "weekend", "special"] | None = None
+    difficulty: BenchmarkDifficulty | None = None
+    runtime_class: RuntimeClass | None = None
     minimum_required_contenders: tuple[str, ...] = ()
     enhanced_optional_contenders: tuple[str, ...] = ()
     score_ceiling: float | None = None
@@ -36,12 +39,17 @@ class BenchmarkDescriptor(BaseModel):
     native_name: str | None = None
 
 
-def load_benchmark_descriptors(path: str | Path) -> list[BenchmarkDescriptor]:
-    """Load benchmark descriptors from a YAML list or mapping."""
+def _benchmark_items(payload: Any) -> Any:
+    """Return the benchmark sequence from either supported YAML container shape."""
 
-    payload = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     if isinstance(payload, dict):
-        benchmarks = payload.get("benchmarks", [])
-    else:
-        benchmarks = payload
-    return [BenchmarkDescriptor.model_validate(item) for item in benchmarks]
+        return payload.get("benchmarks", [])
+    return payload
+
+
+def load_benchmark_descriptors(path: str | Path) -> list[BenchmarkDescriptor]:
+    """Load benchmark descriptors from a YAML sequence or ``benchmarks`` mapping."""
+
+    descriptor_path = Path(path)
+    payload = yaml.safe_load(descriptor_path.read_text(encoding="utf-8"))
+    return [BenchmarkDescriptor.model_validate(item) for item in _benchmark_items(payload)]

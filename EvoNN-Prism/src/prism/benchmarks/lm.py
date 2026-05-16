@@ -26,6 +26,35 @@ def _shared_lm_cache_dir() -> Path:
     return root / "lm_cache"
 
 
+def _lm_cache_search_roots() -> list[Path]:
+    """Return cache roots in lookup order for dataset-id resolution."""
+    env_root = os.environ.get(_LM_CACHE_ENV_VAR)
+    search_roots: list[Path] = []
+    if env_root:
+        root = Path(env_root).expanduser()
+        search_roots.extend([root, root / "datasets"])
+    search_roots.extend(
+        [_shared_lm_cache_dir(), _DEFAULT_REPO_CACHE_DIR, _DEFAULT_LOCAL_CACHE_DIR]
+    )
+    return search_roots
+
+
+def _is_explicit_cache_path(dataset: str, candidate: Path) -> bool:
+    """Return whether `dataset` should be treated as a literal file path."""
+    return candidate.suffix == ".npz" or candidate.is_absolute() or os.sep in dataset
+
+
+def _cap_samples(
+    x: np.ndarray,
+    y: np.ndarray,
+    max_samples: int | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Apply an optional sample cap while preserving historical slicing behavior."""
+    if max_samples is not None and x.shape[0] > max_samples:
+        return x[:max_samples], y[:max_samples]
+    return x, y
+
+
 def generate_synthetic_lm_dataset(
     *,
     seed: int = 42,
@@ -107,19 +136,14 @@ def load_cached_lm_dataset(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Load cached LM windows from NPZ and return train/validation splits."""
     cache_path = resolve_lm_cache_path(dataset)
-    payload = np.load(cache_path)
+    with np.load(cache_path) as payload:
+        x_train = payload["x_train"].astype(np.int32, copy=False)
+        y_train = payload["y_train"].astype(np.int64, copy=False)
+        x_val = payload["x_val"].astype(np.int32, copy=False)
+        y_val = payload["y_val"].astype(np.int64, copy=False)
 
-    x_train = payload["x_train"].astype(np.int32, copy=False)
-    y_train = payload["y_train"].astype(np.int64, copy=False)
-    x_val = payload["x_val"].astype(np.int32, copy=False)
-    y_val = payload["y_val"].astype(np.int64, copy=False)
-
-    if max_train_samples is not None and x_train.shape[0] > max_train_samples:
-        x_train = x_train[:max_train_samples]
-        y_train = y_train[:max_train_samples]
-    if max_val_samples is not None and x_val.shape[0] > max_val_samples:
-        x_val = x_val[:max_val_samples]
-        y_val = y_val[:max_val_samples]
+    x_train, y_train = _cap_samples(x_train, y_train, max_train_samples)
+    x_val, y_val = _cap_samples(x_val, y_val, max_val_samples)
     del max_test_samples
 
     return x_train, y_train, x_val, y_val
@@ -128,18 +152,12 @@ def load_cached_lm_dataset(
 def resolve_lm_cache_path(dataset: str) -> Path:
     """Resolve dataset id or explicit `.npz` path to a cache file."""
     candidate = Path(dataset).expanduser()
-    if candidate.suffix == ".npz" or candidate.is_absolute() or os.sep in dataset:
+    if _is_explicit_cache_path(dataset, candidate):
         if not candidate.exists():
             raise FileNotFoundError(f"LM cache not found: {candidate}")
         return candidate
 
-    env_root = os.environ.get(_LM_CACHE_ENV_VAR)
-    search_roots: list[Path] = []
-    if env_root:
-        root = Path(env_root).expanduser()
-        search_roots.extend([root, root / "datasets"])
-    search_roots.extend([_shared_lm_cache_dir(), _DEFAULT_REPO_CACHE_DIR, _DEFAULT_LOCAL_CACHE_DIR])
-
+    search_roots = _lm_cache_search_roots()
     for root in search_roots:
         path = root / f"{dataset}.npz"
         if path.exists():

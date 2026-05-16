@@ -3,27 +3,42 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from typing import Protocol, TypeAlias
 
 import numpy as np
 
+_WeightSnapshot: TypeAlias = dict[str, np.ndarray]
+_CacheMetadata: TypeAlias = dict[str, object]
 
-def _copy_weights(weights: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+
+class _TrainableModel(Protocol):
+    def trainable_parameters(self) -> object:
+        ...
+
+    def update(self, params: dict[str, object]) -> object:
+        ...
+
+    def parameters(self) -> object:
+        ...
+
+
+def _copy_weights(weights: _WeightSnapshot) -> _WeightSnapshot:
     return {k: np.array(v, copy=True) for k, v in weights.items()}
 
 
 class WeightCache:
-    """FIFO cache storing trained weight snapshots keyed by genome_id.
+    """Bounded cache storing trained weight snapshots keyed by genome_id.
 
     Supports exact-match lookup and shape-compatible transfer from parent
     to child model (Lamarckian weight inheritance).
     """
 
     def __init__(self, max_size: int = 200) -> None:
-        self._cache: OrderedDict[str, dict[str, np.ndarray]] = OrderedDict()
-        self._meta: dict[str, dict[str, object]] = {}
+        self._cache: OrderedDict[str, _WeightSnapshot] = OrderedDict()
+        self._meta: dict[str, _CacheMetadata] = {}
         self.max_size = max_size
 
-    def store(self, genome_id: str, model, family: str | None = None) -> None:
+    def store(self, genome_id: str, model: _TrainableModel, family: str | None = None) -> None:
         """Snapshot all trainable parameters from an MLX model.
 
         The optional ``family`` argument is accepted for compatibility with
@@ -31,7 +46,7 @@ class WeightCache:
         """
         import mlx.utils
 
-        snapshot: dict[str, np.ndarray] = {}
+        snapshot: _WeightSnapshot = {}
         for name, param in mlx.utils.tree_flatten(model.trainable_parameters()):
             snapshot[name] = np.array(param)
 
@@ -43,12 +58,12 @@ class WeightCache:
             "shapes": {name: tuple(value.shape) for name, value in snapshot.items()},
         }
 
-        # FIFO eviction
+        # ``lookup`` refreshes entry order, so this evicts the least recently used entry.
         while len(self._cache) > self.max_size:
             old_id, _ = self._cache.popitem(last=False)
             self._meta.pop(old_id, None)
 
-    def lookup(self, genome_id: str) -> dict[str, np.ndarray] | None:
+    def lookup(self, genome_id: str) -> _WeightSnapshot | None:
         """Return a copy of cached weights for exact genome_id match."""
         entry = self._cache.get(genome_id)
         if entry is None:
@@ -56,7 +71,7 @@ class WeightCache:
         self._cache.move_to_end(genome_id)
         return _copy_weights(entry)
 
-    def transfer_weights(self, parent_id: str, child_model) -> bool:
+    def transfer_weights(self, parent_id: str, child_model: _TrainableModel) -> bool:
         """Load parent weights into child model where parameter shapes match.
 
         Returns True if at least one parameter was transferred.
@@ -70,29 +85,21 @@ class WeightCache:
 
     def transfer_best_available(
         self,
-        child_model,
+        child_model: _TrainableModel,
         *,
         family: str | None = None,
         preferred_ids: list[str] | None = None,
         exclude_ids: set[str] | None = None,
     ) -> str | None:
+        """Transfer from the cached genome with the highest shape compatibility score."""
         child_params = _flatten_trainable_parameters(child_model)
         exclude_ids = exclude_ids or set()
 
-        candidate_ids: list[str] = []
-        seen: set[str] = set()
-        for genome_id in preferred_ids or []:
-            if genome_id in self._cache and genome_id not in exclude_ids:
-                candidate_ids.append(genome_id)
-                seen.add(genome_id)
-        for genome_id in reversed(self._cache):
-            if genome_id in seen or genome_id in exclude_ids:
-                continue
-            meta = self._meta.get(genome_id, {})
-            if family is not None and meta.get("family") not in {None, family}:
-                continue
-            candidate_ids.append(genome_id)
-
+        candidate_ids = self._transfer_candidates(
+            family=family,
+            preferred_ids=preferred_ids,
+            exclude_ids=exclude_ids,
+        )
         best_id = None
         best_score = 0.0
         for genome_id in candidate_ids:
@@ -113,6 +120,28 @@ class WeightCache:
         transferred = _apply_matching_weights(parent_weights, child_model, child_params)
         return best_id if transferred > 0 else None
 
+    def _transfer_candidates(
+        self,
+        *,
+        family: str | None,
+        preferred_ids: list[str] | None,
+        exclude_ids: set[str],
+    ) -> list[str]:
+        candidate_ids: list[str] = []
+        seen: set[str] = set()
+        for genome_id in preferred_ids or []:
+            if genome_id in self._cache and genome_id not in exclude_ids:
+                candidate_ids.append(genome_id)
+                seen.add(genome_id)
+        for genome_id in reversed(self._cache):
+            if genome_id in seen or genome_id in exclude_ids:
+                continue
+            meta = self._meta.get(genome_id, {})
+            if family is not None and meta.get("family") not in {None, family}:
+                continue
+            candidate_ids.append(genome_id)
+        return candidate_ids
+
     def clear(self) -> None:
         self._cache.clear()
         self._meta.clear()
@@ -121,7 +150,7 @@ class WeightCache:
         return len(self._cache)
 
 
-def _flatten_trainable_parameters(model) -> dict[str, np.ndarray]:
+def _flatten_trainable_parameters(model: _TrainableModel) -> _WeightSnapshot:
     import mlx.utils
 
     return {
@@ -131,9 +160,9 @@ def _flatten_trainable_parameters(model) -> dict[str, np.ndarray]:
 
 
 def _apply_matching_weights(
-    parent_weights: dict[str, np.ndarray],
-    child_model,
-    child_params: dict[str, np.ndarray],
+    parent_weights: _WeightSnapshot,
+    child_model: _TrainableModel,
+    child_params: _WeightSnapshot,
 ) -> int:
     import mlx.core as mx
 
@@ -149,7 +178,7 @@ def _apply_matching_weights(
                 continue
             transferred += 1
         elif parent_param.ndim == child_param.ndim:
-            slices = tuple(slice(0, min(p, c)) for p, c in zip(parent_param.shape, child_param.shape))
+            slices = _overlap_slices(parent_param, child_param)
             new_param = np.array(child_param)
             overlap = parent_param[slices]
             target_slices = tuple(slice(0, s.stop) for s in slices)
@@ -165,9 +194,16 @@ def _apply_matching_weights(
     return transferred
 
 
+def _overlap_slices(parent_param: np.ndarray, child_param: np.ndarray) -> tuple[slice, ...]:
+    return tuple(
+        slice(0, min(parent_dim, child_dim))
+        for parent_dim, child_dim in zip(parent_param.shape, child_param.shape)
+    )
+
+
 def _compatibility_score(
-    parent_weights: dict[str, np.ndarray],
-    child_params: dict[str, np.ndarray],
+    parent_weights: _WeightSnapshot,
+    child_params: _WeightSnapshot,
 ) -> float:
     score = 0.0
     for name, child_param in child_params.items():

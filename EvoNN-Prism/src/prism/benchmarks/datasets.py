@@ -25,6 +25,15 @@ _DEFAULT_SHARED_ROOT = _SUPERPROJECT_ROOT / "shared-benchmarks"
 _DEFAULT_CATALOG_DIR = _LOCAL_CATALOG_DIR
 _CATALOG_ENV_VAR = "PRISM_CATALOG_DIR"
 _SHARED_ROOT_ENV_VAR = "EVONN_SHARED_BENCHMARKS_DIR"
+_BUILTIN_SKLEARN_LOADERS = {
+    "load_iris",
+    "load_wine",
+    "load_digits",
+    "load_breast_cancer",
+    "load_diabetes",
+    "load_linnerud",
+}
+_OPENML_IMAGE_IDS = {"mnist": 554, "fashion_mnist": 40996}
 
 
 def _shared_catalog_dir() -> Path:
@@ -62,6 +71,23 @@ def _benchmark_missing_message(name: str, cat_dir: Path) -> str:
     )
 
 
+def _is_categorical_column(column) -> bool:
+    """Return whether a pandas-like column should be encoded as categories."""
+    return (
+        hasattr(column, "cat")
+        or column.dtype.name == "category"
+        or column.dtype == object
+    )
+
+
+def _encode_classification_labels(labels: np.ndarray) -> np.ndarray:
+    """Encode object/string labels deterministically while preserving numeric labels."""
+    if labels.dtype.kind in ("U", "S", "O"):
+        label_map = {value: idx for idx, value in enumerate(sorted(set(labels)))}
+        return np.array([label_map[value] for value in labels], dtype=np.int64)
+    return labels.astype(np.int64)
+
+
 # ---------------------------------------------------------------------------
 # sklearn loaders
 # ---------------------------------------------------------------------------
@@ -74,24 +100,11 @@ def load_sklearn(spec: BenchmarkSpec, seed: int = 42) -> tuple[np.ndarray, np.nd
     ds = spec.dataset
 
     # Built-in loaders
-    if ds == "load_iris":
-        d = skd.load_iris()
+    if ds in _BUILTIN_SKLEARN_LOADERS:
+        d = getattr(skd, ds)()
+        if ds == "load_linnerud":
+            return d.data, d.target[:, 0]
         return d.data, d.target
-    if ds == "load_wine":
-        d = skd.load_wine()
-        return d.data, d.target
-    if ds == "load_digits":
-        d = skd.load_digits()
-        return d.data, d.target
-    if ds == "load_breast_cancer":
-        d = skd.load_breast_cancer()
-        return d.data, d.target
-    if ds == "load_diabetes":
-        d = skd.load_diabetes()
-        return d.data, d.target
-    if ds == "load_linnerud":
-        d = skd.load_linnerud()
-        return d.data, d.target[:, 0]
 
     input_dim = spec.input_dim or (spec.input_shape[0] if spec.input_shape else 4)
     num_classes = spec.num_classes or spec.output_dim or 2
@@ -174,18 +187,15 @@ def load_openml(spec: BenchmarkSpec) -> tuple[np.ndarray, np.ndarray]:
 
     logger.info("Downloading OpenML dataset %d for %s", source_id, spec.id)
     dataset = openml.datasets.get_dataset(source_id, download_data=True)
-    X_df, y_series, categorical_indicator, _ = dataset.get_data(
+    X_df, y_series, _categorical_indicator, _ = dataset.get_data(
         target=dataset.default_target_attribute,
     )
 
     # Encode categorical features to numeric
     for col in X_df.columns:
-        if (
-            hasattr(X_df[col], "cat")
-            or X_df[col].dtype.name == "category"
-            or X_df[col].dtype == object
-        ):
-            X_df[col] = pd.Categorical(X_df[col]).codes.astype(np.float32)
+        column = X_df[col]
+        if _is_categorical_column(column):
+            X_df[col] = pd.Categorical(column).codes.astype(np.float32)
 
     X = X_df.to_numpy(dtype=np.float32, na_value=np.nan)
     # Replace remaining NaN with 0
@@ -193,12 +203,7 @@ def load_openml(spec: BenchmarkSpec) -> tuple[np.ndarray, np.ndarray]:
 
     y = y_series.to_numpy()
     if spec.task == "classification":
-        if y.dtype.kind in ("U", "S", "O"):
-            uniq = sorted(set(y))
-            label_map = {v: i for i, v in enumerate(uniq)}
-            y = np.array([label_map[v] for v in y], dtype=np.int64)
-        else:
-            y = y.astype(np.int64)
+        y = _encode_classification_labels(y)
     else:
         y = y.astype(np.float32)
 
@@ -220,8 +225,7 @@ def load_image(spec: BenchmarkSpec) -> tuple[np.ndarray, np.ndarray]:
         return data.data.astype(np.float32), data.target.astype(np.int64)
 
     # MNIST and Fashion-MNIST via OpenML
-    openml_ids = {"mnist": 554, "fashion_mnist": 40996}
-    oid = openml_ids.get(name)
+    oid = _OPENML_IMAGE_IDS.get(name)
     if oid is None:
         raise ValueError(f"Unknown image dataset: {name}")
 
@@ -237,7 +241,7 @@ def load_image(spec: BenchmarkSpec) -> tuple[np.ndarray, np.ndarray]:
     X = X_df.to_numpy(dtype=np.float32)
     y = y_series.to_numpy()
     if y.dtype.kind in ("U", "S", "O"):
-        y = np.array([int(v) for v in y], dtype=np.int64)
+        y = np.array([int(value) for value in y], dtype=np.int64)
     return X, y
 
 

@@ -5,12 +5,13 @@ default_install_hook_types:
 repos:
   - repo: local
     hooks:
+      # Keep the Ruff and Pytest triggers for each project in sync.
       - id: shared-ruff
         name: Shared Ruff
         entry: bash scripts/ci/shared-checks.sh ruff
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Shared/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: &shared_files ^(EvoNN-Shared/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
         stages:
           - pre-commit
 
@@ -19,7 +20,7 @@ repos:
         entry: bash scripts/ci/compare-checks.sh ruff
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Compare/|EvoNN-Shared/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: &compare_files ^(EvoNN-Compare/|EvoNN-Shared/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
         stages:
           - pre-commit
 
@@ -28,7 +29,7 @@ repos:
         entry: bash scripts/ci/contenders-checks.sh ruff
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Contenders/|EvoNN-Shared/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: &contenders_files ^(EvoNN-Contenders/|EvoNN-Shared/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
         stages:
           - pre-commit
 
@@ -37,7 +38,7 @@ repos:
         entry: bash scripts/ci/prism-checks.sh ruff
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Prism/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: &prism_files ^(EvoNN-Prism/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
         stages:
           - pre-commit
 
@@ -46,7 +47,7 @@ repos:
         entry: bash scripts/ci/topograph-checks.sh ruff
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Topograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: &topograph_files ^(EvoNN-Topograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
         stages:
           - pre-commit
 
@@ -55,7 +56,7 @@ repos:
         entry: bash scripts/ci/primordia-checks.sh ruff
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Primordia/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: &primordia_files ^(EvoNN-Primordia/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
         stages:
           - pre-commit
 
@@ -64,7 +65,7 @@ repos:
         entry: bash scripts/ci/stratograph-checks.sh ruff
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Stratograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: &stratograph_files ^(EvoNN-Stratograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
         stages:
           - pre-commit
 
@@ -73,7 +74,7 @@ repos:
         entry: bash scripts/ci/shared-checks.sh pytest
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Shared/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: *shared_files
         stages:
           - pre-push
 
@@ -82,7 +83,7 @@ repos:
         entry: bash scripts/ci/compare-checks.sh pytest
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Compare/|EvoNN-Shared/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: *compare_files
         stages:
           - pre-push
 
@@ -91,7 +92,7 @@ repos:
         entry: bash scripts/ci/contenders-checks.sh pytest
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Contenders/|EvoNN-Shared/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: *contenders_files
         stages:
           - pre-push
 
@@ -100,7 +101,7 @@ repos:
         entry: bash scripts/ci/prism-checks.sh pytest
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Prism/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: *prism_files
         stages:
           - pre-push
 
@@ -109,7 +110,7 @@ repos:
         entry: bash scripts/ci/topograph-checks.sh pytest
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Topograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: *topograph_files
         stages:
           - pre-push
 
@@ -118,7 +119,7 @@ repos:
         entry: bash scripts/ci/primordia-checks.sh pytest
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Primordia/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: *primordia_files
         stages:
           - pre-push
 
@@ -127,6 +128,6 @@ repos:
         entry: bash scripts/ci/stratograph-checks.sh pytest
         language: system
         pass_filenames: false
-        files: ^(EvoNN-Stratograph/|shared-benchmarks/|MONOREPO\.md$|pyproject\.toml$|uv\.lock$)
+        files: *stratograph_files
         stages:
           - pre-push

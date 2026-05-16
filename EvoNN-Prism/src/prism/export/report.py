@@ -12,6 +12,8 @@ from prism.config import RunConfig, load_config
 from prism.genome import ModelGenome
 from prism.storage import RunStore
 
+ReportRow = dict[str, Any]
+
 
 def generate_report(run_dir: str | Path, output_path: str | Path | None = None) -> str:
     """Generate a markdown report for a completed Prism run.
@@ -24,20 +26,15 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     run_id = _resolve_run_id(store)
 
     # Load data
-    genome_rows = store.load_genomes(run_id)
-    genomes: list[ModelGenome] = []
-    for row in genome_rows:
-        try:
-            genomes.append(ModelGenome.model_validate(row))
-        except Exception:
-            pass
-
-    evaluations = store.load_evaluations(run_id)
-    best_per_benchmark = store.load_best_per_benchmark(run_id)
-    latest_gen = store.latest_generation(run_id)
-    lineage = store.load_lineage(run_id)
-    archives = store.load_archives(run_id)
-    store.close()
+    try:
+        genomes = _load_genomes(store.load_genomes(run_id))
+        evaluations = store.load_evaluations(run_id)
+        best_per_benchmark = store.load_best_per_benchmark(run_id)
+        latest_gen = store.latest_generation(run_id)
+        lineage = store.load_lineage(run_id)
+        archives = store.load_archives(run_id)
+    finally:
+        store.close()
     runtime_meta = _load_runtime_metadata(run_dir)
 
     # Build sections
@@ -369,6 +366,16 @@ def _resolve_run_id(store: RunStore) -> str:
     return "default"
 
 
+def _load_genomes(rows: list[ReportRow]) -> list[ModelGenome]:
+    genomes: list[ModelGenome] = []
+    for row in rows:
+        try:
+            genomes.append(ModelGenome.model_validate(row))
+        except Exception:
+            pass
+    return genomes
+
+
 def _load_runtime_metadata(run_dir: Path) -> dict[str, Any]:
     summary_path = run_dir / "summary.json"
     if summary_path.exists():
@@ -401,7 +408,7 @@ def _load_runtime_metadata(run_dir: Path) -> dict[str, Any]:
 
 def _select_best(
     genomes: list[ModelGenome],
-    evaluations: list[dict],
+    evaluations: list[ReportRow],
 ) -> ModelGenome | None:
     if not genomes:
         return None
@@ -427,7 +434,7 @@ def _select_best(
 
 
 def _compute_generation_stats(
-    evaluations: list[dict], latest_gen: int,
+    evaluations: list[ReportRow], latest_gen: int,
 ) -> dict[int, dict[str, Any]]:
     """Compute per-generation quality statistics."""
     gen_data: dict[int, list[float]] = {}
@@ -451,7 +458,7 @@ def _compute_generation_stats(
 
 
 def _compute_family_benchmark_wins(
-    best_per_benchmark: dict[str, dict[str, Any]],
+    best_per_benchmark: dict[str, ReportRow],
     genomes: list[ModelGenome],
 ) -> dict[str, int]:
     genome_families = {genome.genome_id: genome.family for genome in genomes}
@@ -465,7 +472,7 @@ def _compute_family_benchmark_wins(
     return dict(counts.most_common())
 
 
-def _compute_operator_mix(lineage: list[dict[str, Any]]) -> dict[str, int]:
+def _compute_operator_mix(lineage: list[ReportRow]) -> dict[str, int]:
     counts = Counter()
     for row in lineage:
         label = row.get("mutation_summary") or row.get("operator_kind")
@@ -474,7 +481,7 @@ def _compute_operator_mix(lineage: list[dict[str, Any]]) -> dict[str, int]:
     return dict(counts.most_common())
 
 
-def _failure_label(row: dict[str, Any]) -> str | None:
+def _failure_label(row: ReportRow) -> str | None:
     reason = row.get("failure_reason")
     if reason:
         return str(reason)
@@ -484,11 +491,11 @@ def _failure_label(row: dict[str, Any]) -> str | None:
     return str(status)
 
 
-def _is_successful_evaluation(row: dict[str, Any]) -> bool:
+def _is_successful_evaluation(row: ReportRow) -> bool:
     return _failure_label(row) is None
 
 
-def _compute_failure_patterns(evaluations: list[dict[str, Any]]) -> dict[str, int]:
+def _compute_failure_patterns(evaluations: list[ReportRow]) -> dict[str, int]:
     counts = Counter()
     for row in evaluations:
         reason = _failure_label(row)
@@ -498,15 +505,12 @@ def _compute_failure_patterns(evaluations: list[dict[str, Any]]) -> dict[str, in
 
 
 def _compute_operator_success(
-    evaluations: list[dict[str, Any]],
+    evaluations: list[ReportRow],
     genomes: list[ModelGenome],
-    lineage: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    lineage: list[ReportRow],
+) -> list[ReportRow]:
     family_by_genome = {genome.genome_id: genome.family for genome in genomes}
-    operator_by_genome = {
-        row["genome_id"]: str(row.get("mutation_summary") or row.get("operator_kind") or "unknown")
-        for row in lineage
-    }
+    operator_by_genome = _operator_by_genome(lineage)
     grouped: dict[tuple[str, str, str], list[float]] = {}
     for row in evaluations:
         if not _is_successful_evaluation(row):
@@ -533,7 +537,7 @@ def _compute_operator_success(
     return rows[:12]
 
 
-def _compute_inheritance_summary(evaluations: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _compute_inheritance_summary(evaluations: list[ReportRow]) -> ReportRow | None:
     valid = [row for row in evaluations if _is_successful_evaluation(row)]
     total = len(valid)
     if total == 0:
@@ -550,28 +554,19 @@ def _compute_inheritance_summary(evaluations: list[dict[str, Any]]) -> dict[str,
     }
 
 
-def _compute_efficiency_summary(evaluations: list[dict[str, Any]]) -> dict[str, float] | None:
+def _compute_efficiency_summary(evaluations: list[ReportRow]) -> dict[str, float] | None:
     valid = [row for row in evaluations if _is_successful_evaluation(row)]
     if not valid:
         return None
-    avg_quality = sum(float(row.get("quality") or 0.0) for row in valid) / len(valid)
-    avg_time = sum(float(row.get("train_seconds") or 0.0) for row in valid) / len(valid)
-    avg_params = sum(float(row.get("parameter_count") or 0.0) for row in valid) / len(valid)
-    return {
-        "avg_quality": avg_quality,
-        "avg_train_seconds": avg_time,
-        "avg_parameter_count": avg_params,
-        "quality_per_second": avg_quality / max(1e-9, avg_time),
-        "quality_per_kparam": avg_quality / max(1.0, avg_params / 1000.0),
-    }
+    return _aggregate_efficiency(valid)
 
 
 def _compute_family_efficiency(
-    evaluations: list[dict[str, Any]],
+    evaluations: list[ReportRow],
     genomes: list[ModelGenome],
-) -> list[dict[str, Any]]:
+) -> list[ReportRow]:
     family_by_genome = {genome.genome_id: genome.family for genome in genomes}
-    grouped: dict[str, list[dict[str, Any]]] = {}
+    grouped: dict[str, list[ReportRow]] = {}
     for row in evaluations:
         if not _is_successful_evaluation(row):
             continue
@@ -583,16 +578,13 @@ def _compute_family_efficiency(
 
 
 def _compute_operator_efficiency(
-    evaluations: list[dict[str, Any]],
+    evaluations: list[ReportRow],
     genomes: list[ModelGenome],
-    lineage: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    lineage: list[ReportRow],
+) -> list[ReportRow]:
     family_by_genome = {genome.genome_id: genome.family for genome in genomes}
-    operator_by_genome = {
-        row["genome_id"]: str(row.get("mutation_summary") or row.get("operator_kind") or "unknown")
-        for row in lineage
-    }
-    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    operator_by_genome = _operator_by_genome(lineage)
+    grouped: dict[tuple[str, str], list[ReportRow]] = {}
     for row in evaluations:
         if not _is_successful_evaluation(row):
             continue
@@ -616,9 +608,9 @@ def _compute_operator_efficiency(
 
 
 def _compute_family_survival(
-    evaluations: list[dict[str, Any]],
+    evaluations: list[ReportRow],
     genomes: list[ModelGenome],
-) -> list[dict[str, Any]]:
+) -> list[ReportRow]:
     family_by_genome = {genome.genome_id: genome.family for genome in genomes}
     grouped: dict[int, Counter] = {}
     for row in evaluations:
@@ -641,7 +633,7 @@ def _compute_family_survival(
     return rows
 
 
-def _compute_archive_turnover(archives: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _compute_archive_turnover(archives: list[ReportRow]) -> list[ReportRow]:
     grouped: dict[int, set[str]] = {}
     for row in archives:
         generation = row.get("generation")
@@ -664,7 +656,7 @@ def _compute_archive_turnover(archives: list[dict[str, Any]]) -> list[dict[str, 
     return rows
 
 
-def _compute_failure_heatmap(evaluations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _compute_failure_heatmap(evaluations: list[ReportRow]) -> list[ReportRow]:
     grouped: dict[str, Counter] = {}
     for row in evaluations:
         failure = _failure_label(row)
@@ -680,7 +672,7 @@ def _compute_failure_heatmap(evaluations: list[dict[str, Any]]) -> list[dict[str
     return rows
 
 
-def _compute_specialist_summary(archives: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _compute_specialist_summary(archives: list[ReportRow]) -> list[ReportRow]:
     grouped: dict[str, set[str]] = {}
     for row in archives:
         archive_kind = str(row.get("archive_kind", ""))
@@ -699,10 +691,10 @@ def _compute_specialist_summary(archives: list[dict[str, Any]]) -> list[dict[str
 
 
 def _efficiency_rows(
-    grouped: dict[str, list[dict[str, Any]]],
+    grouped: dict[str, list[ReportRow]],
     *,
     group_label: str,
-) -> list[dict[str, Any]]:
+) -> list[ReportRow]:
     rows = []
     for label, items in grouped.items():
         payload = _aggregate_efficiency(items)
@@ -714,7 +706,14 @@ def _efficiency_rows(
     return rows
 
 
-def _aggregate_efficiency(items: list[dict[str, Any]]) -> dict[str, float]:
+def _operator_by_genome(lineage: list[ReportRow]) -> dict[str, str]:
+    return {
+        row["genome_id"]: str(row.get("mutation_summary") or row.get("operator_kind") or "unknown")
+        for row in lineage
+    }
+
+
+def _aggregate_efficiency(items: list[ReportRow]) -> dict[str, float]:
     avg_quality = sum(float(row.get("quality") or 0.0) for row in items) / len(items)
     avg_time = sum(float(row.get("train_seconds") or 0.0) for row in items) / len(items)
     avg_params = sum(float(row.get("parameter_count") or 0.0) for row in items) / len(items)

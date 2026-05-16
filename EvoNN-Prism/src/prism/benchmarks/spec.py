@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import yaml
-from pydantic import BaseModel
+from numpy.typing import DTypeLike
+from pydantic import BaseModel, Field
 from sklearn.model_selection import train_test_split
 
 
@@ -16,7 +18,7 @@ class BenchmarkSpec(BaseModel):
     id: str = ""
     task: str  # classification | regression | language_modeling
     modality: str = "tabular"  # tabular | image | sequence | text
-    input_shape: list[int] = []
+    input_shape: list[int] = Field(default_factory=list)
     output_dim: int = 1
     metric_name: str = "accuracy"  # accuracy | mse | perplexity
     metric_direction: str = "max"  # max | min
@@ -44,7 +46,7 @@ class BenchmarkSpec(BaseModel):
     max_test_samples: int | None = None
     domain: str | None = None
 
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, __context: Any) -> None:
         """Reconcile aliases so id, input_shape, output_dim are always set."""
         if self.name and not self.id:
             object.__setattr__(self, "id", self.name)
@@ -101,19 +103,14 @@ class BenchmarkSpec(BaseModel):
         else:
             raise ValueError(f"Unknown source: {self.source}")
 
-        stratify = y if self.task == "classification" else None
-        X_train, X_val, y_train, y_val = train_test_split(
-            X, y, test_size=validation_split, random_state=seed, stratify=stratify,
-        )
-        X_train, y_train = _cap_split(X_train, y_train, self.max_train_samples)
-        X_val, y_val = _cap_split(X_val, y_val, self.max_val_samples)
-        x_dtype = np.int32 if self.task == "language_modeling" else np.float32
-        y_dtype = np.float32 if self.task == "regression" else np.int64
-        return (
-            X_train.astype(x_dtype),
-            y_train.astype(y_dtype),
-            X_val.astype(x_dtype),
-            y_val.astype(y_dtype),
+        return _split_cap_and_cast(
+            X,
+            y,
+            seed=seed,
+            validation_split=validation_split,
+            task=self.task,
+            max_train_samples=self.max_train_samples,
+            max_val_samples=self.max_val_samples,
         )
 
     # -- CSV loader ------------------------------------------------------------
@@ -140,18 +137,15 @@ class BenchmarkSpec(BaseModel):
         else:
             y = np.array([float(row[target_col]) for row in rows], dtype=np.float32)
 
-        stratify = y if self.task == "classification" else None
-        X_train, X_val, y_train, y_val = train_test_split(
-            X, y, test_size=val_split, random_state=seed, stratify=stratify,
-        )
-        X_train, y_train = _cap_split(X_train, y_train, self.max_train_samples)
-        X_val, y_val = _cap_split(X_val, y_val, self.max_val_samples)
-        y_dtype = np.float32 if self.task == "regression" else np.int64
-        return (
-            X_train.astype(np.float32),
-            y_train.astype(y_dtype),
-            X_val.astype(np.float32),
-            y_val.astype(y_dtype),
+        return _split_cap_and_cast(
+            X,
+            y,
+            seed=seed,
+            validation_split=val_split,
+            task=self.task,
+            max_train_samples=self.max_train_samples,
+            max_val_samples=self.max_val_samples,
+            x_dtype=np.float32,
         )
 
     # -- Factory methods -------------------------------------------------------
@@ -171,3 +165,35 @@ def _cap_split(
     if limit is None or limit <= 0 or len(x) <= limit:
         return x, y
     return x[:limit], y[:limit]
+
+
+def _split_cap_and_cast(
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    seed: int,
+    validation_split: float,
+    task: str,
+    max_train_samples: int | None,
+    max_val_samples: int | None,
+    x_dtype: DTypeLike | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Apply the standard benchmark split, optional caps, and output dtypes."""
+    stratify = y if task == "classification" else None
+    x_train, x_val, y_train, y_val = train_test_split(
+        x,
+        y,
+        test_size=validation_split,
+        random_state=seed,
+        stratify=stratify,
+    )
+    x_train, y_train = _cap_split(x_train, y_train, max_train_samples)
+    x_val, y_val = _cap_split(x_val, y_val, max_val_samples)
+    x_dtype = x_dtype or (np.int32 if task == "language_modeling" else np.float32)
+    y_dtype = np.float32 if task == "regression" else np.int64
+    return (
+        x_train.astype(x_dtype),
+        y_train.astype(y_dtype),
+        x_val.astype(x_dtype),
+        y_val.astype(y_dtype),
+    )

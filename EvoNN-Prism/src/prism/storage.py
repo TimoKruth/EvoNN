@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import duckdb
 
@@ -63,6 +63,42 @@ CREATE TABLE IF NOT EXISTS archives (
     created_at TIMESTAMP DEFAULT current_timestamp
 );
 """
+
+EvaluationRow = dict[str, Any]
+GenomeRow = dict[str, Any]
+LineageRow = dict[str, Any]
+ArchiveRow = dict[str, Any]
+
+EVALUATION_COLUMNS = [
+    "genome_id",
+    "generation",
+    "benchmark_id",
+    "status",
+    "metric_name",
+    "metric_value",
+    "quality",
+    "parameter_count",
+    "train_seconds",
+    "failure_reason",
+    "inherited_from",
+    "inheritance_hit",
+]
+BEST_PER_BENCHMARK_COLUMNS = [
+    "benchmark_id",
+    "genome_id",
+    "status",
+    "quality",
+    "metric_name",
+    "metric_value",
+    "parameter_count",
+    "train_seconds",
+]
+LINEAGE_COLUMNS = ["genome_id", "parent_id", "generation", "mutation_summary", "operator_kind"]
+ARCHIVE_COLUMNS = ["generation", "archive_kind", "benchmark_id", "genome_id", "score"]
+
+
+def _rows_to_dicts(columns: Sequence[str], rows: Sequence[Sequence[Any]]) -> list[dict[str, Any]]:
+    return [dict(zip(columns, row)) for row in rows]
 
 
 class RunStore:
@@ -168,39 +204,24 @@ class RunStore:
     # Read methods
     # ------------------------------------------------------------------
 
-    def load_evaluations(self, run_id: str, generation: int | None = None) -> list[dict]:
-        if generation is not None:
-            rows = self.conn.execute(
-                """
-                SELECT genome_id, generation, benchmark_id, status, metric_name, metric_value,
-                       quality, parameter_count, train_seconds, failure_reason,
-                       inherited_from, inheritance_hit
-                FROM evaluations
-                WHERE run_id = ? AND generation = ?
-                ORDER BY generation, genome_id, benchmark_id
-                """,
-                [run_id, generation],
-            ).fetchall()
-        else:
-            rows = self.conn.execute(
-                """
-                SELECT genome_id, generation, benchmark_id, status, metric_name, metric_value,
-                       quality, parameter_count, train_seconds, failure_reason,
-                       inherited_from, inheritance_hit
-                FROM evaluations
-                WHERE run_id = ?
-                ORDER BY generation, genome_id, benchmark_id
-                """,
-                [run_id],
-            ).fetchall()
-        cols = [
-            "genome_id", "generation", "benchmark_id", "status", "metric_name", "metric_value",
-            "quality", "parameter_count", "train_seconds", "failure_reason",
-            "inherited_from", "inheritance_hit",
-        ]
-        return [dict(zip(cols, row)) for row in rows]
+    def load_evaluations(
+        self, run_id: str, generation: int | None = None
+    ) -> list[EvaluationRow]:
+        where_clause, params = self._run_generation_filter(run_id, generation)
+        rows = self.conn.execute(
+            f"""
+            SELECT genome_id, generation, benchmark_id, status, metric_name, metric_value,
+                   quality, parameter_count, train_seconds, failure_reason,
+                   inherited_from, inheritance_hit
+            FROM evaluations
+            WHERE {where_clause}
+            ORDER BY generation, genome_id, benchmark_id
+            """,
+            params,
+        ).fetchall()
+        return _rows_to_dicts(EVALUATION_COLUMNS, rows)
 
-    def load_genomes(self, run_id: str) -> list[dict]:
+    def load_genomes(self, run_id: str) -> list[GenomeRow]:
         rows = self.conn.execute(
             """
             SELECT genome_id, family, genome_json
@@ -209,7 +230,7 @@ class RunStore:
             """,
             [run_id],
         ).fetchall()
-        results = []
+        results: list[GenomeRow] = []
         for genome_id, family, genome_json in rows:
             data = json.loads(genome_json)
             data["_genome_id"] = genome_id
@@ -217,7 +238,7 @@ class RunStore:
             results.append(data)
         return results
 
-    def load_best_per_benchmark(self, run_id: str) -> dict[str, dict]:
+    def load_best_per_benchmark(self, run_id: str) -> dict[str, EvaluationRow]:
         rows = self.conn.execute(
             """
             SELECT benchmark_id, genome_id, status, quality, metric_name, metric_value,
@@ -232,11 +253,7 @@ class RunStore:
             """,
             [run_id],
         ).fetchall()
-        cols = [
-            "benchmark_id", "genome_id", "status", "quality", "metric_name", "metric_value",
-            "parameter_count", "train_seconds",
-        ]
-        return {row[0]: dict(zip(cols, row)) for row in rows}
+        return {row[0]: dict(zip(BEST_PER_BENCHMARK_COLUMNS, row)) for row in rows}
 
     def latest_generation(self, run_id: str) -> int | None:
         result = self.conn.execute(
@@ -245,53 +262,37 @@ class RunStore:
         ).fetchone()
         return result[0] if result and result[0] is not None else None
 
-    def load_lineage(self, run_id: str, generation: int | None = None) -> list[dict]:
-        if generation is not None:
-            rows = self.conn.execute(
-                """
-                SELECT genome_id, parent_id, generation, mutation_summary, operator_kind
-                FROM lineage
-                WHERE run_id = ? AND generation = ?
-                ORDER BY generation, genome_id, parent_id
-                """,
-                [run_id, generation],
-            ).fetchall()
-        else:
-            rows = self.conn.execute(
-                """
-                SELECT genome_id, parent_id, generation, mutation_summary, operator_kind
-                FROM lineage
-                WHERE run_id = ?
-                ORDER BY generation, genome_id, parent_id
-                """,
-                [run_id],
-            ).fetchall()
-        cols = ["genome_id", "parent_id", "generation", "mutation_summary", "operator_kind"]
-        return [dict(zip(cols, row)) for row in rows]
+    def load_lineage(self, run_id: str, generation: int | None = None) -> list[LineageRow]:
+        where_clause, params = self._run_generation_filter(run_id, generation)
+        rows = self.conn.execute(
+            f"""
+            SELECT genome_id, parent_id, generation, mutation_summary, operator_kind
+            FROM lineage
+            WHERE {where_clause}
+            ORDER BY generation, genome_id, parent_id
+            """,
+            params,
+        ).fetchall()
+        return _rows_to_dicts(LINEAGE_COLUMNS, rows)
 
-    def load_archives(self, run_id: str, generation: int | None = None) -> list[dict]:
-        if generation is not None:
-            rows = self.conn.execute(
-                """
-                SELECT generation, archive_kind, benchmark_id, genome_id, score
-                FROM archives
-                WHERE run_id = ? AND generation = ?
-                ORDER BY generation, archive_kind, benchmark_id, genome_id
-                """,
-                [run_id, generation],
-            ).fetchall()
-        else:
-            rows = self.conn.execute(
-                """
-                SELECT generation, archive_kind, benchmark_id, genome_id, score
-                FROM archives
-                WHERE run_id = ?
-                ORDER BY generation, archive_kind, benchmark_id, genome_id
-                """,
-                [run_id],
-            ).fetchall()
-        cols = ["generation", "archive_kind", "benchmark_id", "genome_id", "score"]
-        return [dict(zip(cols, row)) for row in rows]
+    def load_archives(self, run_id: str, generation: int | None = None) -> list[ArchiveRow]:
+        where_clause, params = self._run_generation_filter(run_id, generation)
+        rows = self.conn.execute(
+            f"""
+            SELECT generation, archive_kind, benchmark_id, genome_id, score
+            FROM archives
+            WHERE {where_clause}
+            ORDER BY generation, archive_kind, benchmark_id, genome_id
+            """,
+            params,
+        ).fetchall()
+        return _rows_to_dicts(ARCHIVE_COLUMNS, rows)
+
+    @staticmethod
+    def _run_generation_filter(run_id: str, generation: int | None) -> tuple[str, list[Any]]:
+        if generation is None:
+            return "run_id = ?", [run_id]
+        return "run_id = ? AND generation = ?", [run_id, generation]
 
     # ------------------------------------------------------------------
     # Lifecycle

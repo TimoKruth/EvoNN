@@ -5,8 +5,11 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass
+from typing import Any, Iterator
 
 import numpy as np
+
+TaskName = str
 
 
 @dataclass
@@ -28,13 +31,13 @@ def cosine_lr(base_lr: float, step: int, total_steps: int, min_lr: float = 1e-6)
     return min_lr + 0.5 * (base_lr - min_lr) * (1.0 + math.cos(math.pi * progress))
 
 
-def _batch_indices(total: int, batch_size: int):
+def _batch_indices(total: int, batch_size: int) -> Iterator[slice]:
     """Yield slices for mini-batch iteration."""
     for start in range(0, total, batch_size):
         yield slice(start, min(total, start + batch_size))
 
 
-def _clip_grad_norm(grads, max_norm: float):
+def _clip_grad_norm(grads: Any, max_norm: float) -> Any:
     """Clip gradient norms to prevent exploding gradients."""
     import mlx.core as mx
     import mlx.utils
@@ -50,7 +53,7 @@ def _clip_grad_norm(grads, max_norm: float):
     return mlx.utils.tree_map(lambda g: g * scale, grads)
 
 
-def _loss_fn(model, task: str, x, y):
+def _loss_fn(model: Any, task: TaskName, x: Any, y: Any) -> Any:
     """Compute loss for classification, regression, or language modeling."""
     import mlx.nn as nn
 
@@ -66,7 +69,7 @@ def _loss_fn(model, task: str, x, y):
     return nn.losses.mse_loss(logits.reshape(-1), y.reshape(-1), reduction="mean")
 
 
-def _compute_metric(task: str, y_true: np.ndarray, y_pred: np.ndarray) -> tuple[str, float, float]:
+def _compute_metric(task: TaskName, y_true: np.ndarray, y_pred: np.ndarray) -> tuple[str, float, float]:
     """Compute (metric_name, metric_value, quality) for the given task.
 
     For classification: accuracy in [0, 1] (higher = better quality).
@@ -102,14 +105,23 @@ def _compute_metric(task: str, y_true: np.ndarray, y_pred: np.ndarray) -> tuple[
         return "mse", mse, -mse
 
 
+def _validation_predictions(model: Any, x_val: Any) -> np.ndarray:
+    """Run validation inference and return predictions as a numpy array."""
+    import mlx.core as mx
+
+    val_preds = model(x_val)
+    mx.eval(val_preds)
+    return np.array(val_preds)
+
+
 def train_and_evaluate(
-    model,
+    model: Any,
     X_train: np.ndarray,
     y_train: np.ndarray,
     X_val: np.ndarray,
     y_val: np.ndarray,
     *,
-    task: str,
+    task: TaskName,
     epochs: int,
     lr: float,
     batch_size: int,
@@ -207,9 +219,7 @@ def train_and_evaluate(
 
             # Validation
             model.eval()
-            val_preds = model(x_val)
-            mx.eval(val_preds)
-            val_preds_np = np.array(val_preds)
+            val_preds_np = _validation_predictions(model, x_val)
             _, _, val_quality = _compute_metric(task, y_val, val_preds_np)
             model.train()
 
@@ -229,9 +239,7 @@ def train_and_evaluate(
 
         # Final evaluation on validation set
         model.eval()
-        val_preds = model(x_val)
-        mx.eval(val_preds)
-        val_preds_np = np.array(val_preds)
+        val_preds_np = _validation_predictions(model, x_val)
         metric_name, metric_value, quality = _compute_metric(task, y_val, val_preds_np)
 
         return EvaluationResult(
@@ -253,7 +261,7 @@ def train_and_evaluate(
         )
 
 
-def _metric_name(task: str) -> str:
+def _metric_name(task: TaskName) -> str:
     if task == "classification":
         return "accuracy"
     if task == "language_modeling":

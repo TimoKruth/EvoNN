@@ -8,9 +8,10 @@ import os
 import time
 from pathlib import Path
 from random import Random
+from typing import Any
 from uuid import uuid4
 
-from prism.config import RunConfig
+from prism.config import EvolutionConfig, RunConfig
 from prism.genome import ModelGenome, apply_random_mutation, create_seed_genome
 from prism.families.compiler import compatible_families
 from prism.monitor import TerminalMonitor
@@ -28,7 +29,7 @@ from prism.storage import RunStore
 
 def run_evolution(
     config: RunConfig,
-    benchmark_specs: list,
+    benchmark_specs: list[Any],
     run_dir: str | None = None,
     resume: bool = False,
 ) -> GenerationState:
@@ -52,21 +53,18 @@ def run_evolution(
     evolution = config.evolution
     training = config.training
 
-    # Setup run directory
-    if run_dir is None:
-        run_dir = f"runs/prism-{uuid4().hex[:8]}"
-    os.makedirs(run_dir, exist_ok=True)
-    os.makedirs(os.path.join(run_dir, "checkpoints"), exist_ok=True)
-    run_id = Path(run_dir).name
+    run_path = _prepare_run_dir(run_dir)
+    run_id = run_path.name
+    run_dir = str(run_path)
 
     # Save config
-    config_path = os.path.join(run_dir, "config.json")
-    Path(config_path).write_text(
+    config_path = run_path / "config.json"
+    config_path.write_text(
         json.dumps(config.model_dump(), indent=2),
         encoding="utf-8",
     )
 
-    store = RunStore(Path(run_dir) / "metrics.duckdb")
+    store = RunStore(run_path / "metrics.duckdb")
     store.save_run(run_id, config.model_dump(mode="json"))
 
     # Weight cache
@@ -136,17 +134,14 @@ def run_evolution(
 
             # 4. Monitor
             elapsed = time.time() - run_start
-            qualities = [s.aggregate_quality for s in summaries if s.qualities]
-            best_q = max(qualities) if qualities else float("-inf")
-            avg_q = sum(qualities) / len(qualities) if qualities else float("-inf")
-            families = sorted({g.family for g in state.population})
+            best_q, avg_q = _quality_stats(summaries)
 
             monitor.on_generation(
                 gen=gen,
                 total=total_gens,
                 best_quality=best_q,
                 avg_quality=avg_q,
-                families_active=families,
+                families_active=_active_families(state.population),
                 population_size=len(state.population),
                 elapsed=elapsed,
             )
@@ -185,12 +180,10 @@ def run_evolution(
 
         # Completion
         elapsed = time.time() - run_start
-        qualities = [
-            s.aggregate_quality
-            for s in summaries_from_state_results(state.population, state.results, total_gens - 1)
-            if s.qualities
-        ]
-        best_q = max(qualities) if qualities else float("-inf")
+        final_summaries = summaries_from_state_results(
+            state.population, state.results, total_gens - 1,
+        )
+        best_q, _ = _quality_stats(final_summaries)
         monitor.on_complete(best_q, total_gens, elapsed)
 
         # Write final summary
@@ -202,8 +195,28 @@ def run_evolution(
         store.close()
 
 
+def _prepare_run_dir(run_dir: str | None) -> Path:
+    """Create the run directory and checkpoint subdirectory."""
+    path = run_dir if run_dir is not None else f"runs/prism-{uuid4().hex[:8]}"
+    os.makedirs(path, exist_ok=True)
+    os.makedirs(os.path.join(path, "checkpoints"), exist_ok=True)
+    return Path(path)
+
+
+def _quality_stats(summaries: list[Any]) -> tuple[float, float]:
+    qualities = [summary.aggregate_quality for summary in summaries if summary.qualities]
+    if not qualities:
+        no_quality = float("-inf")
+        return no_quality, no_quality
+    return max(qualities), sum(qualities) / len(qualities)
+
+
+def _active_families(population: list[ModelGenome]) -> list[str]:
+    return sorted({genome.family for genome in population})
+
+
 def _create_seed_population(
-    evolution,
+    evolution: EvolutionConfig,
     rng: Random,
     prior_genomes: list[ModelGenome] | None = None,
 ) -> list[ModelGenome]:

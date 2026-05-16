@@ -38,6 +38,29 @@ def _format_status_mix(evaluations: list[dict]) -> str:
     return ", ".join(f"{status}={counts[status]}" for status in ordered_statuses if status in counts)
 
 
+def _resolve_run_path(run_dir: str) -> Path:
+    """Resolve a run directory argument, falling back to runs/<name>."""
+    run_path = Path(run_dir)
+    if run_path.exists():
+        return run_path
+    return Path("runs") / run_dir
+
+
+def _resolve_existing_run_path(run_dir: str) -> Path:
+    run_path = _resolve_run_path(run_dir)
+    if not run_path.exists():
+        console.print(f"[red]Run directory not found: {run_dir}[/red]")
+        raise typer.Exit(1)
+    return run_path
+
+
+def _runtime_policy_name(policy: object) -> str | None:
+    if not isinstance(policy, dict):
+        return None
+    name = policy.get("runtime_policy_name") or policy.get("name")
+    return str(name) if name else None
+
+
 # ===========================================================================
 # Top-level commands
 # ===========================================================================
@@ -142,13 +165,7 @@ def report(
     """Generate markdown report for a completed run."""
     from prism.export.report import generate_report
 
-    run_path = Path(run_dir)
-    if not run_path.exists():
-        run_path = Path("runs") / run_dir
-    if not run_path.exists():
-        console.print(f"[red]Run directory not found: {run_dir}[/red]")
-        raise typer.Exit(1)
-
+    run_path = _resolve_existing_run_path(run_dir)
     text = generate_report(run_path)
     console.print(text)
 
@@ -162,17 +179,16 @@ def inspect(
     run_dir: str = typer.Argument(..., help="Path to run directory"),
 ) -> None:
     """Inspect run metrics."""
-    from prism.export.report import _compute_failure_patterns, _failure_label, _load_runtime_metadata, _resolve_run_id
+    from prism.export.report import (
+        _compute_failure_patterns,
+        _failure_label,
+        _load_runtime_metadata,
+        _resolve_run_id,
+    )
     from prism.genome import ModelGenome
     from prism.storage import RunStore
 
-    run_path = Path(run_dir)
-    if not run_path.exists():
-        run_path = Path("runs") / run_dir
-    if not run_path.exists():
-        console.print(f"[red]Run directory not found: {run_dir}[/red]")
-        raise typer.Exit(1)
-
+    run_path = _resolve_existing_run_path(run_dir)
     store = RunStore(run_path / "metrics.duckdb")
     run_id = _resolve_run_id(store)
     runtime_meta = _load_runtime_metadata(run_path)
@@ -213,9 +229,9 @@ def inspect(
         table.add_row("Runtime Limitations", runtime_meta["runtime_backend_limitations"])
     table.add_row("Precision Mode", runtime_meta["precision_mode"])
     if runtime_meta.get("runtime_execution_policy"):
-        policy = runtime_meta["runtime_execution_policy"]
-        if isinstance(policy, dict):
-            table.add_row("Runtime Policy", str(policy.get("runtime_policy_name") or policy.get("name")))
+        policy_name = _runtime_policy_name(runtime_meta["runtime_execution_policy"])
+        if policy_name is not None:
+            table.add_row("Runtime Policy", policy_name)
     if runtime_meta.get("benchmark_slot_integrity"):
         table.add_row("Benchmark Slot Integrity", json.dumps(runtime_meta["benchmark_slot_integrity"]))
     if runtime_meta.get("candidate_selection_policy"):
@@ -329,12 +345,8 @@ def symbiosis_export(
     """Export symbiosis contract (manifest.json + results.json)."""
     from prism.export.symbiosis import export_symbiosis_contract
 
-    run_path = Path(run_dir)
-    if not run_path.exists():
-        run_path = Path("runs") / run_dir
-
     manifest_path, results_path = export_symbiosis_contract(
-        run_dir=run_path,
+        run_dir=_resolve_run_path(run_dir),
         pack_path=pack,
         output_dir=output_dir,
     )

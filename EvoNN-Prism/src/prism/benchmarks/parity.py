@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -68,10 +70,11 @@ _PROJECT_ROOT = _PACKAGE_DIR.parent.parent.parent
 _SUPERPROJECT_ROOT = _PROJECT_ROOT.parent
 _PACK_ENV_VAR = "PRISM_PARITY_PACK_DIRS"
 _SHARED_ROOT_ENV_VAR = "EVONN_SHARED_BENCHMARKS_DIR"
-_DEFAULT_PACK_SEARCH_DIRS = [
+_PACK_FILE_SUFFIX = ".yaml"
+_DEFAULT_PACK_SEARCH_DIRS = (
     _PROJECT_ROOT / "parity_packs",
     _PROJECT_ROOT / "parity_packs" / "generated",
-]
+)
 
 
 def _shared_pack_dirs() -> list[Path]:
@@ -96,6 +99,26 @@ def _pack_search_dirs() -> list[Path]:
     return search_dirs
 
 
+def _pack_path_candidates(path: Path) -> tuple[Path, ...]:
+    if path.suffix == _PACK_FILE_SUFFIX:
+        return (path,)
+    return (path, Path(f"{path}{_PACK_FILE_SUFFIX}"))
+
+
+def _native_name_from_entry(entry: str | Mapping[str, Any]) -> str:
+    if isinstance(entry, str):
+        return entry
+
+    native_ids = cast(Mapping[str, str], entry.get("native_ids", {}))
+    name = (
+        native_ids.get("prism")
+        or native_ids.get("evonn2")
+        or native_ids.get("hybrid")
+        or cast(str, entry.get("benchmark_id", ""))
+    )
+    return _REVERSE_IDS.get(name, name)
+
+
 def get_canonical_id(native_name: str) -> str:
     """Map a native Prism benchmark name to its canonical symbiosis ID.
 
@@ -110,13 +133,9 @@ def resolve_pack_path(pack_ref: str | Path) -> Path:
     if path.exists():
         return path
 
-    candidates = [path]
-    if path.suffix != ".yaml":
-        candidates.append(Path(f"{path}.yaml"))
-
     search_dirs = _pack_search_dirs()
     for directory in search_dirs:
-        for candidate in candidates:
+        for candidate in _pack_path_candidates(path):
             resolved = directory / candidate
             if resolved.exists():
                 return resolved
@@ -154,31 +173,16 @@ def load_parity_pack(pack_path: str | Path) -> list[BenchmarkSpec]:
 
     resolved_pack = resolve_pack_path(pack_path)
 
-    with open(resolved_pack) as f:
+    with open(resolved_pack, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     entries = data.get("benchmarks", [])
     specs: list[BenchmarkSpec] = []
 
     for entry in entries:
-        if isinstance(entry, str):
-            # Simple format: just a name
-            name = entry
-        elif isinstance(entry, dict):
-            # Rich format: extract native name for prism, then evonn2, then canonical
-            native_ids = entry.get("native_ids", {})
-            name = (
-                native_ids.get("prism")
-                or native_ids.get("evonn2")
-                or native_ids.get("hybrid")
-                or entry.get("benchmark_id", "")
-            )
-            # If the name is a canonical ID, try reverse lookup
-            if name in _REVERSE_IDS:
-                name = _REVERSE_IDS[name]
-        else:
+        if not isinstance(entry, str | Mapping):
             continue
 
-        specs.append(get_benchmark(name))
+        specs.append(get_benchmark(_native_name_from_entry(entry)))
 
     return specs

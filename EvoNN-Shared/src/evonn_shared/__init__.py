@@ -1,4 +1,4 @@
-"""Shared substrate contracts and helpers for EvoNN."""
+"""Curated public import surface for shared EvoNN contracts and helpers."""
 
 from evonn_shared.benchmarks import BenchmarkDescriptor, MetricDirection, TaskKind
 from evonn_shared.budgets import BudgetContract
@@ -33,7 +33,7 @@ from evonn_shared.lm_cache import (
 )
 from evonn_shared.runs import RunCoordinates
 
-__all__ = [
+__all__: list[str] = [
     "ArtifactPaths",
     "ArtifactCompletenessEnvelope",
     "BenchmarkDescriptor",

@@ -9,6 +9,9 @@ Families by modality:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import mlx.core as mx
 import mlx.nn as nn
 
@@ -18,7 +21,9 @@ from prism.genome import ModelGenome
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-_ACTIVATIONS: dict[str, callable] = {
+ActivationFn = Callable[[Any], Any]
+
+_ACTIVATIONS: dict[str, ActivationFn] = {
     "relu": nn.relu,
     "gelu": nn.gelu,
     "tanh": nn.tanh,
@@ -26,7 +31,7 @@ _ACTIVATIONS: dict[str, callable] = {
 }
 
 
-def _get_activation(name: str):
+def _get_activation(name: str) -> ActivationFn:
     """Return activation function by name."""
     if name not in _ACTIVATIONS:
         raise ValueError(f"Unsupported activation: {name!r}. Choose from {list(_ACTIVATIONS)}")
@@ -44,19 +49,29 @@ def _make_norm(norm_type: str, dims: int) -> nn.Module | None:
     return None
 
 
-def _make_norms(norm_type: str, dims_list: list[int]) -> list[nn.Module]:
+def _make_norms(norm_type: str, dims_list: list[int]) -> list[nn.Module | None]:
     """Create normalization layers for each dimension in the list."""
     if norm_type == "none":
         return []
     return [_make_norm(norm_type, d) for d in dims_list]
 
 
-def _apply_norm(x, norm_layer: nn.Module | None):
+def _make_dropout(dropout: float) -> nn.Dropout | None:
+    """Create dropout only when requested."""
+    return nn.Dropout(dropout) if dropout > 0 else None
+
+
+def _apply_norm(x: Any, norm_layer: nn.Module | None) -> Any:
     """Apply normalization if the layer exists."""
     return norm_layer(x) if norm_layer is not None else x
 
 
-def _apply_sparsity(x, ratio: float):
+def _flatten_features(x: Any) -> Any:
+    """Flatten non-vector inputs while preserving the batch dimension."""
+    return x.reshape(x.shape[0], -1) if x.ndim > 2 else x
+
+
+def _apply_sparsity(x: Any, ratio: float) -> Any:
     """Zero the smallest `ratio` fraction of activations by magnitude."""
     if ratio <= 0.0:
         return x
@@ -108,16 +123,16 @@ class FlexMLP(nn.Module):
         self.norms = _make_norms(genome.norm_type, hl)
         self.head = nn.Linear(hl[-1] if hl else in_dim, output_dim)
         self.act = _get_activation(genome.activation)
-        self.drop = nn.Dropout(genome.dropout) if genome.dropout > 0 else None
+        self.drop = _make_dropout(genome.dropout)
         self.residual = genome.residual
 
     def __call__(self, x):
-        h = x.reshape(x.shape[0], -1) if x.ndim > 2 else x
+        h = _flatten_features(x)
         for i, layer in enumerate(self.layers):
             prev = h
             h = self.act(layer(h))
             if i < len(self.norms):
-                h = self.norms[i](h)
+                h = _apply_norm(h, self.norms[i])
             if self.drop is not None:
                 h = self.drop(h)
             if self.residual and h.shape == prev.shape:
@@ -139,17 +154,17 @@ class SparseMLP(nn.Module):
         self.norms = _make_norms(genome.norm_type, hl)
         self.head = nn.Linear(hl[-1] if hl else in_dim, output_dim)
         self.act = _get_activation(genome.activation)
-        self.drop = nn.Dropout(genome.dropout) if genome.dropout > 0 else None
+        self.drop = _make_dropout(genome.dropout)
         self.residual = genome.residual
         self.sparsity = genome.activation_sparsity
 
     def __call__(self, x):
-        h = x.reshape(x.shape[0], -1) if x.ndim > 2 else x
+        h = _flatten_features(x)
         for i, layer in enumerate(self.layers):
             prev = h
             h = self.act(layer(h))
             if i < len(self.norms):
-                h = self.norms[i](h)
+                h = _apply_norm(h, self.norms[i])
             if self.sparsity > 0:
                 h = _apply_sparsity(h, self.sparsity)
             if self.drop is not None:
@@ -175,11 +190,11 @@ class MoEMLP(nn.Module):
         self.expert_out = [nn.Linear(expert_width, expert_width) for _ in range(n_experts)]
         self.norm = _make_norm(genome.norm_type, expert_width)
         self.act = _get_activation(genome.activation)
-        self.drop = nn.Dropout(genome.dropout) if genome.dropout > 0 else None
+        self.drop = _make_dropout(genome.dropout)
         self.head = nn.Linear(expert_width, output_dim)
 
     def __call__(self, x):
-        h = x.reshape(x.shape[0], -1) if x.ndim > 2 else x
+        h = _flatten_features(x)
 
         # Gating with top-k masking
         logits = self.gate(h)  # (B, n_experts)
@@ -198,8 +213,7 @@ class MoEMLP(nn.Module):
             out = self.act(self.expert_out[i](out))
             combined = combined + weights[:, i : i + 1] * out
 
-        if self.norm is not None:
-            combined = self.norm(combined)
+        combined = _apply_norm(combined, self.norm)
         if self.drop is not None:
             combined = self.drop(combined)
         return self.head(combined)
@@ -227,7 +241,7 @@ class ImageConvNet(nn.Module):
         ]
         self.norms = _make_norms(genome.norm_type, channels)
         self.act = _get_activation(genome.activation)
-        self.drop = nn.Dropout(genome.dropout) if genome.dropout > 0 else None
+        self.drop = _make_dropout(genome.dropout)
         self.head = nn.Linear(channels[-1], output_dim)
 
     def __call__(self, x):
@@ -235,7 +249,7 @@ class ImageConvNet(nn.Module):
         for i, conv in enumerate(self.convs):
             h = self.act(conv(h))
             if i < len(self.norms):
-                h = self.norms[i](h)
+                h = _apply_norm(h, self.norms[i])
             if self.drop is not None:
                 h = self.drop(h)
         # Global average pool over spatial dims (H, W)
@@ -266,7 +280,7 @@ class LiteImageConvNet(nn.Module):
 
         self.norms = _make_norms(genome.norm_type, channels)
         self.act = _get_activation(genome.activation)
-        self.drop = nn.Dropout(genome.dropout) if genome.dropout > 0 else None
+        self.drop = _make_dropout(genome.dropout)
         self.head = nn.Linear(channels[-1], output_dim)
 
     def __call__(self, x):
@@ -276,7 +290,7 @@ class LiteImageConvNet(nn.Module):
             h = self.act(spa(h))
             h = self.act(exp(h))
             if i < len(self.norms):
-                h = self.norms[i](h)
+                h = _apply_norm(h, self.norms[i])
             if self.drop is not None:
                 h = self.drop(h)
         pooled = mx.mean(h, axis=(1, 2))
@@ -305,7 +319,7 @@ class SequenceConvNet(nn.Module):
         ]
         self.norms = _make_norms(genome.norm_type, channels)
         self.act = _get_activation(genome.activation)
-        self.drop = nn.Dropout(genome.dropout) if genome.dropout > 0 else None
+        self.drop = _make_dropout(genome.dropout)
         self.head = nn.Linear(channels[-1], output_dim)
 
     def __call__(self, x):
@@ -313,7 +327,7 @@ class SequenceConvNet(nn.Module):
         for i, conv in enumerate(self.convs):
             h = self.act(conv(h))
             if i < len(self.norms):
-                h = self.norms[i](h)
+                h = _apply_norm(h, self.norms[i])
             if self.drop is not None:
                 h = self.drop(h)
         pooled = mx.mean(h, axis=1)
@@ -343,7 +357,7 @@ class LiteSequenceConvNet(nn.Module):
 
         self.norms = _make_norms(genome.norm_type, channels)
         self.act = _get_activation(genome.activation)
-        self.drop = nn.Dropout(genome.dropout) if genome.dropout > 0 else None
+        self.drop = _make_dropout(genome.dropout)
         self.head = nn.Linear(channels[-1], output_dim)
 
     def __call__(self, x):
@@ -353,7 +367,7 @@ class LiteSequenceConvNet(nn.Module):
             h = self.act(spa(h))
             h = self.act(exp(h))
             if i < len(self.norms):
-                h = self.norms[i](h)
+                h = _apply_norm(h, self.norms[i])
             if self.drop is not None:
                 h = self.drop(h)
         pooled = mx.mean(h, axis=1)
@@ -374,15 +388,14 @@ class SequenceGRUNet(nn.Module):
         self.project = nn.Linear(hidden, hidden)
         self.norm = _make_norm(genome.norm_type, hidden)
         self.act = _get_activation(genome.activation)
-        self.drop = nn.Dropout(genome.dropout) if genome.dropout > 0 else None
+        self.drop = _make_dropout(genome.dropout)
         self.head = nn.Linear(hidden, output_dim)
 
     def __call__(self, x):
         h = self.gru(x)
         h = h[:, -1, :]  # last time step
         h = self.act(self.project(h))
-        if self.norm is not None:
-            h = self.norm(h)
+        h = _apply_norm(h, self.norm)
         if self.drop is not None:
             h = self.drop(h)
         return self.head(h)
@@ -418,7 +431,7 @@ class TextEmbeddingModel(nn.Module):
         self.norms = _make_norms(genome.norm_type, hl)
         self.head = nn.Linear(hl[-1] if hl else edim, output_dim)
         self.act = _get_activation(genome.activation)
-        self.drop = nn.Dropout(genome.dropout) if genome.dropout > 0 else None
+        self.drop = _make_dropout(genome.dropout)
 
     def __call__(self, x):
         h = self.embedding(x)
@@ -427,7 +440,7 @@ class TextEmbeddingModel(nn.Module):
         for i, layer in enumerate(self.layers):
             h = self.act(layer(h))
             if i < len(self.norms):
-                h = self.norms[i](h)
+                h = _apply_norm(h, self.norms[i])
             if self.drop is not None:
                 h = self.drop(h)
         return self.head(h)
@@ -464,7 +477,7 @@ class _TransformerBlock(nn.Module):
         self.ff1 = nn.Linear(dims, mlp_dims)
         self.ff2 = nn.Linear(mlp_dims, dims)
         self.act = activation
-        self.drop = nn.Dropout(dropout) if dropout > 0 else None
+        self.drop = _make_dropout(dropout)
 
     def __call__(self, x):
         B, T, _ = x.shape
@@ -537,7 +550,7 @@ class AttentionEncoderNet(nn.Module):
             for _ in range(depth)
         ]
         self.final_norm = _make_norm(genome.norm_type, dims)
-        self.drop = nn.Dropout(genome.dropout) if genome.dropout > 0 else None
+        self.drop = _make_dropout(genome.dropout)
         self.head = nn.Linear(dims, output_dim)
 
     def __call__(self, x):
@@ -547,8 +560,7 @@ class AttentionEncoderNet(nn.Module):
             h = self.input_proj(x)
         for block in self.blocks:
             h = block(h)
-        if self.final_norm is not None:
-            h = self.final_norm(h)
+        h = _apply_norm(h, self.final_norm)
         if self.task == "language_modeling":
             if self.drop is not None:
                 h = self.drop(h)
@@ -601,7 +613,7 @@ class SparseAttentionNet(nn.Module):
             for _ in range(depth)
         ]
         self.final_norm = _make_norm(genome.norm_type, dims)
-        self.drop = nn.Dropout(genome.dropout) if genome.dropout > 0 else None
+        self.drop = _make_dropout(genome.dropout)
         self.sparsity = genome.activation_sparsity
         self.head = nn.Linear(dims, output_dim)
 
@@ -614,8 +626,7 @@ class SparseAttentionNet(nn.Module):
             h = block(h)
             if self.sparsity > 0:
                 h = _apply_sparsity(h, self.sparsity)
-        if self.final_norm is not None:
-            h = self.final_norm(h)
+        h = _apply_norm(h, self.final_norm)
         if self.task == "language_modeling":
             if self.drop is not None:
                 h = self.drop(h)

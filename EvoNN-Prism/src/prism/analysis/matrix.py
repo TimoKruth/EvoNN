@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+from typing import Any, Sequence, TypeAlias
 
 from prism.analysis.compare import render_compare_analysis
 from prism.export.report import (
@@ -16,6 +17,10 @@ from prism.export.report import (
 from prism.genome import ModelGenome
 from prism.storage import RunStore
 
+RunMetricBucket: TypeAlias = dict[str, Any]
+RunMetricsByBudget: TypeAlias = dict[int, RunMetricBucket]
+TOP_SUMMARY_ITEMS = 3
+
 
 def discover_matrix_artifacts(matrix_root: str | Path) -> tuple[list[Path], list[Path]]:
     matrix_root = Path(matrix_root)
@@ -27,7 +32,11 @@ def discover_matrix_artifacts(matrix_root: str | Path) -> tuple[list[Path], list
 def render_matrix_analysis(matrix_root: str | Path) -> str:
     matrix_root = Path(matrix_root)
     summary_paths, run_dirs = discover_matrix_artifacts(matrix_root)
-    compare_text = render_compare_analysis(summary_paths) if summary_paths else "# Prism Compare Analysis\n\nNo compare summaries found.\n"
+    compare_text = (
+        render_compare_analysis(summary_paths)
+        if summary_paths
+        else "# Prism Compare Analysis\n\nNo compare summaries found.\n"
+    )
     run_metrics = _aggregate_prism_runs(run_dirs)
 
     lines = [compare_text.rstrip(), "", "## Run Diagnostics", ""]
@@ -41,9 +50,9 @@ def render_matrix_analysis(matrix_root: str | Path) -> str:
         "|---:|---:|---|---|---:|---:|---:|---|",
     ])
     for budget, payload in sorted(run_metrics.items()):
-        top_families = ", ".join(f"{family}({count})" for family, count in payload["family_wins"].most_common(3)) or "---"
-        top_operators = ", ".join(f"{operator}({count})" for operator, count in payload["operator_mix"].most_common(3)) or "---"
-        top_failure = payload["failures"].most_common(1)[0][0] if payload["failures"] else "---"
+        top_families = _format_counter_summary(payload["family_wins"])
+        top_operators = _format_counter_summary(payload["operator_mix"])
+        top_failure = _top_counter_label(payload["failures"])
         lines.append(
             f"| {budget} | {payload['runs']} | {top_families} | {top_operators} | "
             f"{payload['inheritance_rate']:.1f}% | {payload['specialist_count']:.1f} | "
@@ -67,14 +76,14 @@ def render_matrix_analysis(matrix_root: str | Path) -> str:
         lines.append("- Feed operator success into stronger adaptive weighting; current operator mix still broad.")
     if highest["specialist_count"]:
         lines.append("- Specialist archives active. Next step: retain and transfer them across runs, not only within one run.")
-    if str(highest["failures"].most_common(1)[0][0] if highest["failures"] else "").startswith("compile_error:"):
+    if str(_top_counter_label(highest["failures"])).startswith("compile_error:"):
         lines.append("- Compile errors still top waste source. Tighten family parameter sanitization and compile guards.")
     lines.append("")
     return "\n".join(lines) + "\n"
 
 
-def _aggregate_prism_runs(run_dirs: list[Path]) -> dict[int, dict]:
-    by_budget: dict[int, dict] = {}
+def _aggregate_prism_runs(run_dirs: list[Path]) -> RunMetricsByBudget:
+    by_budget: RunMetricsByBudget = {}
     for run_dir in run_dirs:
         db_path = run_dir / "metrics.duckdb"
         if not db_path.exists():
@@ -119,12 +128,24 @@ def _aggregate_prism_runs(run_dirs: list[Path]) -> dict[int, dict]:
 
     for payload in by_budget.values():
         rates = payload.pop("inheritance_rates")
-        payload["inheritance_rate"] = sum(rates) / len(rates) if rates else 0.0
+        payload["inheritance_rate"] = _mean(rates)
         specialists = payload["specialist_counts"]
-        payload["specialist_count"] = sum(specialists) / len(specialists) if specialists else 0.0
+        payload["specialist_count"] = _mean(specialists)
         turnovers = payload.pop("archive_turnovers")
-        payload["archive_turnover"] = sum(turnovers) / len(turnovers) if turnovers else 0.0
+        payload["archive_turnover"] = _mean(turnovers)
     return by_budget
+
+
+def _format_counter_summary(counter: Counter[str], limit: int = TOP_SUMMARY_ITEMS) -> str:
+    return ", ".join(f"{label}({count})" for label, count in counter.most_common(limit)) or "---"
+
+
+def _top_counter_label(counter: Counter[str]) -> str:
+    return counter.most_common(1)[0][0] if counter else "---"
+
+
+def _mean(values: Sequence[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
 
 
 def _load_genomes(store: RunStore, run_id: str) -> list[ModelGenome]:

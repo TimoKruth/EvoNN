@@ -40,6 +40,9 @@ FAMILY_MODALITY: dict[str, list[str]] = {
     "sparse_attention": ["text", "sequence"],
 }
 
+_LANGUAGE_MODELING_FAMILIES: frozenset[str] = frozenset({"embedding", "attention", "sparse_attention"})
+_LANGUAGE_MODELING_TASKS: frozenset[str] = frozenset({"language_modeling"})
+
 
 # ---------------------------------------------------------------------------
 # Compiled output
@@ -58,17 +61,17 @@ class CompiledModel:
 # Parameter counting
 # ---------------------------------------------------------------------------
 
-def count_parameters(params) -> int:
+def count_parameters(params: Any) -> int:
     """Count total scalar parameters in a (possibly nested) parameter tree."""
     if hasattr(params, "shape"):
         result = 1
-        for d in params.shape:
-            result *= d
+        for dimension in params.shape:
+            result *= dimension
         return int(result)
     if isinstance(params, Mapping):
-        return sum(count_parameters(v) for v in params.values())
+        return sum(count_parameters(value) for value in params.values())
     if isinstance(params, Sequence) and not isinstance(params, (str, bytes)):
-        return sum(count_parameters(v) for v in params)
+        return sum(count_parameters(value) for value in params)
     return 0
 
 
@@ -101,22 +104,15 @@ def compile_genome(
     if not MLX_AVAILABLE:
         raise RuntimeError("Prism MLX compiler backend is unavailable; use runtime.backend='numpy-fallback'.")
     genome = prepare_genome_for_compile(genome, input_shape, output_dim, modality, task)
-    family = genome.family
 
-    cls = FAMILY_CLASSES[family]
-    try:
-        model = cls(genome, input_shape, output_dim, task=task)
-    except TypeError as exc:
-        if "unexpected keyword argument 'task'" not in str(exc):
-            raise
-        model = cls(genome, input_shape, output_dim)
-
+    model = _instantiate_model(genome, input_shape, output_dim, task)
     _dry_run_guard(model, input_shape, output_dim, modality, task)
 
-    # Count parameters
-    param_count = count_parameters(model.parameters())
-
-    return CompiledModel(model=model, family=family, parameter_count=param_count)
+    return CompiledModel(
+        model=model,
+        family=genome.family,
+        parameter_count=count_parameters(model.parameters()),
+    )
 
 
 def compatible_families(modality: str) -> list[str]:
@@ -140,7 +136,7 @@ def is_genome_compatible(
     family = genome.family
     if family not in FAMILY_MODALITY:
         return False
-    if task == "language_modeling" and family not in {"embedding", "attention", "sparse_attention"}:
+    if _is_language_modeling_task(task) and family not in _LANGUAGE_MODELING_FAMILIES:
         return False
     return modality in FAMILY_MODALITY.get(family, [])
 
@@ -152,13 +148,14 @@ def prepare_genome_for_compile(
     modality: str,
     task: str = "classification",
 ) -> ModelGenome:
+    """Validate compile inputs and normalize genome fields used by family models."""
     family = genome.family
     if family not in FAMILY_MODALITY:
         raise ValueError(f"Unknown model family: {family!r}")
-    if task == "language_modeling" and family not in {"embedding", "attention", "sparse_attention"}:
+    if _is_language_modeling_task(task) and family not in _LANGUAGE_MODELING_FAMILIES:
         raise ValueError(f"Family {family!r} does not support language_modeling.")
 
-    allowed = FAMILY_MODALITY.get(family, [])
+    allowed = FAMILY_MODALITY[family]
     if modality not in allowed:
         raise ValueError(
             f"Family {family!r} is not compatible with modality {modality!r}. "
@@ -175,14 +172,33 @@ def prepare_genome_for_compile(
     payload["kernel_size"] = max(1, int(payload["kernel_size"]))
     if payload["kernel_size"] % 2 == 0:
         payload["kernel_size"] += 1
-    if task == "language_modeling" and payload["norm_type"] == "batch":
+    if _is_language_modeling_task(task) and payload["norm_type"] == "batch":
         payload["norm_type"] = "layer"
-    if family in {"attention", "sparse_attention", "embedding"}:
+    if family in _LANGUAGE_MODELING_FAMILIES:
         payload["embedding_dim"] = max(8, int(payload["embedding_dim"]))
     if family == "moe_mlp":
         payload["num_experts"] = max(2, int(payload["num_experts"] or 2))
         payload["moe_top_k"] = min(max(1, int(payload["moe_top_k"])), payload["num_experts"])
     return ModelGenome.model_validate(payload)
+
+
+def _is_language_modeling_task(task: str) -> bool:
+    return task in _LANGUAGE_MODELING_TASKS
+
+
+def _instantiate_model(
+    genome: ModelGenome,
+    input_shape: list[int],
+    output_dim: int,
+    task: str,
+) -> Any:
+    cls = FAMILY_CLASSES[genome.family]
+    try:
+        return cls(genome, input_shape, output_dim, task=task)
+    except TypeError as exc:
+        if "unexpected keyword argument 'task'" not in str(exc):
+            raise
+        return cls(genome, input_shape, output_dim)
 
 
 def _dry_run_guard(
@@ -206,9 +222,9 @@ def _dry_run_guard(
         raise ValueError(f"Invalid output shape: {shape!r}")
 
 
-def _dummy_input(input_shape: list[int], modality: str, task: str):
+def _dummy_input(input_shape: list[int], modality: str, task: str) -> Any:
     batch = 2
     shape = (batch, *input_shape)
-    if modality == "text" or task == "language_modeling":
+    if modality == "text" or _is_language_modeling_task(task):
         return mx.zeros(shape, dtype=mx.int32)
     return mx.zeros(shape, dtype=mx.float32)
