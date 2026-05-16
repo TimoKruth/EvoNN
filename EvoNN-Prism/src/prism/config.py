@@ -3,11 +3,29 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Literal
 
 import yaml
-from typing import Literal
 
 from pydantic import BaseModel, Field
+
+RuntimeBackend = Literal["auto", "mlx", "numpy-fallback"]
+
+MULTI_FIDELITY_SCHEDULE_DEFAULT = [0.35, 0.65, 1.0]
+ACTIVATION_CHOICES_DEFAULT = ["relu", "gelu", "tanh"]
+DROPOUT_CHOICES_DEFAULT = [0.0, 0.1, 0.2, 0.3]
+
+
+def _default_multi_fidelity_schedule() -> list[float]:
+    return MULTI_FIDELITY_SCHEDULE_DEFAULT.copy()
+
+
+def _default_activation_choices() -> list[str]:
+    return ACTIVATION_CHOICES_DEFAULT.copy()
+
+
+def _default_dropout_choices() -> list[float]:
+    return DROPOUT_CHOICES_DEFAULT.copy()
 
 
 class TrainingConfig(BaseModel):
@@ -23,7 +41,7 @@ class TrainingConfig(BaseModel):
     validation_split: float = 0.2
     weight_inheritance: bool = True
     multi_fidelity: bool = True
-    multi_fidelity_schedule: list[float] = Field(default_factory=lambda: [0.35, 0.65, 1.0])
+    multi_fidelity_schedule: list[float] = Field(default_factory=_default_multi_fidelity_schedule)
     benchmark_epoch_min_scale: float = 0.75
     benchmark_epoch_max_scale: float = 1.25
     efficiency_epoch_min_scale: float = 0.85
@@ -45,8 +63,8 @@ class EvolutionConfig(BaseModel):
     max_hidden_width: int = 512
     max_hidden_layers: int = 8
     allowed_families: list[str] | None = None
-    activation_choices: list[str] = Field(default_factory=lambda: ["relu", "gelu", "tanh"])
-    dropout_choices: list[float] = Field(default_factory=lambda: [0.0, 0.1, 0.2, 0.3])
+    activation_choices: list[str] = Field(default_factory=_default_activation_choices)
+    dropout_choices: list[float] = Field(default_factory=_default_dropout_choices)
     undercovered_parent_bias: float = 0.55
     family_diversity_bias: float = 0.3
     family_stale_penalty: float = 0.15
@@ -72,7 +90,7 @@ class BenchmarkPoolConfig(BaseModel):
 class RuntimeConfig(BaseModel):
     """Runtime backend selection for Prism execution."""
 
-    backend: Literal["auto", "mlx", "numpy-fallback"] = "auto"
+    backend: RuntimeBackend = "auto"
     allow_fallback: bool = True
 
 
@@ -89,6 +107,7 @@ class RunConfig(BaseModel):
 
 def load_config(path: str | Path) -> RunConfig:
     """Load a RunConfig from a YAML file."""
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
+    config_path = Path(path)
+    with config_path.open(encoding="utf-8") as f:
+        data: Any = yaml.safe_load(f) or {}
     return RunConfig.model_validate(data)

@@ -26,12 +26,26 @@ except importlib.metadata.PackageNotFoundError:
         mlx = None
         _MLX_VERSION = None
 
-from evonn_shared.contracts import ArtifactPaths, BenchmarkEntry, BudgetEnvelope, DeviceInfo, ResultRecord, RunManifest
-from evonn_shared.manifests import benchmark_signature, fairness_manifest, summary_core_from_results, write_json
+from evonn_shared.contracts import (
+    ArtifactPaths,
+    BenchmarkEntry,
+    BudgetEnvelope,
+    DeviceInfo,
+    ResultRecord,
+    RunManifest,
+)
+from evonn_shared.manifests import (
+    benchmark_signature,
+    fairness_manifest,
+    summary_core_from_results,
+    write_json,
+)
 from prism.benchmarks.parity import get_canonical_id, load_parity_pack
 from prism.config import RunConfig, load_config
 from prism.genome import ModelGenome
 from prism.storage import RunStore
+
+JsonObject = dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
@@ -57,26 +71,23 @@ def export_symbiosis_contract(
 
     # 1. Load run config + DuckDB store
     store = RunStore(run_dir / "metrics.duckdb")
-    config = _load_run_config(run_dir)
-    run_id = _resolve_run_id(store)
+    try:
+        config = _load_run_config(run_dir)
+        run_id = _resolve_run_id(store)
 
-    # 2. Load genome data
-    genome_rows = store.load_genomes(run_id)
-    genomes: list[ModelGenome] = []
-    for row in genome_rows:
-        try:
-            genomes.append(ModelGenome.model_validate(row))
-        except Exception:
-            pass
+        # 2. Load genome data
+        genomes = _load_valid_genomes(store.load_genomes(run_id))
 
-    # 3. Load evaluation results
-    evaluations = store.load_evaluations(run_id)
-    best_per_benchmark = store.load_best_per_benchmark(run_id)
-    latest_gen = store.latest_generation(run_id)
-    lineage_records = store.load_lineage(run_id)
+        # 3. Load evaluation results
+        evaluations = store.load_evaluations(run_id)
+        best_per_benchmark = store.load_best_per_benchmark(run_id)
+        latest_gen = store.latest_generation(run_id)
+        lineage_records = store.load_lineage(run_id)
 
-    # 4. Load parity pack benchmarks
-    pack_specs = load_parity_pack(pack_path)
+        # 4. Load parity pack benchmarks
+        pack_specs = load_parity_pack(pack_path)
+    finally:
+        store.close()
 
     # 5. Select representative genome (highest average quality)
     representative = _select_representative(genomes, evaluations)
@@ -144,8 +155,6 @@ def export_symbiosis_contract(
                 status=status,
             )
         )
-
-    store.close()
 
     # 7. Build manifest
     runtime_meta = _resolved_runtime_metadata(run_dir)
@@ -278,7 +287,7 @@ def export_symbiosis_contract(
 # ---------------------------------------------------------------------------
 
 
-def _failure_label(row: dict[str, Any]) -> str | None:
+def _failure_label(row: JsonObject) -> str | None:
     reason = row.get("failure_reason")
     if reason:
         return str(reason)
@@ -288,20 +297,30 @@ def _failure_label(row: dict[str, Any]) -> str | None:
     return str(status)
 
 
+def _load_valid_genomes(rows: list[JsonObject]) -> list[ModelGenome]:
+    genomes: list[ModelGenome] = []
+    for row in rows:
+        try:
+            genomes.append(ModelGenome.model_validate(row))
+        except Exception:
+            pass
+    return genomes
+
+
 def _select_representative(
     genomes: list[ModelGenome],
-    evaluations: list[dict],
+    evaluations: list[JsonObject],
 ) -> ModelGenome | None:
     """Select the genome with the highest average quality across benchmarks."""
     if not genomes:
         return None
 
     genome_qualities: dict[str, list[float]] = {}
-    for ev in evaluations:
-        gid = ev.get("genome_id", "")
-        q = ev.get("quality")
-        if gid and q is not None and _failure_label(ev) is None:
-            genome_qualities.setdefault(gid, []).append(float(q))
+    for evaluation in evaluations:
+        genome_id = evaluation.get("genome_id", "")
+        quality = evaluation.get("quality")
+        if genome_id and quality is not None and _failure_label(evaluation) is None:
+            genome_qualities.setdefault(genome_id, []).append(float(quality))
 
     if not genome_qualities:
         return genomes[0]
@@ -310,13 +329,13 @@ def _select_representative(
         genome_qualities,
         key=lambda gid: sum(genome_qualities[gid]) / len(genome_qualities[gid]),
     )
-    for g in genomes:
-        if g.genome_id == best_id:
-            return g
+    for genome in genomes:
+        if genome.genome_id == best_id:
+            return genome
     return genomes[0]
 
 
-def _genome_summary(genome: ModelGenome) -> dict[str, Any]:
+def _genome_summary(genome: ModelGenome) -> JsonObject:
     """Compact summary of a Prism genome."""
     return {
         "family": genome.family,
@@ -350,7 +369,7 @@ def _benchmark_metric_direction(task: str) -> str:
     return "max"
 
 
-def _render_report_markdown(manifest: dict[str, Any], results: list[dict[str, Any]]) -> str:
+def _render_report_markdown(manifest: JsonObject, results: list[JsonObject]) -> str:
     lines = [
         "# Prism Export Report",
         "",
@@ -380,7 +399,7 @@ def _detect_device() -> str:
     return f"{system.lower()}_{machine}"
 
 
-def _load_run_summary(run_dir: Path) -> dict[str, Any]:
+def _load_run_summary(run_dir: Path) -> JsonObject:
     summary_path = run_dir / "summary.json"
     if not summary_path.exists():
         return {}
@@ -480,8 +499,8 @@ def _intended_evaluation_count(
 
 def _resolved_actual_evaluations(
     *,
-    run_summary: dict[str, Any],
-    evaluations: list[dict[str, Any]],
+    run_summary: JsonObject,
+    evaluations: list[JsonObject],
     fallback: int,
 ) -> int:
     persisted_total = run_summary.get("total_evaluations")
@@ -510,13 +529,13 @@ def _load_wall_clock_seconds(run_dir: Path) -> float | None:
 
 def _write_summary_json(
     output_dir: Path,
-    manifest: dict[str, Any],
-    results: list[dict[str, Any]],
+    manifest: JsonObject,
+    results: list[JsonObject],
     genomes: list[ModelGenome],
     latest_gen: int | None,
     config: RunConfig,
-    best_per_benchmark: dict[str, dict[str, Any]] | None = None,
-    lineage_records: list[dict[str, Any]] | None = None,
+    best_per_benchmark: dict[str, JsonObject] | None = None,
+    lineage_records: list[JsonObject] | None = None,
 ) -> None:
     """Write summary.json with cross-system durability contract fields."""
     core = summary_core_from_results(
@@ -532,6 +551,8 @@ def _write_summary_json(
         "framework_limitations": "",
         "precision_mode": "fp32",
     }
+    operator_mix = _operator_mix(lineage_records or [])
+    family_benchmark_wins = _family_benchmark_wins(best_per_benchmark or {}, genomes)
 
     summary = {
         "system": "prism",
@@ -552,13 +573,13 @@ def _write_summary_json(
         "candidate_selection_policy": budget.get("candidate_selection_policy"),
         "operator_adaptation_policy": budget.get("operator_adaptation_policy"),
         **core,
-        "operator_mix": _operator_mix(lineage_records or []),
-        "family_benchmark_wins": _family_benchmark_wins(best_per_benchmark or {}, genomes),
+        "operator_mix": operator_mix,
+        "family_benchmark_wins": family_benchmark_wins,
         "failure_patterns": _failure_patterns(results),
         "engine_evidence": {
             "family_distribution": _family_distribution(genomes),
-            "family_benchmark_wins": _family_benchmark_wins(best_per_benchmark or {}, genomes),
-            "operator_mix": _operator_mix(lineage_records or []),
+            "family_benchmark_wins": family_benchmark_wins,
+            "operator_mix": operator_mix,
             "default_engine_decision_notes": [
                 "prism export carries family-level winner and operator evidence for default-engine review"
             ],
@@ -573,22 +594,22 @@ def _family_distribution(genomes: list[ModelGenome]) -> dict[str, int]:
         family = getattr(genome, "family", None)
         if not family:
             continue
-        counts[str(family)] = counts.get(str(family), 0) + 1
-    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+        _increment_count(counts, str(family))
+    return _sorted_count_dict(counts)
 
 
-def _operator_mix(lineage_records: list[dict[str, Any]]) -> dict[str, int]:
+def _operator_mix(lineage_records: list[JsonObject]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for row in lineage_records:
         label = str(row.get("mutation_summary") or row.get("operator_kind") or "")
         if not label:
             continue
-        counts[label] = counts.get(label, 0) + 1
-    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+        _increment_count(counts, label)
+    return _sorted_count_dict(counts)
 
 
 def _family_benchmark_wins(
-    best_per_benchmark: dict[str, dict[str, Any]],
+    best_per_benchmark: dict[str, JsonObject],
     genomes: list[ModelGenome],
 ) -> dict[str, int]:
     genome_families = {genome.genome_id: genome.family for genome in genomes}
@@ -599,11 +620,11 @@ def _family_benchmark_wins(
         family = genome_families.get(best.get("genome_id", ""))
         if family is None:
             continue
-        counts[family] = counts.get(family, 0) + 1
-    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+        _increment_count(counts, family)
+    return _sorted_count_dict(counts)
 
 
-def _failure_patterns(results: list[dict[str, Any]]) -> dict[str, int]:
+def _failure_patterns(results: list[JsonObject]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for row in results:
         reason = row.get("failure_reason") or (
@@ -612,5 +633,13 @@ def _failure_patterns(results: list[dict[str, Any]]) -> dict[str, int]:
         if reason is None:
             continue
         key = str(reason)
-        counts[key] = counts.get(key, 0) + 1
+        _increment_count(counts, key)
+    return _sorted_count_dict(counts)
+
+
+def _increment_count(counts: dict[str, int], key: str) -> None:
+    counts[key] = counts.get(key, 0) + 1
+
+
+def _sorted_count_dict(counts: dict[str, int]) -> dict[str, int]:
     return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
