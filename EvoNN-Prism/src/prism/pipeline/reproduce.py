@@ -5,18 +5,34 @@ from __future__ import annotations
 from collections import Counter
 from math import log1p
 from random import Random
+from typing import TYPE_CHECKING, Any, TypedDict
 
+from prism.config import EvolutionConfig, RunConfig
 from prism.genome import ModelGenome, apply_random_mutation, crossover
 from prism.pipeline.archive import IndividualSummary
+
+if TYPE_CHECKING:
+    from prism.pipeline.evaluate import GenerationState
 
 MAX_OFFSPRING_ATTEMPTS = 12
 
 
+class LineageRecord(TypedDict):
+    genome_id: str
+    parent_ids: list[str]
+    operator: str
+
+
+class SpecialistTarget(TypedDict):
+    benchmark_id: str
+    genome_ids: list[str]
+
+
 def reproduce(
-    state,
-    config,
+    state: "GenerationState",
+    config: RunConfig,
     rng: Random,
-) -> tuple[list[ModelGenome], list[dict]]:
+) -> tuple[list[ModelGenome], list[dict[str, Any]]]:
     """Create offspring from current population.
 
     1. Build parent pool from Pareto front + elites + undercovered elites.
@@ -50,7 +66,7 @@ def reproduce(
         quality_map = _quality_map_from_results(state, evolution)
 
     offspring: list[ModelGenome] = []
-    lineage: list[dict] = []
+    lineage: list[dict[str, Any]] = []
     seen_offspring_ids: set[str] = set()
     parent_pool_ids = {genome.genome_id for genome in parent_pool}
     family_floor_targets = _family_floor_targets(parent_pool, quality_map, evolution.family_offspring_floor)
@@ -83,20 +99,20 @@ def reproduce(
 def _select_novel_offspring(
     parent_pool: list[ModelGenome],
     quality_map: dict[str, float],
-    evolution,
+    evolution: EvolutionConfig,
     rng: Random,
-    state,
+    state: "GenerationState",
     seen_offspring_ids: set[str],
     parent_pool_ids: set[str],
     family_target: str | None,
-    specialist_target: dict | None,
-) -> tuple[ModelGenome, dict]:
+    specialist_target: SpecialistTarget | None,
+) -> tuple[ModelGenome, LineageRecord]:
     strategies = [
         (family_target, specialist_target),
         (family_target, None),
         (None, None),
     ]
-    for target_family, target_specialist in strategies:
+    for retry_family, retry_specialist in strategies:
         for _attempt in range(MAX_OFFSPRING_ATTEMPTS):
             child, record = _make_offspring(
                 parent_pool,
@@ -104,17 +120,17 @@ def _select_novel_offspring(
                 evolution,
                 rng,
                 state=state,
-                family_target=target_family,
-                specialist_target=target_specialist,
+                family_target=retry_family,
+                specialist_target=retry_specialist,
             )
             if not _is_novel_offspring(
                 child,
-                record.get("parent_ids", []),
+                record["parent_ids"],
                 seen_offspring_ids,
                 parent_pool_ids,
             ):
                 continue
-            if target_family is not None and child.family != target_family:
+            if retry_family is not None and child.family != retry_family:
                 continue
             return child, record
     raise RuntimeError(
@@ -125,29 +141,32 @@ def _select_novel_offspring(
 def _make_offspring(
     parent_pool: list[ModelGenome],
     quality_map: dict[str, float],
-    evolution,
+    evolution: EvolutionConfig,
     rng: Random,
-    state,
+    state: "GenerationState",
     family_target: str | None = None,
-    specialist_target: dict | None = None,
-) -> tuple[ModelGenome, dict]:
+    specialist_target: SpecialistTarget | None = None,
+) -> tuple[ModelGenome, LineageRecord]:
     if specialist_target is not None:
         benchmark_id = specialist_target["benchmark_id"]
         candidate_ids = specialist_target["genome_ids"]
         specialist_pool = [genome for genome in parent_pool if genome.genome_id in candidate_ids]
         if specialist_pool:
-            parent = max(specialist_pool, key=lambda genome: quality_map.get(genome.genome_id, float("-inf")))
+            parent = max(
+                specialist_pool,
+                key=lambda genome: quality_map.get(genome.genome_id, float("-inf")),
+            )
             child, op_name = apply_random_mutation(
                 parent,
                 evolution,
                 rng,
                 operator_weights=_operator_weights_for_parent(state, parent),
             )
-            return child, {
-                "genome_id": child.genome_id,
-                "parent_ids": [parent.genome_id],
-                "operator": f"specialist:{benchmark_id}:mutation:{op_name}",
-            }
+            return child, _lineage_record(
+                child,
+                [parent.genome_id],
+                f"specialist:{benchmark_id}:mutation:{op_name}",
+            )
 
     if family_target is not None:
         parent = _best_in_family(parent_pool, quality_map, family_target)
@@ -157,11 +176,7 @@ def _make_offspring(
             rng,
             operator_weights=_operator_weights_for_parent(state, parent),
         )
-        return child, {
-            "genome_id": child.genome_id,
-            "parent_ids": [parent.genome_id],
-            "operator": f"mutation:{op_name}",
-        }
+        return child, _lineage_record(child, [parent.genome_id], f"mutation:{op_name}")
 
     if rng.random() < evolution.crossover_rate and len(parent_pool) >= 2:
         p1 = tournament_select(parent_pool, quality_map, evolution.tournament_size, rng)
@@ -172,11 +187,7 @@ def _make_offspring(
             attempts += 1
 
         child = crossover(p1, p2, rng)
-        return child, {
-            "genome_id": child.genome_id,
-            "parent_ids": [p1.genome_id, p2.genome_id],
-            "operator": "crossover",
-        }
+        return child, _lineage_record(child, [p1.genome_id, p2.genome_id], "crossover")
 
     parent = tournament_select(parent_pool, quality_map, evolution.tournament_size, rng)
     child, op_name = apply_random_mutation(
@@ -185,10 +196,18 @@ def _make_offspring(
         rng,
         operator_weights=_operator_weights_for_parent(state, parent),
     )
-    return child, {
+    return child, _lineage_record(child, [parent.genome_id], f"mutation:{op_name}")
+
+
+def _lineage_record(
+    child: ModelGenome,
+    parent_ids: list[str],
+    operator: str,
+) -> LineageRecord:
+    return {
         "genome_id": child.genome_id,
-        "parent_ids": [parent.genome_id],
-        "operator": f"mutation:{op_name}",
+        "parent_ids": parent_ids,
+        "operator": operator,
     }
 
 
@@ -222,9 +241,9 @@ def tournament_select(
 
 
 def _build_parent_pool(
-    state,
-    archives: dict,
-    evolution,
+    state: "GenerationState",
+    archives: dict[str, Any],
+    evolution: EvolutionConfig,
 ) -> tuple[list[ModelGenome], dict[str, float]]:
     """Build a diverse parent pool from archives and population.
 
@@ -278,7 +297,10 @@ def _build_parent_pool(
     return pool, quality_map
 
 
-def _quality_map_from_results(state, evolution) -> dict[str, float]:
+def _quality_map_from_results(
+    state: "GenerationState",
+    evolution: EvolutionConfig,
+) -> dict[str, float]:
     """Extract efficiency-adjusted parent score per genome from state.results."""
     profiles: dict[str, dict[str, float]] = {}
     for genome_id, benchmark_results in state.results.items():
@@ -320,7 +342,7 @@ def _quality_map_from_results(state, evolution) -> dict[str, float]:
 
 
 def _apply_selection_pressure(
-    state,
+    state: "GenerationState",
     quality_map: dict[str, float],
     *,
     undercovered_bias: float,
@@ -371,12 +393,17 @@ def _apply_selection_pressure(
         family_ratio = family_counts[genome.family] / population_size
         boosted[genome_id] += family_diversity_bias * (1.0 - family_ratio)
         if family_counts[genome.family] > 1:
-            boosted[genome_id] -= family_stale_penalty * (family_counts[genome.family] - 1) / population_size
+            repeated_family_ratio = (family_counts[genome.family] - 1) / population_size
+            boosted[genome_id] -= family_stale_penalty * repeated_family_ratio
 
         family_stats = getattr(state, "family_stats", {}).get(genome.family, {})
         family_count = family_stats.get("count", 0.0)
         if family_count > 0:
-            family_avg = family_stats.get("efficiency_sum", family_stats.get("quality_sum", 0.0)) / family_count
+            family_total = family_stats.get(
+                "efficiency_sum",
+                family_stats.get("quality_sum", 0.0),
+            )
+            family_avg = family_total / family_count
             family_fail = family_stats.get("failures", 0.0) / family_count
             boosted[genome_id] += family_prior_bias * family_avg
             boosted[genome_id] -= family_prior_bias * 0.5 * family_fail
@@ -422,9 +449,9 @@ def _family_floor_targets(
 
 
 def _benchmark_specialist_targets(
-    state,
+    state: "GenerationState",
     specialist_slots: int,
-) -> list[dict]:
+) -> list[SpecialistTarget]:
     if specialist_slots <= 0:
         return []
 
@@ -433,7 +460,10 @@ def _benchmark_specialist_targets(
         ranked = sorted(
             specialist_archive,
             key=lambda benchmark_id: max(
-                (summary.qualities.get(benchmark_id, float("-inf")) for summary in specialist_archive[benchmark_id].values()),
+                (
+                    summary.qualities.get(benchmark_id, float("-inf"))
+                    for summary in specialist_archive[benchmark_id].values()
+                ),
                 default=float("-inf"),
             ),
         )
@@ -459,31 +489,38 @@ def _benchmark_specialist_targets(
         key=lambda benchmark_id: sum(score for _, score in benchmark_scores[benchmark_id]) / len(benchmark_scores[benchmark_id]),
     )
 
-    targets: list[dict] = []
+    targets: list[SpecialistTarget] = []
     for benchmark_id in ranked_benchmarks[:specialist_slots]:
         specialists = sorted(
             benchmark_scores[benchmark_id],
             key=lambda item: item[1],
             reverse=True,
         )
-        targets.append({
-            "benchmark_id": benchmark_id,
-            "genome_ids": [genome_id for genome_id, _ in specialists[:2]],
-        })
+        targets.append(
+            {
+                "benchmark_id": benchmark_id,
+                "genome_ids": [genome_id for genome_id, _ in specialists[:2]],
+            }
+        )
     return targets
 
 
-def _operator_weights_for_parent(state, parent: ModelGenome) -> dict[str, float]:
+def _operator_weights_for_parent(
+    state: "GenerationState",
+    parent: ModelGenome,
+) -> dict[str, float]:
     weights: dict[str, float] = {}
     operator_stats = getattr(state, "operator_stats", {})
     family_stats = getattr(state, "family_stats", {}).get(parent.family, {})
     family_count = max(1.0, family_stats.get("count", 0.0))
     family_failure_rate = family_stats.get("failures", 0.0) / family_count
-    family_quality = family_stats.get("efficiency_sum", family_stats.get("quality_sum", 0.0)) / family_count if family_count else 0.0
+    family_total = family_stats.get("efficiency_sum", family_stats.get("quality_sum", 0.0))
+    family_quality = family_total / family_count if family_count else 0.0
 
     for operator, payload in operator_stats.items():
         bucket_count = max(1.0, payload.get("count", 0.0))
-        operator_quality = payload.get("efficiency_sum", payload.get("quality_sum", 0.0)) / bucket_count if bucket_count else 0.0
+        operator_total = payload.get("efficiency_sum", payload.get("quality_sum", 0.0))
+        operator_quality = operator_total / bucket_count if bucket_count else 0.0
         operator_failure = payload.get("failures", 0.0) / bucket_count
         label = operator.rsplit(":", 1)[-1] if ":" in operator else operator
         weights[label] = max(0.05, 1.0 + operator_quality - (operator_failure * 0.5))

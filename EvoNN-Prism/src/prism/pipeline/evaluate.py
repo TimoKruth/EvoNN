@@ -18,6 +18,14 @@ from prism.runtime.training import EvaluationResult, train_and_evaluate
 from prism.families.compiler import is_genome_compatible
 
 _RUNTIME_CONFIG: ContextVar[object | None] = ContextVar("prism_runtime_config", default=None)
+_STATS_BUCKET_TEMPLATE = {
+    "count": 0.0,
+    "quality_sum": 0.0,
+    "time_sum": 0.0,
+    "param_sum": 0.0,
+    "efficiency_sum": 0.0,
+    "failures": 0.0,
+}
 
 
 @dataclass
@@ -93,7 +101,7 @@ def evaluate(
                 store.save_genome(run_id, genome)
 
             for spec in benchmark_specs:
-                benchmark_id = spec.id if hasattr(spec, "id") else spec.name
+                benchmark_id = _benchmark_id(spec)
 
                 if benchmark_id in genome_results:
                     continue
@@ -175,7 +183,7 @@ def select_benchmarks(
     priority_scores = _benchmark_priority_scores(state, all_benchmarks)
     ranked = sorted(
         all_benchmarks,
-        key=lambda spec: priority_scores.get(spec.id if hasattr(spec, "id") else spec.name, 0.0),
+        key=lambda spec: priority_scores.get(_benchmark_id(spec), 0.0),
         reverse=True,
     )
     return ranked
@@ -193,7 +201,6 @@ def _evaluate_single(
     """Compile, optionally inherit weights, train, cache, return result."""
     from prism.families.compiler import compile_genome
 
-    # Determine modality and task from spec
     modality = spec.modality if hasattr(spec, "modality") else "tabular"
     task = spec.task if hasattr(spec, "task") else "classification"
     input_shape = spec.input_shape if hasattr(spec, "input_shape") else None
@@ -255,8 +262,6 @@ def _evaluate_single(
                 exclude_ids={genome.genome_id},
             )
 
-    # Load data from spec
-    # Apply multi-fidelity epoch scaling
     epochs = max(1, int(training.epochs * epoch_scale))
 
     result = train_and_evaluate(
@@ -473,6 +478,10 @@ def _default_metric_name(task: str) -> str:
     return "mse"
 
 
+def _benchmark_id(spec) -> str:
+    return spec.id if hasattr(spec, "id") else spec.name
+
+
 def _record_benchmark_result(
     state: GenerationState,
     benchmark_id: str,
@@ -523,17 +532,7 @@ def update_search_memory(
             config.evolution.param_penalty_weight,
         )
 
-        family_bucket = state.family_stats.setdefault(
-            genome.family,
-            {
-                "count": 0.0,
-                "quality_sum": 0.0,
-                "time_sum": 0.0,
-                "param_sum": 0.0,
-                "efficiency_sum": 0.0,
-                "failures": 0.0,
-            },
-        )
+        family_bucket = _stats_bucket(state.family_stats, genome.family)
         family_bucket["count"] += 1.0
         if valid_results:
             family_bucket["quality_sum"] += float(avg_quality)
@@ -545,17 +544,7 @@ def update_search_memory(
         operator = state.lineage_ops.get(genome.genome_id)
         if operator is None:
             continue
-        operator_bucket = state.operator_stats.setdefault(
-            operator,
-            {
-                "count": 0.0,
-                "quality_sum": 0.0,
-                "time_sum": 0.0,
-                "param_sum": 0.0,
-                "efficiency_sum": 0.0,
-                "failures": 0.0,
-            },
-        )
+        operator_bucket = _stats_bucket(state.operator_stats, operator)
         operator_bucket["count"] += 1.0
         if valid_results:
             operator_bucket["quality_sum"] += float(avg_quality) * adaptation_rate
@@ -565,12 +554,16 @@ def update_search_memory(
         operator_bucket["failures"] += float(failures)
 
 
+def _stats_bucket(stats: dict[str, dict[str, float]], key: str) -> dict[str, float]:
+    return stats.setdefault(key, _STATS_BUCKET_TEMPLATE.copy())
+
+
 def _benchmark_priority_scores(state: GenerationState, benchmark_specs: list) -> dict[str, float]:
     scores: dict[str, float] = {}
     if not benchmark_specs:
         return scores
 
-    all_ids = [spec.id if hasattr(spec, "id") else spec.name for spec in benchmark_specs]
+    all_ids = [_benchmark_id(spec) for spec in benchmark_specs]
     max_evals = max((state.benchmark_evaluations.get(bid, 0) for bid in all_ids), default=0)
     spreads = {}
     for bid in all_ids:
