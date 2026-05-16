@@ -6,7 +6,7 @@ import hashlib
 import json
 from enum import Enum
 from random import Random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, TypeAlias, TypeVar
 
 from pydantic import BaseModel
 
@@ -23,6 +23,16 @@ EXPERT_CHOICES = [0, 2, 4, 8]
 MOE_TOP_K_CHOICES = [1, 2]
 LR_SCALES = [0.5, 0.8, 1.2, 1.5]
 WIDTH_DELTAS = [-32, -16, 16, 32]
+
+ATTENTION_FAMILIES = frozenset({"attention", "sparse_attention"})
+EMBEDDING_FAMILIES = ATTENTION_FAMILIES | {"embedding"}
+CONVOLUTION_FAMILIES = frozenset({"conv2d", "lite_conv2d", "conv1d", "lite_conv1d"})
+SPARSE_FAMILIES = frozenset({"sparse_mlp", "sparse_attention"})
+
+OperatorSpec: TypeAlias = tuple[str, str]
+GenomePayload: TypeAlias = dict[str, Any]
+Choice = TypeVar("Choice")
+Number = TypeVar("Number", int, float)
 
 
 class Modality(str, Enum):
@@ -73,13 +83,13 @@ class ModelGenome(BaseModel, frozen=True):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _pick_other(current, choices, rng: Random):
+def _pick_other(current: Choice, choices: list[Choice], rng: Random) -> Choice:
     """Pick a random value from choices that differs from current."""
     candidates = [c for c in choices if c != current]
     return rng.choice(candidates) if candidates else current
 
 
-def _clamp(value, lo, hi):
+def _clamp(value: Number, lo: Number, hi: Number) -> Number:
     return max(lo, min(hi, value))
 
 
@@ -184,7 +194,7 @@ def mutate_moe_top_k(genome: ModelGenome, rng: Random) -> ModelGenome:
     return genome.model_copy(update={"moe_top_k": _pick_other(genome.moe_top_k, allowed, rng)})
 
 
-_OPERATORS: list[tuple[str, str]] = [
+_OPERATORS: list[OperatorSpec] = [
     ("family", "family"),
     ("width", "width"),
     ("depth_add", "depth_add"),
@@ -272,10 +282,10 @@ def apply_random_mutation(
 
 
 def _weighted_operator_choice(
-    operator_pool: list[tuple[str, str]],
+    operator_pool: list[OperatorSpec],
     operator_weights: dict[str, float] | None,
     rng: Random,
-) -> tuple[str, str]:
+) -> OperatorSpec:
     if not operator_weights:
         return rng.choice(operator_pool)
 
@@ -309,6 +319,10 @@ def _blend_lr(lr_a: float, lr_b: float, rng: Random) -> float:
     return _clamp(lr_a * mix + lr_b * (1.0 - mix), 1e-5, 1e-1)
 
 
+def _inherit_parent_fields(a: GenomePayload, b: GenomePayload, rng: Random) -> GenomePayload:
+    return {key: rng.choice([a[key], b[key]]) for key in a}
+
+
 def crossover(parent_a: ModelGenome, parent_b: ModelGenome, rng: Random) -> ModelGenome:
     """Produce a child from two parents. 50% uniform, 50% splice."""
     a, b = parent_a.model_dump(), parent_b.model_dump()
@@ -317,11 +331,11 @@ def crossover(parent_a: ModelGenome, parent_b: ModelGenome, rng: Random) -> Mode
 
     if rng.random() < 0.5:
         # Uniform crossover: each gene independently from either parent
-        child = {key: pick([a[key], b[key]]) for key in a}
+        child = _inherit_parent_fields(a, b, rng)
         child["hidden_layers"] = pick([list(a["hidden_layers"]), list(b["hidden_layers"])])
     else:
         # Splice crossover: hidden_layers spliced, other genes from either parent
-        child = {key: pick([a[key], b[key]]) for key in a}
+        child = _inherit_parent_fields(a, b, rng)
         child["hidden_layers"] = _splice_hidden_layers(a["hidden_layers"], b["hidden_layers"], rng)
 
     # Blended learning rate for both modes
@@ -330,15 +344,16 @@ def crossover(parent_a: ModelGenome, parent_b: ModelGenome, rng: Random) -> Mode
     return ModelGenome.model_validate(_sanitize_for_family(child))
 
 
-def _sanitize_for_family(payload: dict) -> dict:
+def _sanitize_for_family(payload: GenomePayload) -> GenomePayload:
+    """Normalize family-specific fields in-place before genome validation."""
     family = payload["family"]
-    if family not in {"attention", "sparse_attention", "embedding"}:
+    if family not in EMBEDDING_FAMILIES:
         payload["embedding_dim"] = 64
-    if family not in {"attention", "sparse_attention"}:
+    if family not in ATTENTION_FAMILIES:
         payload["num_heads"] = 4
-    if family not in {"conv2d", "lite_conv2d", "conv1d", "lite_conv1d"}:
+    if family not in CONVOLUTION_FAMILIES:
         payload["kernel_size"] = 3
-    if family not in {"sparse_mlp", "sparse_attention"}:
+    if family not in SPARSE_FAMILIES:
         payload["activation_sparsity"] = 0.0
     if family != "moe_mlp":
         payload["num_experts"] = 0

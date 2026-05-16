@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 
 from rich.console import Console
 from rich.table import Table
+
+_NEW_BEST_SUFFIX = "  *NEW BEST*"
 
 
 class TerminalMonitor:
@@ -22,33 +25,23 @@ class TerminalMonitor:
         total: int,
         best_quality: float,
         avg_quality: float,
-        families_active: list[str],
+        families_active: Sequence[str],
         population_size: int,
         elapsed: float,
     ) -> None:
         """Log a completed generation."""
-        new_best = False
-        if self.best_ever is None or best_quality > self.best_ever:
-            self.best_ever = best_quality
-            new_best = True
+        new_best = self._update_best(best_quality)
 
-        table = Table(
-            title=f"Generation {gen + 1}/{total}",
-            title_style="bold cyan",
-            show_header=True,
-            header_style="bold",
-        )
-        table.add_column("Metric", style="cyan", min_width=18)
-        table.add_column("Value", style="green", min_width=24)
+        table = self._generation_table(gen, total)
 
         best_str = f"{best_quality:.6f}"
         if new_best:
-            best_str += "  *NEW BEST*"
+            best_str += _NEW_BEST_SUFFIX
         table.add_row("Best Quality", best_str)
         table.add_row("Avg Quality", f"{avg_quality:.6f}")
         table.add_row("Best Ever", f"{self.best_ever:.6f}")
         table.add_row("Population", str(population_size))
-        table.add_row("Families", ", ".join(sorted(families_active)) or "none")
+        table.add_row("Families", _format_families(families_active))
         table.add_row("Elapsed", _format_time(elapsed))
 
         self.console.print(table)
@@ -84,6 +77,31 @@ class TerminalMonitor:
     def on_error(self, message: str) -> None:
         """Display an error message."""
         self.console.print(f"[bold red]ERROR:[/bold red] {message}")
+
+    def _update_best(self, best_quality: float) -> bool:
+        """Update the tracked best quality and report whether it improved."""
+        if self.best_ever is not None and best_quality <= self.best_ever:
+            return False
+        self.best_ever = best_quality
+        return True
+
+    @staticmethod
+    def _generation_table(gen: int, total: int) -> Table:
+        """Create the standard generation metrics table."""
+        table = Table(
+            title=f"Generation {gen + 1}/{total}",
+            title_style="bold cyan",
+            show_header=True,
+            header_style="bold",
+        )
+        table.add_column("Metric", style="cyan", min_width=18)
+        table.add_column("Value", style="green", min_width=24)
+        return table
+
+
+def _format_families(families: Sequence[str]) -> str:
+    """Format active families for display."""
+    return ", ".join(sorted(families)) or "none"
 
 
 def _format_time(seconds: float) -> str:

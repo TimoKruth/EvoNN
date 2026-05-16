@@ -1,4 +1,6 @@
-"""Model families and genome-to-model compiler."""
+"""Public re-exports for Prism model families and genome compilation."""
+
+from __future__ import annotations
 
 from prism.families.compiler import (
     FAMILY_MODALITY,
@@ -10,7 +12,7 @@ from prism.families.compiler import (
 )
 from prism.families.models import FAMILY_CLASSES
 
-__all__ = [
+__all__: tuple[str, ...] = (
     "FAMILY_CLASSES",
     "FAMILY_MODALITY",
     "CompiledModel",
@@ -18,4 +20,4 @@ __all__ = [
     "compile_genome",
     "count_parameters",
     "is_genome_compatible",
-]
+)

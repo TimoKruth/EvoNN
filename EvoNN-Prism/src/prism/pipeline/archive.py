@@ -1,9 +1,10 @@
-"""Archive construction for elite, Pareto, and niche archives."""
+"""Archive construction for elite, Pareto, niche, and efficiency archives."""
 
 from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import TypedDict
 
 
 @dataclass
@@ -28,6 +29,25 @@ class IndividualSummary:
         return max(self.qualities.values(), default=float("-inf"))
 
 
+EliteArchive = dict[str, list[IndividualSummary]]
+ParetoArchive = list[IndividualSummary]
+NicheArchive = dict[str, IndividualSummary]
+SpecialistArchive = dict[str, dict[str, IndividualSummary]]
+
+
+class EfficientArchive(TypedDict):
+    family: dict[str, IndividualSummary]
+    benchmark: dict[str, list[IndividualSummary]]
+
+
+class ArchiveBundle(TypedDict):
+    elite: EliteArchive
+    pareto: ParetoArchive
+    niche: NicheArchive
+    specialist: SpecialistArchive
+    efficient: EfficientArchive
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -37,12 +57,13 @@ def build_archives(
     summaries: list[IndividualSummary],
     elite_per_benchmark: int = 3,
     efficient_per_benchmark: int = 2,
-) -> dict:
+) -> ArchiveBundle:
     """Build all archive types from individual summaries.
 
-    Returns dict with keys: "elite", "pareto", "niche".
+    Returns a dict-like bundle with elite, Pareto, niche, specialist, and
+    efficiency archives.
     """
-    scored = _scored(summaries)
+    scored = _with_quality_scores(summaries)
     return {
         "elite": build_elite_archive(scored, elite_per_benchmark),
         "pareto": build_pareto_archive(scored),
@@ -55,9 +76,9 @@ def build_archives(
 def build_elite_archive(
     summaries: list[IndividualSummary],
     elite_per_benchmark: int,
-) -> dict[str, list[IndividualSummary]]:
+) -> EliteArchive:
     """Top K individuals per benchmark by quality."""
-    summaries = _scored(_dedupe(summaries))
+    summaries = _prepared_summaries(summaries)
     grouped: dict[str, list[IndividualSummary]] = defaultdict(list)
     for ind in summaries:
         for benchmark_id in ind.qualities:
@@ -75,13 +96,13 @@ def build_elite_archive(
 
 def build_pareto_archive(
     summaries: list[IndividualSummary],
-) -> list[IndividualSummary]:
+) -> ParetoArchive:
     """Non-dominated front on (aggregate_quality, -parameter_count).
 
     An individual is dominated if another individual is at least as good on
     both objectives and strictly better on at least one.
     """
-    summaries = _scored(_dedupe(summaries))
+    summaries = _prepared_summaries(summaries)
     front: list[IndividualSummary] = []
 
     for candidate in summaries:
@@ -101,13 +122,13 @@ def build_pareto_archive(
 
 def build_niche_archive(
     summaries: list[IndividualSummary],
-) -> dict[str, IndividualSummary]:
+) -> NicheArchive:
     """Best individual per family (MAP-Elites style).
 
     Each family acts as a niche; the individual with the highest aggregate
     quality represents that niche.
     """
-    summaries = _scored(_dedupe(summaries))
+    summaries = _prepared_summaries(summaries)
     archive: dict[str, IndividualSummary] = {}
 
     for ind in summaries:
@@ -120,9 +141,9 @@ def build_niche_archive(
 
 def build_specialist_archive(
     summaries: list[IndividualSummary],
-) -> dict[str, dict[str, IndividualSummary]]:
+) -> SpecialistArchive:
     """Best individual per benchmark per family."""
-    summaries = _scored(_dedupe(summaries))
+    summaries = _prepared_summaries(summaries)
     archive: dict[str, dict[str, IndividualSummary]] = defaultdict(dict)
     for ind in summaries:
         for benchmark_id, quality in ind.qualities.items():
@@ -135,17 +156,21 @@ def build_specialist_archive(
 def build_efficient_archive(
     summaries: list[IndividualSummary],
     efficient_per_benchmark: int = 2,
-) -> dict[str, dict | list]:
+) -> EfficientArchive:
     """Best quality/efficiency tradeoff per family and benchmark."""
-    summaries = _scored(_dedupe(summaries))
+    summaries = _prepared_summaries(summaries)
     if not summaries:
         return {"family": {}, "benchmark": {}}
 
+    scores = {
+        summary.genome_id: _efficiency_tradeoff_score(summary, summaries)
+        for summary in summaries
+    }
     family_archive: dict[str, IndividualSummary] = {}
     benchmark_archive: dict[str, list[IndividualSummary]] = defaultdict(list)
     for ind in summaries:
         family_current = family_archive.get(ind.family)
-        if family_current is None or _efficiency_tradeoff_score(ind, summaries) > _efficiency_tradeoff_score(family_current, summaries):
+        if family_current is None or scores[ind.genome_id] > scores[family_current.genome_id]:
             family_archive[ind.family] = ind
         for benchmark_id in ind.qualities:
             benchmark_archive[benchmark_id].append(ind)
@@ -153,7 +178,7 @@ def build_efficient_archive(
     ranked_benchmark_archive = {
         benchmark_id: sorted(
             inds,
-            key=lambda ind: _efficiency_tradeoff_score(ind, summaries),
+            key=lambda ind: scores[ind.genome_id],
             reverse=True,
         )[:efficient_per_benchmark]
         for benchmark_id, inds in benchmark_archive.items()
@@ -189,7 +214,12 @@ def _dedupe(summaries: list[IndividualSummary]) -> list[IndividualSummary]:
     return list(unique.values())
 
 
-def _scored(summaries: list[IndividualSummary]) -> list[IndividualSummary]:
+def _prepared_summaries(summaries: list[IndividualSummary]) -> list[IndividualSummary]:
+    """Normalize archive inputs to unique, evaluated summaries."""
+    return _with_quality_scores(_dedupe(summaries))
+
+
+def _with_quality_scores(summaries: list[IndividualSummary]) -> list[IndividualSummary]:
     """Filter to individuals that have at least one quality score."""
     return [s for s in summaries if s.qualities]
 
