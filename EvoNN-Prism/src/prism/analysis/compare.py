@@ -5,6 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+SUMMARY_COLUMN_COUNT = 12
+BUDGET_COLUMN = 0
+SEED_COLUMN = 1
+BENCHMARKS_COLUMN = 2
+PRISM_WINS_COLUMN = 4
+TOPOGRAPH_WINS_COLUMN = 6
+STRATOGRAPH_WINS_COLUMN = 8
+CONTENDERS_WINS_COLUMN = 10
+TIES_COLUMN = 11
+
 
 @dataclass(frozen=True)
 class CompareRow:
@@ -18,26 +28,34 @@ class CompareRow:
     ties: int
 
 
+def _parse_markdown_table_row(line: str) -> list[str] | None:
+    """Return stripped markdown table cells for a data-width row."""
+    if not line.startswith("| "):
+        return None
+
+    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    if len(cells) < SUMMARY_COLUMN_COUNT:
+        return None
+    if cells[BUDGET_COLUMN] == "Budget" or cells[BUDGET_COLUMN].startswith("---"):
+        return None
+    return cells
+
+
 def parse_four_way_summary(path: str | Path) -> CompareRow:
     path = Path(path)
-    lines = path.read_text(encoding="utf-8").splitlines()
-    for line in lines:
-        if not line.startswith("| "):
-            continue
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 12:
-            continue
-        if cells[0] == "Budget" or cells[0].startswith("---"):
+    for line in path.read_text(encoding="utf-8").splitlines():
+        cells = _parse_markdown_table_row(line)
+        if cells is None:
             continue
         return CompareRow(
-            budget=int(cells[0]),
-            seed=int(cells[1]),
-            benchmarks=int(cells[2]),
-            prism_wins=int(cells[4]),
-            topograph_wins=int(cells[6]),
-            stratograph_wins=int(cells[8]),
-            contenders_wins=int(cells[10]),
-            ties=int(cells[11]),
+            budget=int(cells[BUDGET_COLUMN]),
+            seed=int(cells[SEED_COLUMN]),
+            benchmarks=int(cells[BENCHMARKS_COLUMN]),
+            prism_wins=int(cells[PRISM_WINS_COLUMN]),
+            topograph_wins=int(cells[TOPOGRAPH_WINS_COLUMN]),
+            stratograph_wins=int(cells[STRATOGRAPH_WINS_COLUMN]),
+            contenders_wins=int(cells[CONTENDERS_WINS_COLUMN]),
+            ties=int(cells[TIES_COLUMN]),
         )
     raise ValueError(f"No fair-search-budget row found in {path}")
 
@@ -51,11 +69,12 @@ def aggregate_compare_rows(paths: list[str | Path]) -> dict[int, dict[str, float
     summary: dict[int, dict[str, float]] = {}
     for budget, budget_rows in sorted(by_budget.items()):
         count = len(budget_rows)
+        prism_wins_total = sum(row.prism_wins for row in budget_rows)
         summary[budget] = {
             "runs": count,
             "benchmarks": budget_rows[0].benchmarks if budget_rows else 0,
-            "prism_wins_total": sum(row.prism_wins for row in budget_rows),
-            "prism_wins_avg": sum(row.prism_wins for row in budget_rows) / count,
+            "prism_wins_total": prism_wins_total,
+            "prism_wins_avg": prism_wins_total / count,
             "topograph_wins_avg": sum(row.topograph_wins for row in budget_rows) / count,
             "stratograph_wins_avg": sum(row.stratograph_wins for row in budget_rows) / count,
             "contenders_wins_avg": sum(row.contenders_wins for row in budget_rows) / count,
