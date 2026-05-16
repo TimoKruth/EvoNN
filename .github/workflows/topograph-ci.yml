@@ -19,9 +19,6 @@ on:
 jobs:
   topograph:
     runs-on: macos-14
-    env:
-      TOPOGRAPH_CHECK_SCRIPT: scripts/ci/topograph-checks.sh
-      TOPOGRAPH_PACKAGE: topograph
     steps:
       - uses: actions/checkout@v4
 
@@ -32,10 +29,10 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       - name: Install Topograph dev dependencies
-        run: uv sync --package "${TOPOGRAPH_PACKAGE}" --extra dev
+        run: uv sync --package topograph --extra dev
 
       - name: Ruff
-        run: bash "${TOPOGRAPH_CHECK_SCRIPT}" ruff
+        run: bash scripts/ci/topograph-checks.sh ruff
 
       - name: Pytest
-        run: bash "${TOPOGRAPH_CHECK_SCRIPT}" pytest
+        run: bash scripts/ci/topograph-checks.sh pytest

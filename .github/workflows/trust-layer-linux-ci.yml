@@ -2,7 +2,7 @@ name: Trust Layer Linux CI
 
 on:
   push:
-    paths: &trust_layer_paths
+    paths:
       - ".github/workflows/trust-layer-linux-ci.yml"
       - ".pre-commit-config.yaml"
       - "scripts/ci/**"
@@ -20,7 +20,23 @@ on:
       - "pyproject.toml"
       - "uv.lock"
   pull_request:
-    paths: *trust_layer_paths
+    paths:
+      - ".github/workflows/trust-layer-linux-ci.yml"
+      - ".pre-commit-config.yaml"
+      - "scripts/ci/**"
+      - "EvoNN-Shared/**"
+      - "EvoNN-Compare/**"
+      - "EvoNN-Contenders/**"
+      - "EvoNN-Primordia/**"
+      - "EvoNN-Stratograph/**"
+      - "shared-benchmarks/**"
+      - "EVONN_CONSOLIDATED_PLAN.md"
+      - "EVONN_HARD_REMAINDER_PLAN.md"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "MONOREPO.md"
+      - "pyproject.toml"
+      - "uv.lock"
 
 jobs:
   trust-layer-linux:
