@@ -18,7 +18,13 @@ from typing import Any
 from evonn_compare.reporting.fair_matrix_dashboard import ALL_SYSTEMS, discover_fair_matrix_summaries
 from evonn_compare.reporting.fair_matrix_stats import build_multi_seed_statistics
 
-DECISION_READY_STATES = {"contract-fair", "portable-contract-fair", "trusted-core", "trusted-extended"}
+DECISION_READY_STATES = {
+    "contract-fair",
+    "portable-contract-fair",
+    "trusted-core",
+    "trusted-extended",
+    "native-transfer-evidence",
+}
 
 
 def promote_evidence(
@@ -261,6 +267,8 @@ def _decision_groups(*, records: list[dict[str, Any]], trend_rows: list[dict[str
         if len(ranked) >= 2:
             margin = float(ranked[0].get("mean_score") or 0.0) - float(ranked[1].get("mean_score") or 0.0)
         decision_label = _decision_label(blockers=blockers, seed_count=len(seeds), margin=margin)
+        runtime_consistency = _runtime_consistency(group_records)
+        floor_state = _contender_floor_state(group_records)
         groups.append(
             {
                 "label": label,
@@ -273,6 +281,9 @@ def _decision_groups(*, records: list[dict[str, Any]], trend_rows: list[dict[str
                 "decision_label": decision_label,
                 "decision_margin": round(margin, 6),
                 "decision_blockers": blockers,
+                "runtime_consistency": runtime_consistency,
+                "contender_floor_state": floor_state,
+                "effect_strength": _effect_strength(margin),
                 "leader": ranked[0]["system"] if ranked else None,
                 "system_rows": system_rows,
                 "pairwise": list(stats.get("pairwise") or []) if stats else [],
@@ -341,17 +352,75 @@ def _group_blockers(records: list[dict[str, Any]], *, min_seeds: int) -> list[st
         blockers.append("budget accounting is incomplete")
     if any(str(record.get("lane_operating_state")) not in DECISION_READY_STATES for record in records):
         blockers.append("lane state is not decision ready")
+    if not _runtime_consistency(records)["stable"]:
+        blockers.append("runtime backend or hardware drift across promoted records")
+    floor_state = _contender_floor_state(records)
+    if floor_state["status"] == "blocked":
+        blockers.append("contender floor is blocked or missing for one or more promoted records")
     return blockers
 
 
 def _decision_label(*, blockers: list[str], seed_count: int, margin: float) -> str:
-    if any("budget" in blocker or "lane" in blocker or "eligible" in blocker for blocker in blockers):
+    if any("budget" in blocker or "lane" in blocker or "eligible" in blocker or "runtime" in blocker or "contender floor" in blocker for blocker in blockers):
         return "blocked"
     if blockers or seed_count <= 1:
         return "inconclusive"
     if abs(margin) <= 0.25:
         return "no_material_change"
     return "gain"
+
+
+def _effect_strength(margin: float) -> str:
+    absolute = abs(margin)
+    if absolute <= 0.25:
+        return "none_or_tie"
+    if absolute <= 1.0:
+        return "small"
+    if absolute <= 3.0:
+        return "medium"
+    return "large"
+
+
+def _runtime_consistency(records: list[dict[str, Any]]) -> dict[str, Any]:
+    backend_sets = sorted(
+        {
+            tuple(record.get("runtime", {}).get("backend_labels") or [])
+            for record in records
+        }
+    )
+    hardware_sets = sorted(
+        {
+            tuple(record.get("runtime", {}).get("hardware_labels") or [])
+            for record in records
+        }
+    )
+    return {
+        "stable": len(backend_sets) <= 1 and len(hardware_sets) <= 1,
+        "backend_sets": [list(values) for values in backend_sets],
+        "hardware_sets": [list(values) for values in hardware_sets],
+    }
+
+
+def _contender_floor_state(records: list[dict[str, Any]]) -> dict[str, Any]:
+    available = [
+        record.get("contender_floor", {})
+        for record in records
+        if record.get("contender_floor", {}).get("available")
+    ]
+    if not available:
+        return {"status": "not_applicable", "blocked_count": 0}
+    blocked_count = sum(
+        int(record.get("blocked_count") or 0)
+        for record in available
+    )
+    statuses = sorted({str(record.get("lane_floor_status") or "unknown") for record in available})
+    if blocked_count or any(status in {"blocked", "missing", "failed", "metadata_missing"} for status in statuses):
+        status = "blocked"
+    elif any(status == "weak" for status in statuses):
+        status = "weak"
+    else:
+        status = "passed"
+    return {"status": status, "blocked_count": blocked_count, "lane_floor_statuses": statuses}
 
 
 def _system_rows_from_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -500,6 +569,11 @@ def _transfer_evidence(
             for payload in summary_payloads
             if payload.get("transfer_boundary")
         }
+        | {
+            str(case.get("transfer_boundary"))
+            for case in transfer_cases
+            if case.get("transfer_boundary")
+        }
     )
     proof_states = sorted(
         {
@@ -507,23 +581,44 @@ def _transfer_evidence(
             for payload in summary_payloads
             if payload.get("transfer_proof_state")
         }
+        | {
+            str(case.get("transfer_proof_state"))
+            for case in transfer_cases
+            if case.get("transfer_proof_state")
+        }
     )
-    case_verdicts = Counter(str(case.get("verdict") or "unknown") for case in transfer_cases)
-    regime_counts = Counter(str(case.get("regime") or "unknown") for case in transfer_cases)
+    native_cases = [
+        case
+        for case in transfer_cases
+        if case.get("transfer_proof_state") == "native-transfer-evidence"
+    ]
+    portable_cases = [
+        case
+        for case in transfer_cases
+        if case.get("transfer_proof_state") != "native-transfer-evidence"
+    ]
     return {
         "seeded_trend_row_count": len(seeded_rows),
         "seed_sources": seed_sources,
         "transfer_boundaries": transfer_boundaries,
         "proof_states": proof_states,
         "native_transfer_claim_ready": any(state == "native-transfer-evidence" for state in proof_states),
-        "portable_transfer_case_count": len(transfer_cases),
-        "portable_transfer_verdict_counts": dict(sorted(case_verdicts.items())),
-        "portable_transfer_regime_counts": dict(sorted(regime_counts.items())),
-        "portable_transfer_consensus": _portable_transfer_consensus(transfer_cases),
+        "native_transfer_case_count": len(native_cases),
+        "native_transfer_verdict_counts": dict(sorted(Counter(str(case.get("verdict") or "unknown") for case in native_cases).items())),
+        "native_transfer_consensus": _transfer_consensus(native_cases, gain_label="native_gain_signal"),
+        "all_transfer_case_count": len(transfer_cases),
+        "portable_transfer_case_count": len(portable_cases),
+        "portable_transfer_verdict_counts": dict(sorted(Counter(str(case.get("verdict") or "unknown") for case in portable_cases).items())),
+        "portable_transfer_regime_counts": dict(sorted(Counter(str(case.get("regime") or "unknown") for case in portable_cases).items())),
+        "portable_transfer_consensus": _transfer_consensus(portable_cases, gain_label="portable_gain_signal"),
     }
 
 
 def _portable_transfer_consensus(transfer_cases: list[dict[str, Any]]) -> dict[str, Any]:
+    return _transfer_consensus(transfer_cases, gain_label="portable_gain_signal")
+
+
+def _transfer_consensus(transfer_cases: list[dict[str, Any]], *, gain_label: str) -> dict[str, Any]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for case in transfer_cases:
         grouped[str(case.get("regime") or "unknown")].append(case)
@@ -533,7 +628,7 @@ def _portable_transfer_consensus(transfer_cases: list[dict[str, Any]]) -> dict[s
         if verdict_counts.get("regression", 0):
             label = "regression"
         elif verdict_counts.get("gain", 0) > verdict_counts.get("inconclusive", 0):
-            label = "portable_gain_signal"
+            label = gain_label
         elif verdict_counts.get("gain", 0):
             label = "inconclusive_with_gain_signal"
         else:
@@ -902,6 +997,10 @@ def _render_report_markdown(payload: dict[str, Any]) -> str:
         f"- Seed Sources: `{', '.join(payload['transfer_evidence']['seed_sources']) or 'none'}`\n"
         f"- Proof States: `{', '.join(payload['transfer_evidence']['proof_states']) or 'none'}`\n"
         f"- Native Transfer Claim Ready: `{payload['transfer_evidence']['native_transfer_claim_ready']}`\n"
+        f"- Native Transfer Cases: `{payload['transfer_evidence']['native_transfer_case_count']}`\n"
+        f"- Native Verdict Counts: `{payload['transfer_evidence']['native_transfer_verdict_counts']}`\n"
+        f"- Native Consensus: `{payload['transfer_evidence']['native_transfer_consensus']}`\n"
+        f"- All Transfer Cases: `{payload['transfer_evidence']['all_transfer_case_count']}`\n"
         f"- Portable Transfer Cases: `{payload['transfer_evidence']['portable_transfer_case_count']}`\n"
         f"- Portable Verdict Counts: `{payload['transfer_evidence']['portable_transfer_verdict_counts']}`\n"
         f"- Portable Consensus: `{payload['transfer_evidence']['portable_transfer_consensus']}`\n\n"

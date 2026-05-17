@@ -111,6 +111,33 @@ def test_evidence_report_loads_transfer_case_verdicts(tmp_path: Path) -> None:
     assert payload["transfer_evidence"]["portable_transfer_consensus"]["direct"]["consensus"] == "portable_gain_signal"
 
 
+def test_evidence_report_marks_native_transfer_cases_claim_ready(tmp_path: Path) -> None:
+    workspace = tmp_path / "transfer"
+    _write_summary(workspace, seed=42, prism_score=0.8, topograph_score=0.8, report_parts=("seed42", "02-direct"))
+    case_path = workspace / "reports" / "seed42" / "02-direct_vs_control.json"
+    case_path.write_text(
+        json.dumps(
+            {
+                "regime": "direct",
+                "seed": 42,
+                "verdict": "gain",
+                "transfer_proof_state": "native-transfer-evidence",
+                "transfer_boundary": "native-topograph-seeding-contract",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    promote_evidence(inputs=[workspace], registry=tmp_path / "evidence", label="native-transfer", min_seeds=1)
+
+    payload = json.loads((tmp_path / "evidence" / "evidence_report.json").read_text(encoding="utf-8"))
+    assert payload["transfer_evidence"]["native_transfer_claim_ready"] is True
+    assert payload["transfer_evidence"]["native_transfer_case_count"] == 1
+    assert payload["transfer_evidence"]["native_transfer_verdict_counts"] == {"gain": 1}
+    assert payload["transfer_evidence"]["native_transfer_consensus"]["direct"]["consensus"] == "native_gain_signal"
+    assert payload["transfer_evidence"]["portable_transfer_case_count"] == 0
+
+
 def _write_summary(
     workspace: Path,
     *,

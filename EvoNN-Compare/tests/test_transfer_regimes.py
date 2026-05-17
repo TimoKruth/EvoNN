@@ -197,7 +197,7 @@ def test_publish_transfer_regime_workspace_aggregates_multi_seed_evidence(tmp_pa
         fake_ensure_primordia_export,
     )
     monkeypatch.setattr(
-        "evonn_compare.orchestration.transfer_regimes.ensure_topograph_portable_smoke_export",
+        "evonn_compare.orchestration.transfer_regimes._ensure_topograph_transfer_export",
         fake_ensure_topograph_portable_smoke_export,
     )
     monkeypatch.setattr(
@@ -212,6 +212,7 @@ def test_publish_transfer_regime_workspace_aggregates_multi_seed_evidence(tmp_pa
         budget=64,
         primordia_root=REPO_ROOT / "EvoNN-Primordia",
         topograph_root=REPO_ROOT / "EvoNN-Topograph",
+        topograph_runtime="portable",
     )
 
     summary = json.loads(Path(str(artifacts["transfer_summary_data"])).read_text(encoding="utf-8"))
@@ -229,6 +230,7 @@ def test_publish_transfer_regime_workspace_aggregates_multi_seed_evidence(tmp_pa
     assert staged_seed1["seed_quality"]["gate_path"].endswith("seed41_staged_quality.json")
     assert staged_seed1["seed_quality"]["artifact_path"].endswith("seed41_staged_seed_candidates.json")
     assert staged_seed1["seed_quality"]["benchmark_wins"] == 4
+    assert staged_seed1["transfer_proof_state"] == "portable-plumbing-only"
     assert (tmp_path / "workspace" / "seed_artifacts" / "seed41_direct_quality.json").exists()
     assert (tmp_path / "workspace" / "seed_artifacts" / "seed41_staged_quality.json").exists()
 

@@ -262,6 +262,7 @@ def test_generate_stratograph_and_contender_configs_match_budget(tmp_path: Path)
     )
     assert contender_payload["baseline"]["mode"] == "budget_matched"
     assert contender_payload["baseline"]["target_evaluation_count"] == 64
+    assert contender_payload["selection"]["max_actual_repeats_per_contender"] == 1
 
 
 def test_generate_smoke_configs_resolve_supported_benchmark_ids_across_systems(tmp_path: Path) -> None:
@@ -307,6 +308,7 @@ def test_generate_smoke_configs_resolve_supported_benchmark_ids_across_systems(t
     assert "diabetes" in primordia_payload["benchmark_pool"]["benchmarks"]
     assert "friedman1" in primordia_payload["benchmark_pool"]["benchmarks"]
     assert "credit_g" in contender_payload["benchmark_pool"]["benchmarks"]
+    assert contender_payload["selection"]["max_actual_repeats_per_contender"] == 1
 
 
 def test_generate_tier_b_configs_resolve_supported_benchmark_ids_across_systems(tmp_path: Path) -> None:
@@ -365,6 +367,7 @@ def test_generate_tier_b_configs_resolve_supported_benchmark_ids_across_systems(
     assert stratograph_payload["benchmark_pool"]["benchmarks"] == expected
     assert primordia_payload["benchmark_pool"]["benchmarks"] == expected
     assert contender_payload["benchmark_pool"]["benchmarks"] == expected
+    assert contender_payload["selection"]["max_actual_repeats_per_contender"] == 1
 
 
 def test_generate_primordia_config_sets_training_epochs_from_pack_budget(tmp_path: Path) -> None:

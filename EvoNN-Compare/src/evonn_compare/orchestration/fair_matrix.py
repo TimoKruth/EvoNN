@@ -360,10 +360,29 @@ def generate_contender_config(
             "target_evaluation_count": budget,
             "cache_dir": ".baseline-cache",
         },
+        "selection": {
+            "max_actual_repeats_per_contender": 1,
+        },
     }
+    contender_pool = _required_contender_pool_from_pack(pack)
+    if contender_pool:
+        payload["contender_pool"] = contender_pool
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return output_path
+
+
+def _required_contender_pool_from_pack(pack: Any) -> dict[str, list[str]]:
+    pool: dict[str, list[str]] = {}
+    for benchmark in pack.benchmarks:
+        group = getattr(benchmark, "benchmark_group", None)
+        if group not in {"tabular", "synthetic", "image", "language_modeling"}:
+            continue
+        names = pool.setdefault(group, [])
+        for contender_name in getattr(benchmark, "minimum_required_contenders", ()) or ():
+            if contender_name not in names:
+                names.append(contender_name)
+    return pool
 
 
 def generate_primordia_config(
@@ -906,13 +925,17 @@ def _build_lane_metadata(
 
     fairness_ok = all(result.parity_status == "fair" for result, _report_path in pair_results.values())
     task_coverage_ok = {"classification", "regression"}.issubset(observed_task_kinds)
-    contract_fair_ok = (
+    additive_pack = _is_additive_pack(getattr(case, "pack_path", None))
+    contract_prerequisites_ok = (
         artifact_completeness_ok
         and fairness_ok
-        and task_coverage_ok
         and budget_consistency_ok
         and seed_consistency_ok
         and budget_accounting_ok
+    )
+    contract_fair_ok = (
+        contract_prerequisites_ok
+        and task_coverage_ok
     )
     core_systems_complete_ok = all(
         system in case_systems and system_benchmark_complete.get(system, False)
@@ -932,6 +955,8 @@ def _build_lane_metadata(
         operating_state = "portable-contract-fair"
     elif contract_fair_ok:
         operating_state = "contract-fair"
+    elif contract_prerequisites_ok and additive_pack:
+        operating_state = "exploratory-additive"
     else:
         operating_state = "reference-only"
     acceptance_notes: list[str] = []
@@ -939,7 +964,11 @@ def _build_lane_metadata(
         acceptance_notes.append("missing required artifacts")
     if not fairness_ok:
         acceptance_notes.append("pairwise fairness checks not all fair")
-    if not task_coverage_ok:
+    if not task_coverage_ok and additive_pack:
+        acceptance_notes.append(
+            "additive pack excludes lower-tier task coverage; use the cumulative pack for decision-grade full-surface claims"
+        )
+    elif not task_coverage_ok:
         acceptance_notes.append("lane must cover both classification and regression")
     if not budget_consistency_ok:
         acceptance_notes.append("manifest evaluation counts drift from requested lane budget")
@@ -989,6 +1018,17 @@ def _build_lane_metadata(
         acceptance_notes=tuple(acceptance_notes),
         repeatability_ready=operating_state in {"trusted-core", "trusted-extended"},
     )
+
+
+def _is_additive_pack(pack_path: Path | None) -> bool:
+    if pack_path is None:
+        return False
+    try:
+        pack = load_parity_pack(pack_path)
+    except Exception:
+        return False
+    requirements = pack.promotion_requirements or {}
+    return bool(requirements.get("additive_tier"))
 
 
 def _run_dir_for_system(case: MatrixCase, system: str) -> Path:

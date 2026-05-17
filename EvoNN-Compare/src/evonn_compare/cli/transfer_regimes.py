@@ -21,6 +21,7 @@ def transfer_regimes(
     workspace: str = typer.Option(..., "--workspace", help="Workspace root for transfer-regime artifacts"),
     primordia_root: str = typer.Option("EvoNN-Primordia", "--primordia-root"),
     topograph_root: str = typer.Option("EvoNN-Topograph", "--topograph-root"),
+    topograph_runtime: str = typer.Option("auto", "--topograph-runtime", help="Topograph transfer runtime: auto, native, or portable"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Only print the resolved plan and output paths"),
     open_browser: bool = typer.Option(False, "--open/--no-open", help="Open the refreshed dashboard in the default browser"),
 ) -> None:
@@ -37,12 +38,15 @@ def transfer_regimes(
     pack_spec = load_parity_pack(pack_path)
     effective_budget = budget or (preset_spec.budgets[0] if preset_spec else pack_spec.budget_policy.evaluation_count)
     workspace_path = Path(workspace).resolve()
+    if topograph_runtime not in {"auto", "native", "portable"}:
+        raise typer.BadParameter("--topograph-runtime must be auto, native, or portable")
 
     if dry_run:
         typer.echo("mode\tdry-run")
         typer.echo(f"workspace\t{workspace_path}")
         typer.echo(f"pack_path\t{pack_path}")
         typer.echo(f"budget\t{effective_budget}")
+        typer.echo(f"topograph_runtime\t{topograph_runtime}")
         typer.echo(f"trend_dataset\t{workspace_path / 'trends' / 'fair_matrix_trend_rows.jsonl'}")
         typer.echo(f"transfer_summary_report\t{workspace_path / 'reports' / 'transfer_regime_summary.md'}")
         typer.echo(f"transfer_summary_data\t{workspace_path / 'reports' / 'transfer_regime_summary.json'}")
@@ -67,6 +71,7 @@ def transfer_regimes(
         budget=effective_budget,
         primordia_root=Path(primordia_root),
         topograph_root=Path(topograph_root),
+        topograph_runtime=topograph_runtime,  # type: ignore[arg-type]
     )
     for key in (
         "workspace",
@@ -74,6 +79,7 @@ def transfer_regimes(
         "primordia_run_dir",
         "direct_seed_artifact",
         "staged_seed_artifact",
+        "topograph_runtime",
         "transfer_summary_report",
         "transfer_summary_data",
         "trend_dataset",
@@ -82,7 +88,8 @@ def transfer_regimes(
         "dashboard",
         "dashboard_data",
     ):
-        typer.echo(f"{key}\t{artifacts[key]}")
+        if key in artifacts:
+            typer.echo(f"{key}\t{artifacts[key]}")
     if open_browser:
         dashboard_url = Path(str(artifacts["dashboard"])).resolve().as_uri()
         webbrowser.open(dashboard_url)

@@ -55,6 +55,7 @@ class SelectionConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     max_contenders_per_benchmark: int | None = None
+    max_actual_repeats_per_contender: int | None = Field(default=None, ge=1)
 
 
 class BaselineConfig(BaseModel):

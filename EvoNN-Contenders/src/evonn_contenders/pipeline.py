@@ -28,6 +28,7 @@ class ContenderTrial:
     """One concrete contender fit under a pack budget."""
 
     contender: object
+    base_contender_name: str
     contender_name: str
     seed: int
 
@@ -139,21 +140,35 @@ def run_contenders(
             continue
 
         records: list[dict[str, object]] = []
+        reusable_records: dict[str, dict[str, object]] = {}
+        executed_repeats_by_contender: dict[str, int] = {}
         for trial in trials:
-            record = evaluate_contender(
-                spec,
-                trial.contender,
-                seed=trial.seed,
-                x_train=x_train,
-                y_train=y_train,
-                x_val=x_val,
-                y_val=y_val,
-                config=config,
-                contender_label=trial.contender_name,
-            )
+            reusable = reusable_records.get(trial.base_contender_name)
+            if reusable is not None and not _should_execute_trial(
+                config,
+                trial=trial,
+                executed_repeats_by_contender=executed_repeats_by_contender,
+            ):
+                record = _materialize_repeated_trial(source=reusable, trial=trial)
+            else:
+                record = evaluate_contender(
+                    spec,
+                    trial.contender,
+                    seed=trial.seed,
+                    x_train=x_train,
+                    y_train=y_train,
+                    x_val=x_val,
+                    y_val=y_val,
+                    config=config,
+                    contender_label=trial.contender_name,
+                )
+                executed_repeats_by_contender[trial.base_contender_name] = (
+                    executed_repeats_by_contender.get(trial.base_contender_name, 0) + 1
+                )
+                reusable_records.setdefault(trial.base_contender_name, record)
             run_store.record_contender(run_id=run_id, benchmark_name=benchmark_name, record=record)
             records.append(record)
-        executed_evaluation_count += len(trials)
+        executed_evaluation_count += sum(executed_repeats_by_contender.values())
 
         best = choose_best(spec.metric_direction, records)
         run_store.replace_result(run_id=run_id, benchmark_name=benchmark_name, record=best)
@@ -488,11 +503,33 @@ def _resolve_trials(
         trials.append(
             ContenderTrial(
                 contender=contender,
+                base_contender_name=contender.name,
                 contender_name=contender_name,
                 seed=trial_seed,
             )
         )
     return trials
+
+
+def _should_execute_trial(
+    config: RunConfig,
+    *,
+    trial: ContenderTrial,
+    executed_repeats_by_contender: dict[str, int],
+) -> bool:
+    max_repeats = config.selection.max_actual_repeats_per_contender
+    if config.baseline.mode != "budget_matched" or max_repeats is None:
+        return True
+    return executed_repeats_by_contender.get(trial.base_contender_name, 0) < max_repeats
+
+
+def _materialize_repeated_trial(*, source: dict[str, object], trial: ContenderTrial) -> dict[str, object]:
+    record = dict(source)
+    record["contender_name"] = trial.contender_name
+    record["contender_id"] = f"{record.get('contender_id')}:{trial.contender_name}:cached-repeat"
+    record["train_seconds"] = 0.0
+    record["architecture_summary"] = f"{record.get('architecture_summary')} (cached_repeat_from={trial.base_contender_name})"
+    return record
 
 
 def _filter_unavailable_optional_contenders(

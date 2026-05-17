@@ -7,6 +7,7 @@ from dataclasses import asdict
 import json
 from pathlib import Path
 import shutil
+import subprocess
 from statistics import median
 from typing import Any, Literal
 
@@ -24,6 +25,7 @@ from evonn_compare.reporting.fair_matrix_md import render_fair_matrix_markdown
 
 
 TransferRegime = Literal["none", "direct", "staged"]
+TopographTransferRuntime = Literal["auto", "native", "portable"]
 _REGIME_ORDER: tuple[TransferRegime, ...] = ("none", "direct", "staged")
 _REGIME_CASE_PREFIX = {"none": "01", "direct": "02", "staged": "03"}
 
@@ -36,6 +38,7 @@ def publish_transfer_regime_workspace(
     budget: int | None,
     primordia_root: Path,
     topograph_root: Path,
+    topograph_runtime: TopographTransferRuntime = "auto",
 ) -> dict[str, str | int]:
     """Publish a compare-facing workspace for no-seed, direct, and staged transfer regimes."""
 
@@ -61,6 +64,10 @@ def publish_transfer_regime_workspace(
     for directory in (configs_dir, runs_dir, reports_dir, trends_dir, logs_dir, seed_artifacts_dir):
         directory.mkdir(parents=True, exist_ok=True)
 
+    resolved_topograph_runtime = _resolve_topograph_transfer_runtime(
+        topograph_root=topograph_root.resolve(),
+        requested=topograph_runtime,
+    )
     comparison_engine = ComparisonEngine()
     workspace_trend_rows: list[dict[str, Any]] = []
     case_summary_paths: list[Path] = []
@@ -141,7 +148,9 @@ def publish_transfer_regime_workspace(
                 primordia_seed_candidates_path=topograph_seed_artifact,
             )
             topograph_run_dir = runs_dir / "topograph" / f"{case_name}_seed{seed}"
-            ensure_topograph_portable_smoke_export(
+            _ensure_topograph_transfer_export(
+                runtime=resolved_topograph_runtime,
+                topograph_root=topograph_root.resolve(),
                 config_path=topograph_config_path,
                 pack_path=budget_pack_path,
                 run_dir=topograph_run_dir,
@@ -176,6 +185,7 @@ def publish_transfer_regime_workspace(
                 comparison=comparison,
                 regime=regime,
                 seed_gate=seed_gate,
+                runtime=resolved_topograph_runtime,
             )
             trend_rows = build_matrix_trend_rows(
                 pack=pack,
@@ -229,6 +239,7 @@ def publish_transfer_regime_workspace(
                 comparison=regime_comparison,
                 pack=pack,
                 seed_gate=regime_run["seed_gate"],
+                runtime=resolved_topograph_runtime,
             )
             _write_transfer_regime_summary(
                 output_prefix=seed_report_dir / f"{_REGIME_CASE_PREFIX[regime]}-{_regime_slug(regime)}_vs_control",
@@ -257,6 +268,7 @@ def publish_transfer_regime_workspace(
         "staged_seed_artifact": "" if last_staged_seed_artifact is None else str(last_staged_seed_artifact),
         "transfer_summary_report": transfer_summary_paths["markdown"],
         "transfer_summary_data": transfer_summary_paths["json"],
+        "topograph_runtime": resolved_topograph_runtime,
         "summary_count": len(case_summary_paths),
         "trend_dataset": str(trend_dataset_path),
         "trend_report": str(workspace_artifacts["trend_report"]),
@@ -280,6 +292,7 @@ def _build_lane_metadata(
     comparison: ComparisonResult,
     regime: TransferRegime,
     seed_gate: dict[str, Any] | None,
+    runtime: Literal["native", "portable"],
 ) -> LaneMetadata:
     manifests = [manifest for manifest, _results in runs.values()]
     observed_task_kinds = tuple(
@@ -303,6 +316,7 @@ def _build_lane_metadata(
     acceptance_notes = [
         "regime buckets stay separated by workspace layout and manifest seeding metadata",
         "transfer outcomes are classified against the no-seed control, not collapsed into one seeded bucket",
+        f"topograph transfer runtime resolved to `{runtime}`",
     ]
     if regime == "none":
         acceptance_notes.append("control run keeps the same pack, budget, and seed with seeding disabled")
@@ -314,11 +328,10 @@ def _build_lane_metadata(
         overlap_policy = seed_gate.get("top_candidate", {}).get("seed_overlap_policy") or "unknown"
         acceptance_notes.append(f"transfer provenance gate passed with overlap policy `{overlap_policy}`")
 
-    operating_state = (
-        "portable-transfer-plumbing"
-        if fairness_ok and artifact_completeness_ok and budget_consistency_ok and seed_consistency_ok
-        else "reference-only"
-    )
+    if fairness_ok and artifact_completeness_ok and budget_consistency_ok and seed_consistency_ok:
+        operating_state = "native-transfer-evidence" if runtime == "native" else "portable-transfer-plumbing"
+    else:
+        operating_state = "reference-only"
     return LaneMetadata(
         preset="transfer-regimes",
         pack_name=pack_name,
@@ -470,9 +483,21 @@ def _transfer_regime_payload(
     comparison: ComparisonResult,
     pack,
     seed_gate: dict[str, Any] | None,
+    runtime: Literal["native", "portable"] | None = None,
 ) -> dict[str, Any]:
     transfer_manifest = comparison.right_manifest
     seeding = transfer_manifest.seeding
+    resolved_runtime = runtime or ("portable" if transfer_manifest.device.framework == "portable-sklearn" else "native")
+    transfer_boundary = (
+        "native-topograph-seeding-contract"
+        if resolved_runtime == "native"
+        else "portable-topograph-seeding-contract"
+    )
+    transfer_proof_state = (
+        "native-transfer-evidence"
+        if resolved_runtime == "native"
+        else "portable-plumbing-only"
+    )
     benchmark_families = {}
     for benchmark in pack.benchmarks:
         benchmark_families[benchmark.benchmark_id] = benchmark.task_kind
@@ -553,6 +578,9 @@ def _transfer_regime_payload(
         "pack_name": comparison.pack_name,
         "seed": transfer_manifest.seed,
         "portable_backend": transfer_manifest.device.framework,
+        "topograph_runtime": resolved_runtime,
+        "transfer_boundary": transfer_boundary,
+        "transfer_proof_state": transfer_proof_state,
         "control_run_id": comparison.left_manifest.run_id,
         "regime_run_id": transfer_manifest.run_id,
         "seed_source": _seed_source_label(seeding),
@@ -580,6 +608,8 @@ def _write_workspace_transfer_summary(*, reports_dir: Path, payloads: list[dict[
         by_regime[str(payload["regime"])].append(payload)
 
     summary = {
+        "transfer_proof_states": dict(sorted(Counter(str(payload.get("transfer_proof_state") or "unknown") for payload in payloads).items())),
+        "transfer_boundaries": sorted({str(payload.get("transfer_boundary") or "unknown") for payload in payloads}),
         "regimes": {
             regime: _aggregate_regime_payloads(regime=regime, payloads=rows)
             for regime, rows in by_regime.items()
@@ -589,6 +619,9 @@ def _write_workspace_transfer_summary(*, reports_dir: Path, payloads: list[dict[
         "# Transfer Regime Summary",
         "",
         "This workspace keeps `none`, `direct`, and `staged` as separate transfer buckets and aggregates transfer evidence against the no-seed control.",
+        "",
+        f"- Transfer Proof States: `{summary['transfer_proof_states']}`",
+        f"- Transfer Boundaries: `{summary['transfer_boundaries']}`",
         "",
     ]
     for regime in ("direct", "staged"):
@@ -654,10 +687,105 @@ def _aggregate_regime_payloads(*, regime: str, payloads: list[dict[str, Any]]) -
                 "ties": payload["ties"],
                 "seed_source": payload["seed_source"],
                 "seed_overlap_policy": payload["seed_overlap_policy"],
+                "transfer_proof_state": payload.get("transfer_proof_state"),
+                "transfer_boundary": payload.get("transfer_boundary"),
             }
             for payload in sorted(payloads, key=lambda row: int(row["seed"]))
         ],
     }
+
+
+def _resolve_topograph_transfer_runtime(
+    *,
+    topograph_root: Path,
+    requested: TopographTransferRuntime,
+) -> Literal["native", "portable"]:
+    if requested == "portable":
+        return "portable"
+    native_available = _native_topograph_available(topograph_root)
+    if requested == "native":
+        if not native_available:
+            raise RuntimeError(
+                f"native Topograph runtime requested but topograph.pipeline.coordinator is not importable from {topograph_root}"
+            )
+        return "native"
+    return "native" if native_available else "portable"
+
+
+def _native_topograph_available(topograph_root: Path) -> bool:
+    try:
+        process = subprocess.run(
+            ["uv", "run", "python", "-c", "import importlib; importlib.import_module('topograph.pipeline.coordinator')"],
+            cwd=topograph_root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return False
+    return process.returncode == 0
+
+
+def _ensure_topograph_transfer_export(
+    *,
+    runtime: Literal["native", "portable"],
+    topograph_root: Path,
+    config_path: Path,
+    pack_path: Path,
+    run_dir: Path,
+    output_dir: Path,
+    log_dir: Path,
+    seeding_ladder: Literal["direct", "staged"] | None,
+) -> None:
+    if runtime == "portable":
+        ensure_topograph_portable_smoke_export(
+            config_path=config_path,
+            pack_path=pack_path,
+            run_dir=run_dir,
+            output_dir=output_dir,
+            log_dir=log_dir,
+            seeding_ladder=seeding_ladder,
+        )
+        return
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+    _run_logged(
+        ["uv", "run", "topograph", "evolve", "--config", str(config_path), "--run-dir", str(run_dir)],
+        cwd=topograph_root,
+        log_path=log_dir / f"topograph_native_{run_dir.name}_run.log",
+    )
+    _run_logged(
+        [
+            "uv",
+            "run",
+            "topograph",
+            "symbiosis",
+            "export",
+            str(run_dir),
+            "--pack",
+            str(pack_path),
+            "--output-dir",
+            str(output_dir),
+        ],
+        cwd=topograph_root,
+        log_path=log_dir / f"topograph_native_{run_dir.name}_export.log",
+    )
+
+
+def _run_logged(argv: list[str], *, cwd: Path, log_path: Path) -> None:
+    with log_path.open("w", encoding="utf-8") as handle:
+        handle.write(f"$ {' '.join(argv)}\n\n")
+        handle.flush()
+        process = subprocess.run(
+            argv,
+            cwd=cwd,
+            text=True,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+    if process.returncode != 0:
+        raise RuntimeError(f"command failed with exit code {process.returncode}; see {log_path}")
 
 
 def _seed_source_label(seeding) -> str:
