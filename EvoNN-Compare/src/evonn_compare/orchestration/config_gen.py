@@ -53,6 +53,12 @@ def generate_budget_pack(
     base_payload: dict[str, Any] | None = None,
 ) -> Path:
     payload = deepcopy(base_payload) if base_payload is not None else yaml.safe_load(base_pack_path.read_text(encoding="utf-8"))
+    if payload.get("include_packs"):
+        expanded_pack = load_parity_pack(base_pack_path)
+        payload = {
+            **payload,
+            "benchmarks": [benchmark.model_dump(mode="json") for benchmark in expanded_pack.benchmarks],
+        }
     payload["name"] = f"{payload['name']}_eval{budget}"
     payload["budget_policy"]["evaluation_count"] = budget
     if epochs_per_candidate is not None:

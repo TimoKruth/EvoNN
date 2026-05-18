@@ -28,6 +28,24 @@ def test_generate_budget_pack_sets_campaign_budget(tmp_path: Path) -> None:
     assert payload["budget_policy"]["evaluation_count"] == 128
 
 
+def test_generate_budget_pack_materializes_cumulative_includes(tmp_path: Path) -> None:
+    base_pack = (
+        Path(__file__).resolve().parents[2]
+        / "shared-benchmarks"
+        / "suites"
+        / "parity"
+        / "tier_c_architecture_sensitive_cumulative.yaml"
+    )
+    output = generate_budget_pack(base_pack_path=base_pack, budget=132, output_dir=tmp_path)
+    payload = yaml.safe_load(output.read_text(encoding="utf-8"))
+
+    assert payload["name"] == "tier_c_architecture_sensitive_cumulative_eval132"
+    assert payload["include_packs"] == ["tier_b_core_v2_cumulative", "tier_c_architecture_sensitive"]
+    assert len(payload["benchmarks"]) == 22
+    assert {entry["task_kind"] for entry in payload["benchmarks"]} == {"classification", "regression"}
+    assert payload["benchmarks"][0]["benchmark_id"] == "iris_classification"
+
+
 def test_resolve_supported_benchmark_id_probes_target_project_environment_when_local_loader_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
