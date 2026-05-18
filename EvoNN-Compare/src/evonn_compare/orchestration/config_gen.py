@@ -268,6 +268,11 @@ def _prism_allowed_families(pack, *, budget: int) -> list[str]:
     units = budget // benchmark_count
     has_lm = any(entry.task_kind == "language_modeling" for entry in pack.benchmarks)
     has_non_lm = any(entry.task_kind != "language_modeling" for entry in pack.benchmarks)
+    has_image = any(_is_image_benchmark(entry) for entry in pack.benchmarks)
+    has_tabular_or_synthetic = any(
+        entry.task_kind != "language_modeling" and not _is_image_benchmark(entry)
+        for entry in pack.benchmarks
+    )
     if has_lm and has_non_lm:
         for families in (
             ["mlp", "sparse_mlp", "attention", "sparse_attention"],
@@ -281,7 +286,44 @@ def _prism_allowed_families(pack, *, budget: int) -> list[str]:
         if _has_exact_factorization(units, min_population_size=2, preferred_population_cap=8):
             return ["attention", "sparse_attention"]
         return ["attention"]
-    return ["mlp", "sparse_mlp"]
+
+    if has_image and has_tabular_or_synthetic:
+        for families in (
+            ["mlp", "sparse_mlp", "moe_mlp", "conv2d", "lite_conv2d"],
+            ["mlp", "sparse_mlp", "conv2d", "lite_conv2d"],
+            ["mlp", "sparse_mlp"],
+            ["mlp"],
+        ):
+            if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
+                return families
+        return ["mlp"]
+
+    if has_image:
+        for families in (
+            ["mlp", "sparse_mlp", "conv2d", "lite_conv2d"],
+            ["conv2d", "lite_conv2d"],
+            ["mlp", "sparse_mlp"],
+            ["mlp"],
+        ):
+            if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
+                return families
+        return ["mlp"]
+
+    for families in (
+        ["mlp", "sparse_mlp", "moe_mlp"],
+        ["mlp", "sparse_mlp"],
+        ["mlp"],
+    ):
+        if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
+            return families
+    return ["mlp"]
+
+
+def _is_image_benchmark(entry: Any) -> bool:
+    benchmark_group = str(getattr(entry, "benchmark_group", "") or "").replace("_", "-")
+    benchmark_id = str(getattr(entry, "benchmark_id", "") or "")
+    modality = str(getattr(entry, "modality", "") or "")
+    return benchmark_group in {"image", "image-classification"} or "image" in benchmark_id or modality == "image"
 
 
 def _prism_budget_patch(*, budget: int, benchmark_count: int, required_family_count: int = 1) -> dict[str, Any]:

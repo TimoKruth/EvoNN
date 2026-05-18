@@ -101,6 +101,172 @@ def test_generate_prism_and_topograph_configs_use_legacy_slots(tmp_path: Path) -
     assert topograph_payload["benchmark_pool"]["primordia_seed_candidates_path"].endswith("seed_candidates.json")
     assert prism_payload["evolution"]["num_generations"] == 1
     assert topograph_payload["training"]["parallel_workers"] == 2
+
+
+def test_generate_prism_config_uses_image_and_tabular_specialist_families_when_budget_allows(
+    tmp_path: Path,
+) -> None:
+    pack_path = tmp_path / "mixed_non_lm.yaml"
+    pack_path.write_text(
+        yaml.safe_dump(
+            {
+                "name": "mixed_non_lm_pack",
+                "tier": 1,
+                "description": "mixed non-lm",
+                "benchmarks": [
+                    {
+                        "benchmark_id": "iris_classification",
+                        "native_ids": {"prism": "iris"},
+                        "task_kind": "classification",
+                        "benchmark_group": "tabular",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                    },
+                    {
+                        "benchmark_id": "digits_image",
+                        "native_ids": {"prism": "digits"},
+                        "task_kind": "classification",
+                        "benchmark_group": "image",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                    },
+                ],
+                "budget_policy": {
+                    "evaluation_count": 16,
+                    "epochs_per_candidate": 1,
+                },
+                "seed_policy": {
+                    "mode": "campaign",
+                    "required": True,
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    prism_path = generate_prism_config(
+        output_path=tmp_path / "configs" / "prism.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=16,
+    )
+    prism_payload = yaml.safe_load(prism_path.read_text(encoding="utf-8"))
+
+    assert prism_payload["evolution"]["allowed_families"] == [
+        "mlp",
+        "sparse_mlp",
+        "moe_mlp",
+        "conv2d",
+        "lite_conv2d",
+    ]
+    assert prism_payload["evolution"]["population_size"] == 8
+    assert prism_payload["evolution"]["num_generations"] == 1
+
+
+def test_generate_prism_config_keeps_small_mixed_non_lm_pack_on_common_families(
+    tmp_path: Path,
+) -> None:
+    pack_path = tmp_path / "small_mixed_non_lm.yaml"
+    pack_path.write_text(
+        yaml.safe_dump(
+            {
+                "name": "small_mixed_non_lm_pack",
+                "tier": 1,
+                "description": "small mixed non-lm",
+                "benchmarks": [
+                    {
+                        "benchmark_id": "iris_classification",
+                        "native_ids": {"prism": "iris"},
+                        "task_kind": "classification",
+                        "benchmark_group": "tabular",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                    },
+                    {
+                        "benchmark_id": "digits_image",
+                        "native_ids": {"prism": "digits"},
+                        "task_kind": "classification",
+                        "benchmark_group": "image",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                    },
+                ],
+                "budget_policy": {
+                    "evaluation_count": 4,
+                    "epochs_per_candidate": 1,
+                },
+                "seed_policy": {
+                    "mode": "campaign",
+                    "required": True,
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    prism_path = generate_prism_config(
+        output_path=tmp_path / "configs" / "prism.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=4,
+    )
+    prism_payload = yaml.safe_load(prism_path.read_text(encoding="utf-8"))
+
+    assert prism_payload["evolution"]["allowed_families"] == ["mlp", "sparse_mlp"]
+
+
+def test_generate_prism_config_uses_moe_for_tabular_pack_when_budget_allows(tmp_path: Path) -> None:
+    pack_path = tmp_path / "tabular.yaml"
+    pack_path.write_text(
+        yaml.safe_dump(
+            {
+                "name": "tabular_pack",
+                "tier": 1,
+                "description": "tabular",
+                "benchmarks": [
+                    {
+                        "benchmark_id": "iris_classification",
+                        "native_ids": {"prism": "iris"},
+                        "task_kind": "classification",
+                        "benchmark_group": "tabular",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                    },
+                    {
+                        "benchmark_id": "wine_classification",
+                        "native_ids": {"prism": "wine"},
+                        "task_kind": "classification",
+                        "benchmark_group": "tabular",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                    },
+                ],
+                "budget_policy": {
+                    "evaluation_count": 6,
+                    "epochs_per_candidate": 1,
+                },
+                "seed_policy": {
+                    "mode": "campaign",
+                    "required": True,
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    prism_path = generate_prism_config(
+        output_path=tmp_path / "configs" / "prism.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=6,
+    )
+    prism_payload = yaml.safe_load(prism_path.read_text(encoding="utf-8"))
+
+    assert prism_payload["evolution"]["allowed_families"] == ["mlp", "sparse_mlp", "moe_mlp"]
+
 def test_generate_prism_config_uses_cross_modal_families_for_small_mixed_lm_pack(tmp_path: Path) -> None:
     pack_path = tmp_path / "mixed.yaml"
     pack_path.write_text(
