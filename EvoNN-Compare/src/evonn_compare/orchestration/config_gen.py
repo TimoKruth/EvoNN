@@ -288,12 +288,11 @@ def _prism_allowed_families(pack, *, budget: int) -> list[str]:
         return ["attention"]
 
     if has_image and has_tabular_or_synthetic:
-        for families in (
+        candidates = (
             ["mlp", "sparse_mlp", "moe_mlp", "conv2d", "lite_conv2d"],
             ["mlp", "sparse_mlp", "conv2d", "lite_conv2d"],
-            ["mlp", "sparse_mlp"],
-            ["mlp"],
-        ):
+        ) if units <= 8 else ()
+        for families in (*candidates, ["mlp", "sparse_mlp"], ["mlp"]):
             if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
                 return families
         return ["mlp"]
@@ -310,7 +309,6 @@ def _prism_allowed_families(pack, *, budget: int) -> list[str]:
         return ["mlp"]
 
     for families in (
-        ["mlp", "sparse_mlp", "moe_mlp"],
         ["mlp", "sparse_mlp"],
         ["mlp"],
     ):

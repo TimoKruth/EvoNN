@@ -354,13 +354,14 @@
         <h1>From proof gates to engine pressure.</h1>
         <p class="subtitle">
           The infrastructure now works well enough to make concrete engine calls.
-          The next large step is targeted search-engine work, not more comparison plumbing.
+          The latest Prism specialist-family experiment found the next real wall:
+          mixed-pack search needs benchmark-aware family allocation, not just broader family lists.
         </p>
       </div>
       <aside class="panel truth">
         <div>
           <b>Current read</b>
-          <p>Tier B cumulative budget 392 is the clearest current pressure point: Contenders still lead, while Prism is the strongest EvoNN challenger on the clean rerun.</p>
+          <p>Tier B cumulative budget 392 remains the clearest pressure point. A broad Prism family run completed cleanly but reduced local-lane win count, so the default recurring lane stays conservative.</p>
         </div>
         <div class="stamp">Do not claim broad superiority yet</div>
       </aside>
@@ -400,6 +401,13 @@
         <article class="item">
           <span class="dot red"></span>
           <div>
+            <h3>Hard wall: mixed-pack family allocation</h3>
+            <p>A broad Prism family run at Tier B cumulative 392 improved cpu_activity, fashion MNIST, and credit_g gaps, but dropped Prism from 2 sole wins to 1 and lost friedman1. Until Prism can allocate families per benchmark/modality, broad specialists should not be the recurring Tier B default.</p>
+          </div>
+        </article>
+        <article class="item">
+          <span class="dot red"></span>
+          <div>
             <h3>Resume-safe runtime accounting is fixed forward</h3>
             <p>The clean 392 rerun accepted 5/5 runtime records. Prism and Stratograph also preserve elapsed time on future resumed runs.</p>
           </div>
@@ -421,8 +429,8 @@
             <div class="num"></div>
             <div>
               <h3>Engine improvement remains the big next body of work</h3>
-              <p>Start with Prism, then Topograph. Prism has enough 392 signal to justify hardening real-data performance; Topograph still has useful wins but is less consistent on the clean rerun.</p>
-              <div class="tagrow"><span class="tag">priority</span><span class="tag">one branch per engine</span><span class="tag">measured gains</span></div>
+              <p>Start with Prism benchmark-aware family allocation, then Topograph. Prism has enough 392 signal to justify hardening real-data performance, but the latest experiment shows that naive specialist broadening is not enough.</p>
+              <div class="tagrow"><span class="tag">priority</span><span class="tag">family allocation</span><span class="tag">measured gains</span></div>
             </div>
           </article>
           <article class="step">
@@ -473,8 +481,8 @@
           <tr>
             <td><strong>Prism</strong></td>
             <td>Wins diabetes and friedman1; shares wins on digits, moons, circles, and iris.</td>
-            <td>Improve real tabular classification, especially credit_g, bank, gas sensor, letter, and fashion MNIST.</td>
-            <td>Move from 4.0 to at least 5.5 score on the same clean Tier B cumulative 392 lane.</td>
+            <td>Implement benchmark-aware family allocation so image specialists can help image benchmarks without thinning tabular/regression search.</td>
+            <td>Beat the clean 392 baseline and the rejected broad-family run: keep friedman1/diabetes, improve fashion MNIST/cpu_activity, and move from 4.0 to at least 5.5 score.</td>
           </tr>
           <tr>
             <td><strong>Primordia</strong></td>
@@ -492,8 +500,8 @@
       </table>
       <div class="callouts">
         <div class="callout">
-          <strong>Immediate branch 1: Prism real-data hardening</strong>
-          <p>Highest leverage because Prism is the strongest EvoNN challenger on the clean 392 rerun.</p>
+          <strong>Immediate branch 1: Prism benchmark-aware families</strong>
+          <p>Highest leverage because the broad-family experiment completed cleanly but proved that mixed-pack specialist allocation needs engine support.</p>
         </div>
         <div class="callout">
           <strong>Immediate branch 2: Topograph challenger recovery</strong>
@@ -508,7 +516,7 @@
 
     <footer class="panel">
       Suggested priority: Prism real-data hardening first, Topograph challenger recovery second, then Stratograph/Primordia rescue branches.
-      Current pushed baseline: <code>c0c8509</code>.
+      Current pushed baseline before this slice: <code>c7f3720</code>.
     </footer>
   </main>
 </body>
