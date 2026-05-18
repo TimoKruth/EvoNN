@@ -150,6 +150,91 @@
       gap: 18px;
     }
 
+    .wide {
+      margin-top: 18px;
+      padding: 28px;
+    }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .score-card {
+      padding: 16px;
+      border: 1px solid rgba(205, 191, 159, 0.9);
+      border-radius: 20px;
+      background: rgba(255, 252, 243, 0.66);
+    }
+
+    .score-card b {
+      display: block;
+      font: 950 2rem/1 Optima, "Trebuchet MS", sans-serif;
+      letter-spacing: -0.06em;
+      margin-bottom: 7px;
+    }
+
+    .score-card span {
+      display: block;
+      color: var(--muted);
+      font: 800 0.68rem/1.35 Optima, "Trebuchet MS", sans-serif;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    .evidence-table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 18px;
+      font-size: 0.95rem;
+    }
+
+    .evidence-table th,
+    .evidence-table td {
+      padding: 13px 12px;
+      text-align: left;
+      border-bottom: 1px solid rgba(205, 191, 159, 0.8);
+      vertical-align: top;
+    }
+
+    .evidence-table th {
+      color: var(--green);
+      font: 900 0.68rem/1 Optima, "Trebuchet MS", sans-serif;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    .evidence-table tr:last-child td { border-bottom: 0; }
+
+    .callouts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .callout {
+      padding: 18px;
+      border-radius: 22px;
+      border: 1px solid rgba(205, 191, 159, 0.9);
+      background: rgba(255, 252, 243, 0.62);
+    }
+
+    .callout strong {
+      display: block;
+      font: 900 1.08rem/1.18 Optima, "Trebuchet MS", sans-serif;
+      margin-bottom: 8px;
+    }
+
+    .callout p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.42;
+    }
+
     section.panel { padding: 28px; }
 
     h2 {
@@ -256,7 +341,7 @@
     }
 
     @media (max-width: 850px) {
-      .hero, .grid, .metrics { grid-template-columns: 1fr; }
+      .hero, .grid, .metrics, .score-grid, .callouts { grid-template-columns: 1fr; }
       .hero-copy, section.panel { padding: 24px; }
     }
   </style>
@@ -268,14 +353,14 @@
         <p class="eyebrow">EvoNN next planning slice · verified 2026-05-18</p>
         <h1>From proof gates to engine pressure.</h1>
         <p class="subtitle">
-          The infrastructure now works well enough to stop building more scaffolding by default.
-          The next large step is to use the evidence loop to improve the engines against the contender floor.
+          The infrastructure now works well enough to make concrete engine calls.
+          The next large step is targeted search-engine work, not more comparison plumbing.
         </p>
       </div>
       <aside class="panel truth">
         <div>
           <b>Current read</b>
-          <p>Tier B is decision-useful. Additive Tier C has a clean cumulative local proof. Tier B cumulative budget 392 now has complete quality evidence.</p>
+          <p>Tier B cumulative budget 392 is the clearest current pressure point: Contenders still lead, while Prism and Topograph are now close enough to guide focused engine work.</p>
         </div>
         <div class="stamp">Do not claim broad superiority yet</div>
       </aside>
@@ -284,8 +369,8 @@
     <div class="metrics">
       <div class="panel metric"><b>143</b><span>Compare tests passing</span></div>
       <div class="panel metric"><b>26</b><span>Contenders tests passing</span></div>
-      <div class="panel metric"><b>2</b><span>Tier B 384 promoted seeds</span></div>
-      <div class="panel metric"><b>392</b><span>Tier B cumulative completed</span></div>
+      <div class="panel metric"><b>144</b><span>Compare tests after guard</span></div>
+      <div class="panel metric"><b>392</b><span>Trusted Tier B cumulative</span></div>
     </div>
 
     <div class="grid">
@@ -302,21 +387,21 @@
           <span class="dot blue"></span>
           <div>
             <h3>Tier B is the useful pressure lane</h3>
-            <p>Budget 384 over two seeds is trusted-extended. The result currently favors Contenders.</p>
+            <p>Budget 392 over the cumulative Tier B pack is trusted-extended. Contenders still lead, but Prism and Topograph are close enough to make benchmark-specific work meaningful.</p>
           </div>
         </article>
         <article class="item">
           <span class="dot"></span>
           <div>
-            <h3>Native transfer exists, but is not decisive</h3>
-            <p>Direct Primordia to Topograph seeding shows a gain signal; staged transfer is still inconclusive.</p>
+            <h3>Topograph is the serious challenger right now</h3>
+            <p>At budget 392, Topograph wins bank marketing and gas sensor, ties wine and breast cancer, and is near the CPU regression floor.</p>
           </div>
         </article>
         <article class="item">
           <span class="dot red"></span>
           <div>
-            <h3>Tier C has a clean cumulative local proof</h3>
-            <p>The cumulative Tier C pack now materializes lower-tier includes correctly and passed two promoted seeds at budget 132.</p>
+            <h3>Runtime evidence needs a stricter rerun path</h3>
+            <p>The 392 quality evidence is valid, but resumed Prism and Stratograph timing was rejected as implausible. Runtime claims need clean non-resumed runs or fixed resume accounting.</p>
           </div>
         </article>
       </section>
@@ -336,33 +421,94 @@
             <div class="num"></div>
             <div>
               <h3>Engine improvement remains the big next body of work</h3>
-              <p>Topograph, Prism, Stratograph, and Primordia should each target the benchmarks where Contenders wins most clearly. Current Tier B cumulative evidence still favors Contenders at budgets 28, 98, and 392, though Topograph closes the gap at 392.</p>
-              <div class="tagrow"><span class="tag">open</span><span class="tag">one branch per engine</span><span class="tag">measured gains</span></div>
+              <p>Start with Topograph and Prism. They have enough 392 signal to justify targeted benchmark work; Stratograph and Primordia need narrower rescue plans.</p>
+              <div class="tagrow"><span class="tag">priority</span><span class="tag">one branch per engine</span><span class="tag">measured gains</span></div>
             </div>
           </article>
           <article class="step">
             <div class="num"></div>
             <div>
-              <h3>Transfer is instrumented, not yet decisive</h3>
-              <p>Native transfer records provenance and L4 blockers, but staged transfer still needs a focused improvement branch before it can support strong claims.</p>
-              <div class="tagrow"><span class="tag">partly done</span><span class="tag">direct vs staged</span><span class="tag">seed provenance</span></div>
+              <h3>Fix 392 runtime accounting</h3>
+              <p>Performance claims should reject implausible timings, and now do. The remaining work is either clean reruns or resume-aware wall-clock accumulation for Prism and Stratograph.</p>
+              <div class="tagrow"><span class="tag">runtime guard</span><span class="tag">resume accounting</span><span class="tag">performance claims</span></div>
             </div>
           </article>
           <article class="step">
             <div class="num"></div>
             <div>
-              <h3>Performance baseline is guarded</h3>
-              <p>Budgets 28 and 98 remain clean same-code runtime evidence. Budget 392 is complete for quality, but resumed Prism and Stratograph timing was rejected as implausible.</p>
-              <div class="tagrow"><span class="tag">guarded</span><span class="tag">runtime budget</span><span class="tag">quality guard</span></div>
+              <h3>Keep transfer secondary</h3>
+              <p>Transfer remains important, but the stronger immediate value is improving engine quality where the contender floor is still beating EvoNN engines.</p>
+              <div class="tagrow"><span class="tag">defer slightly</span><span class="tag">seed provenance</span><span class="tag">after engine gains</span></div>
             </div>
           </article>
         </div>
       </section>
     </div>
 
+    <section class="panel wide">
+      <h2>Tier B Cumulative 392 Scorecard</h2>
+      <div class="score-grid">
+        <div class="score-card"><b>6.0</b><span>Contenders</span></div>
+        <div class="score-card"><b>3.75</b><span>Prism</span></div>
+        <div class="score-card"><b>3.25</b><span>Topograph</span></div>
+        <div class="score-card"><b>0.75</b><span>Primordia</span></div>
+        <div class="score-card"><b>0.25</b><span>Stratograph</span></div>
+      </div>
+      <table class="evidence-table">
+        <thead>
+          <tr>
+            <th>Engine</th>
+            <th>What Is Working</th>
+            <th>Next Target</th>
+            <th>Acceptance Proof</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Topograph</strong></td>
+            <td>Wins openml_bank_marketing and openml_gas_sensor; ties breast_cancer and wine.</td>
+            <td>Close the image and multiclass gap: digits, fashion MNIST, and openml_letter.</td>
+            <td>Beat or tie Contenders on at least two current below-floor Tier B benchmarks at 392 without losing bank/gas.</td>
+          </tr>
+          <tr>
+            <td><strong>Prism</strong></td>
+            <td>Wins diabetes, digits, moons, and ties circles/iris.</td>
+            <td>Improve real tabular classification and fashion MNIST without regressing synthetic/regression strengths.</td>
+            <td>Move from 3.75 to at least 5.0 score on the same Tier B cumulative 392 lane.</td>
+          </tr>
+          <tr>
+            <td><strong>Primordia</strong></td>
+            <td>Can still hit ceiling on simple synthetic/iris-style tasks and remains runtime-practical.</td>
+            <td>Stop relying on smoke wins; improve broad tabular and regression behavior.</td>
+            <td>Show repeatable gains on credit_g, friedman1, openml_letter, or cpu_activity.</td>
+          </tr>
+          <tr>
+            <td><strong>Stratograph</strong></td>
+            <td>Completes the lane and keeps budget accounting clean.</td>
+            <td>Quality rescue: openml_letter, fashion MNIST, regression, and hierarchy reuse.</td>
+            <td>Reach at least 1.5 score on Tier B cumulative 392 before treating it as a serious challenger.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callouts">
+        <div class="callout">
+          <strong>Immediate branch 1: Topograph challenger push</strong>
+          <p>Highest leverage because it already approaches Contenders at 392 and has clear benchmark-specific gaps.</p>
+        </div>
+        <div class="callout">
+          <strong>Immediate branch 2: Prism real-data hardening</strong>
+          <p>Preserve its synthetic/regression wins while improving letter, credit_g, bank, and fashion MNIST.</p>
+        </div>
+        <div class="callout">
+          <strong>Infrastructure side quest: resume-safe timing</strong>
+          <p>Required before high-budget runtime claims become as trustworthy as high-budget quality claims.</p>
+        </div>
+      </div>
+    </section>
+
     <footer class="panel">
-      Suggested priority: evidence-driven engine branches aimed at beating or tying the required contender floor on Tier B and cumulative Tier C.
-      Current pushed baseline before this slice: <code>92e6946</code>.
+      Suggested priority: Topograph challenger push first, Prism real-data hardening second, then Stratograph/Primordia rescue branches.
+      Current pushed baseline: <code>6656124</code>.
     </footer>
   </main>
 </body>
