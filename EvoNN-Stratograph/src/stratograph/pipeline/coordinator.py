@@ -85,6 +85,10 @@ def run_evolution(
     occupied_niches: set[tuple[int, int, int, int]] = set()
     prior_budget_meta = store.load_budget_metadata(run_id) if resume else {}
     prior_progress = prior_budget_meta or checkpoint
+    prior_wall_clock_seconds = _prior_wall_clock_seconds(
+        run_dir=run_dir,
+        prior_budget_meta=prior_budget_meta,
+    ) if resume else 0.0
     benchmark_slot_plan = _restore_benchmark_slot_plan(
         prior_progress.get("benchmark_slot_plan"),
         benchmark_names=benchmark_names,
@@ -330,7 +334,8 @@ def run_evolution(
             benchmark_slot_plan=benchmark_slot_plan,
         )
 
-    wall_clock_seconds = time.perf_counter() - started
+    attempt_wall_clock_seconds = time.perf_counter() - started
+    wall_clock_seconds = prior_wall_clock_seconds + attempt_wall_clock_seconds
     partial_run = len(completed_benchmarks) < len(benchmark_names)
     store.save_budget_metadata(
         run_id=run_id,
@@ -350,6 +355,8 @@ def run_evolution(
             ),
             "effective_training_epochs": config.training.epochs,
             "wall_clock_seconds": wall_clock_seconds,
+            "attempt_wall_clock_seconds": attempt_wall_clock_seconds,
+            "resumed_wall_clock_seconds": prior_wall_clock_seconds,
             "created_at": created_at,
             "runtime_backend_requested": runtime_selection.requested_backend,
             "runtime_backend": runtime_selection.resolved_backend,
@@ -884,6 +891,37 @@ def _benchmark_slot_integrity(
         "invalid_slots": invalid_slots,
         "matches_evaluation_count": completed_slots == scheduled_evaluation_slots,
     }
+
+
+def _prior_wall_clock_seconds(*, run_dir: Path, prior_budget_meta: dict[str, object]) -> float:
+    """Return persisted runtime before a resumed Stratograph attempt."""
+    candidates = []
+    for value in (
+        prior_budget_meta.get("wall_clock_seconds"),
+        _json_number(run_dir / "summary.json", "wall_clock_seconds"),
+        _json_number(run_dir / "status.json", "wall_clock_seconds"),
+        _json_number(run_dir / "status.json", "elapsed_seconds"),
+    ):
+        if value is None:
+            continue
+        candidates.append(float(value))
+    return max(candidates, default=0.0)
+
+
+def _json_number(path: Path, key: str) -> float | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    value = payload.get(key)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _write_checkpoint(

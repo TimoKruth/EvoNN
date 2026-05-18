@@ -88,6 +88,7 @@ def run_evolution(
         state, start_gen = _try_resume(run_dir)
         if state is not None:
             monitor.on_info(f"Resuming from generation {start_gen}")
+    prior_elapsed = _prior_elapsed_seconds(run_dir) if resume else 0.0
 
     # Create seed population
     if state is None:
@@ -135,7 +136,7 @@ def run_evolution(
             update_search_memory(state, config)
 
             # 4. Monitor
-            elapsed = time.time() - run_start
+            elapsed = prior_elapsed + (time.time() - run_start)
             qualities = [s.aggregate_quality for s in summaries if s.qualities]
             best_q = max(qualities) if qualities else float("-inf")
             avg_q = sum(qualities) / len(qualities) if qualities else float("-inf")
@@ -153,7 +154,15 @@ def run_evolution(
 
             # 5. Checkpoint
             _checkpoint(run_dir, gen, state)
-            _write_status(run_dir, run_id, config, state, next_generation=gen + 1, completed=False, elapsed=time.time() - run_start)
+            _write_status(
+                run_dir,
+                run_id,
+                config,
+                state,
+                next_generation=gen + 1,
+                completed=False,
+                elapsed=prior_elapsed + (time.time() - run_start),
+            )
 
             # 6. Reproduce (skip on last generation)
             if gen < total_gens - 1:
@@ -184,7 +193,7 @@ def run_evolution(
                 }
 
         # Completion
-        elapsed = time.time() - run_start
+        elapsed = prior_elapsed + (time.time() - run_start)
         qualities = [
             s.aggregate_quality
             for s in summaries_from_state_results(state.population, state.results, total_gens - 1)
@@ -366,6 +375,28 @@ def _try_resume(run_dir: str) -> tuple[GenerationState | None, int]:
     )
 
     return state, data["generation"] + 1
+
+
+def _prior_elapsed_seconds(run_dir: str) -> float:
+    """Return the best persisted elapsed time before a resumed attempt."""
+    candidates = []
+    for filename in ("summary.json", "status.json"):
+        path = Path(run_dir) / filename
+        if not path.exists():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        for key in ("wall_clock_seconds", "elapsed_seconds"):
+            value = payload.get(key)
+            if value is None:
+                continue
+            try:
+                candidates.append(float(value))
+            except (TypeError, ValueError):
+                continue
+    return max(candidates, default=0.0)
 
 
 def _write_summary(run_dir: str, state: GenerationState, elapsed: float) -> None:

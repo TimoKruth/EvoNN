@@ -400,8 +400,8 @@
         <article class="item">
           <span class="dot red"></span>
           <div>
-            <h3>Runtime evidence needs a stricter rerun path</h3>
-            <p>The 392 quality evidence is valid, but resumed Prism and Stratograph timing was rejected as implausible. Runtime claims need clean non-resumed runs or fixed resume accounting.</p>
+            <h3>Resume-safe runtime accounting is fixed forward</h3>
+            <p>Prism and Stratograph now preserve prior elapsed time when resumed. The old 392 runtime artifacts stay invalid, but future resumed runs should be performance-claimable.</p>
           </div>
         </article>
       </section>
@@ -428,9 +428,9 @@
           <article class="step">
             <div class="num"></div>
             <div>
-              <h3>Fix 392 runtime accounting</h3>
-              <p>Performance claims should reject implausible timings, and now do. The remaining work is either clean reruns or resume-aware wall-clock accumulation for Prism and Stratograph.</p>
-              <div class="tagrow"><span class="tag">runtime guard</span><span class="tag">resume accounting</span><span class="tag">performance claims</span></div>
+              <h3>Runtime accounting is fixed for future resumes</h3>
+              <p>Performance claims reject implausible timings, and Prism/Stratograph now accumulate prior elapsed time on resume. Existing corrupt 392 timing remains excluded.</p>
+              <div class="tagrow"><span class="tag">done forward</span><span class="tag">resume accounting</span><span class="tag">performance claims</span></div>
             </div>
           </article>
           <article class="step">
@@ -500,8 +500,8 @@
           <p>Preserve its synthetic/regression wins while improving letter, credit_g, bank, and fashion MNIST.</p>
         </div>
         <div class="callout">
-          <strong>Infrastructure side quest: resume-safe timing</strong>
-          <p>Required before high-budget runtime claims become as trustworthy as high-budget quality claims.</p>
+          <strong>Infrastructure side quest: rerun 392 runtime</strong>
+          <p>Resume-safe timing is fixed going forward; rerun the high-budget lane only when strict 392 runtime evidence is needed.</p>
         </div>
       </div>
     </section>

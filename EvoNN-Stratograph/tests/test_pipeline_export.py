@@ -7,6 +7,7 @@ from stratograph.config import BenchmarkPoolConfig, load_config
 from stratograph.export import export_symbiosis_contract
 from stratograph.export.report import _escape_markdown_cell, load_report_context, summarize_failure_patterns
 from stratograph.pipeline import build_execution_ladder, run_evolution
+from stratograph.pipeline.coordinator import _prior_wall_clock_seconds
 from stratograph.storage import RunStore
 
 
@@ -224,6 +225,20 @@ def test_inspect_command_handles_empty_run_dir(tmp_path) -> None:
     result = runner.invoke(app, ["inspect", "--run-dir", str(run_dir)])
 
     assert result.exit_code == 1
+
+
+def test_prior_wall_clock_seconds_prefers_budget_metadata(tmp_path) -> None:
+    run_dir = tmp_path / "resume_run"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(json.dumps({"wall_clock_seconds": 5.5}), encoding="utf-8")
+    (run_dir / "status.json").write_text(json.dumps({"elapsed_seconds": 7.0}), encoding="utf-8")
+
+    elapsed = _prior_wall_clock_seconds(
+        run_dir=run_dir,
+        prior_budget_meta={"wall_clock_seconds": 12.75},
+    )
+
+    assert elapsed == 12.75
 
 
 def test_report_context_keeps_best_result_per_benchmark(tmp_path) -> None:
@@ -462,6 +477,7 @@ def test_budget_metadata_counts_actual_scheduled_slots_on_partial_resume(repo_ro
 
     with RunStore(run_dir / "metrics.duckdb") as store:
         budget_meta = store.load_budget_metadata(run_dir.name)
+        first_wall_clock = float(budget_meta["wall_clock_seconds"])
     status = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
 
     assert budget_meta["evaluation_count"] == 8
@@ -473,6 +489,14 @@ def test_budget_metadata_counts_actual_scheduled_slots_on_partial_resume(repo_ro
     assert status["evaluation_count"] == 8
     assert status["failed_evaluations"] == 0
     assert status["benchmark_slot_plan"][0]["completed_slots"] == 8
+
+    run_evolution(partial_config, run_dir=run_dir, config_path=config_path, resume=True)
+
+    with RunStore(run_dir / "metrics.duckdb") as store:
+        resumed_budget_meta = store.load_budget_metadata(run_dir.name)
+
+    assert resumed_budget_meta["wall_clock_seconds"] >= first_wall_clock
+    assert resumed_budget_meta["resumed_wall_clock_seconds"] >= first_wall_clock
 
 
 def test_official_lane_configs_encode_exact_budget_targets(repo_root) -> None:

@@ -304,6 +304,22 @@ def test_create_seed_population_keeps_unique_genome_ids():
     assert len({g.genome_id for g in population}) == 8
 
 
+def test_prior_elapsed_seconds_prefers_persisted_resume_runtime(tmp_path: Path):
+    coordinator = _import_coordinator_or_skip()
+    run_dir = tmp_path / "resume_run"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps({"elapsed_seconds": 11.5, "wall_clock_seconds": 12.25}),
+        encoding="utf-8",
+    )
+    (run_dir / "status.json").write_text(
+        json.dumps({"elapsed_seconds": 10.0}),
+        encoding="utf-8",
+    )
+
+    assert coordinator._prior_elapsed_seconds(str(run_dir)) == 12.25
+
+
 def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_path: Path):
     coordinator = _import_coordinator_or_skip()
     cfg = RunConfig.model_validate(
@@ -339,6 +355,12 @@ def test_coordinator_persists_duckdb_and_report_reads_results(monkeypatch, tmp_p
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["runtime_backend"] == "mlx"
     assert summary["precision_mode"] == "fp32"
+    first_elapsed = float(summary["elapsed_seconds"])
+
+    resumed_state = coordinator.run_evolution(cfg, [benchmark], run_dir=str(run_dir), resume=True)
+    resumed_summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert resumed_state.total_evaluations == 1
+    assert resumed_summary["elapsed_seconds"] >= first_elapsed
 
     with RunStore(run_dir / "metrics.duckdb") as store:
         evals = store.load_evaluations(run_dir.name)
