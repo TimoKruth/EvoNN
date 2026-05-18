@@ -267,6 +267,34 @@ def test_performance_baseline_flags_runtime_series_ambiguity(tmp_path: Path) -> 
     assert all(series["has_required_budgets"] is False for series in prism["performance_series"])
 
 
+def test_performance_baseline_rejects_implausible_wall_clock_for_claims(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    runs_root = workspace / "runs"
+    run_id = "tier1_core_eval64_seed42"
+    for system in SYSTEMS:
+        _write_run(
+            runs_root / system / run_id,
+            system=system,
+            run_id=run_id,
+            budget=64,
+            wall_clock=0.001 if system == "prism" else 10.0,
+            pack_name="tier1_core_eval64",
+            backend=BACKEND_BY_SYSTEM[system],
+            hardware_class=HARDWARE_BY_SYSTEM[system],
+        )
+    _write_fair_matrix_case(workspace, run_id=run_id, budget=64, seed=42, systems=SYSTEMS, pack_name="tier1_core_eval64")
+
+    result = build_performance_baseline(inputs=[workspace], output_root=tmp_path / "baselines", required_budgets=(64,))
+    payload = json.loads(Path(result["json"]).read_text(encoding="utf-8"))
+    prism = next(row for row in payload["systems"] if row["system"] == "prism")
+    contenders = next(row for row in payload["systems"] if row["system"] == "contenders")
+
+    assert prism["performance_claim_ready"] is False
+    assert prism["accepted_run_count"] == 0
+    assert any("wall-clock-implausible" in ",".join(row["reasons"]) for row in prism["excluded_runs"])
+    assert contenders["performance_claim_ready"] is True
+
+
 def test_performance_baseline_does_not_use_summary_lane_fallback_when_matching_rows_are_ambiguous(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     runs_root = workspace / "runs"

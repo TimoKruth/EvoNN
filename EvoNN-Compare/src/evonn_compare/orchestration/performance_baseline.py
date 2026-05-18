@@ -15,6 +15,7 @@ from evonn_shared.manifests import write_json
 DEFAULT_REQUIRED_BUDGETS = (64, 256, 1000)
 DECISION_GRADE_LANE_STATES = {"trusted-core", "trusted-extended"}
 CANONICAL_SYSTEMS = ("prism", "topograph", "stratograph", "primordia", "contenders")
+MIN_CLAIM_WALL_CLOCK_SECONDS = 0.1
 
 
 def build_performance_baseline(
@@ -442,6 +443,13 @@ def _exclusion_reasons(
         reasons.append("backend-missing")
     if not row["runtime"].get("hardware_class"):
         reasons.append("hardware-class-missing")
+    wall_clock_seconds = row["performance"].get("wall_clock_seconds")
+    if (
+        wall_clock_seconds is not None
+        and float(wall_clock_seconds) < MIN_CLAIM_WALL_CLOCK_SECONDS
+        and (row.get("budget") or 0) > 1
+    ):
+        reasons.append(f"wall-clock-implausible:{wall_clock_seconds}")
     lane_state = row.get("lane_operating_state")
     if lane_state not in DECISION_GRADE_LANE_STATES:
         reasons.append(f"lane-state={lane_state or 'missing'}")
