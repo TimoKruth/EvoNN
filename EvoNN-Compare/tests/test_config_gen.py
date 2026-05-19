@@ -217,7 +217,7 @@ def test_generate_prism_config_keeps_small_mixed_non_lm_pack_on_common_families(
     assert prism_payload["evolution"]["allowed_families"] == ["mlp", "sparse_mlp"]
 
 
-def test_generate_prism_config_keeps_large_mixed_non_lm_pack_on_common_families(
+def test_generate_prism_config_uses_specialists_and_generalists_for_large_mixed_non_lm_pack(
     tmp_path: Path,
 ) -> None:
     pack_path = tmp_path / "large_mixed_non_lm.yaml"
@@ -267,7 +267,15 @@ def test_generate_prism_config_keeps_large_mixed_non_lm_pack_on_common_families(
     )
     prism_payload = yaml.safe_load(prism_path.read_text(encoding="utf-8"))
 
-    assert prism_payload["evolution"]["allowed_families"] == ["mlp", "sparse_mlp"]
+    assert prism_payload["evolution"]["allowed_families"] == [
+        "mlp",
+        "sparse_mlp",
+        "moe_mlp",
+        "conv2d",
+        "lite_conv2d",
+    ]
+    assert prism_payload["evolution"]["population_size"] == 14
+    assert prism_payload["evolution"]["num_generations"] == 2
 
 
 def test_generate_prism_config_uses_common_families_for_tabular_pack(tmp_path: Path) -> None:
@@ -319,6 +327,7 @@ def test_generate_prism_config_uses_common_families_for_tabular_pack(tmp_path: P
     prism_payload = yaml.safe_load(prism_path.read_text(encoding="utf-8"))
 
     assert prism_payload["evolution"]["allowed_families"] == ["mlp", "sparse_mlp"]
+
 
 def test_generate_prism_config_uses_cross_modal_families_for_small_mixed_lm_pack(tmp_path: Path) -> None:
     pack_path = tmp_path / "mixed.yaml"

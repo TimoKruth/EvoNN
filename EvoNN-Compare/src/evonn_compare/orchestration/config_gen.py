@@ -44,6 +44,13 @@ class CampaignCase:
     comparison_output_path: Path
 
 
+@dataclass(frozen=True)
+class PrismFamilyPlan:
+    families: list[str]
+    min_population_size: int
+    preferred_population_cap: int
+
+
 def generate_budget_pack(
     *,
     base_pack_path: Path,
@@ -79,11 +86,12 @@ def generate_prism_config(
 ) -> Path:
     pack = load_parity_pack(pack_path)
     benchmark_ids = resolve_supported_benchmark_ids(pack.benchmarks, "prism")
-    allowed_families = _prism_allowed_families(pack, budget=budget)
+    family_plan = _prism_family_plan(pack, budget=budget)
     patch = _prism_budget_patch(
         budget=budget,
         benchmark_count=len(pack.benchmarks),
-        required_family_count=len(allowed_families),
+        required_family_count=family_plan.min_population_size,
+        preferred_population_cap=family_plan.preferred_population_cap,
     )
     payload = {
         "seed": seed,
@@ -100,7 +108,7 @@ def generate_prism_config(
         },
         "evolution": {
             "elite_per_benchmark": max(1, patch["evolution"]["population_size"] // 4),
-            "allowed_families": allowed_families,
+            "allowed_families": family_plan.families,
         },
     }
     _deep_update(payload, patch)
@@ -261,10 +269,10 @@ def prepare_campaign_cases(
     return paths, cases
 
 
-def _prism_allowed_families(pack, *, budget: int) -> list[str]:
+def _prism_family_plan(pack, *, budget: int) -> PrismFamilyPlan:
     benchmark_count = len(pack.benchmarks)
     if benchmark_count == 0:
-        return ["mlp"]
+        return PrismFamilyPlan(["mlp"], min_population_size=1, preferred_population_cap=8)
     units = budget // benchmark_count
     has_lm = any(entry.task_kind == "language_modeling" for entry in pack.benchmarks)
     has_non_lm = any(entry.task_kind != "language_modeling" for entry in pack.benchmarks)
@@ -280,22 +288,30 @@ def _prism_allowed_families(pack, *, budget: int) -> list[str]:
             ["attention"],
         ):
             if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
-                return families
-        return ["attention"]
+                return PrismFamilyPlan(families, min_population_size=len(families), preferred_population_cap=8)
+        return PrismFamilyPlan(["attention"], min_population_size=1, preferred_population_cap=8)
     if has_lm:
         if _has_exact_factorization(units, min_population_size=2, preferred_population_cap=8):
-            return ["attention", "sparse_attention"]
-        return ["attention"]
+            return PrismFamilyPlan(["attention", "sparse_attention"], min_population_size=2, preferred_population_cap=8)
+        return PrismFamilyPlan(["attention"], min_population_size=1, preferred_population_cap=8)
 
     if has_image and has_tabular_or_synthetic:
-        candidates = (
+        for families in (
             ["mlp", "sparse_mlp", "moe_mlp", "conv2d", "lite_conv2d"],
             ["mlp", "sparse_mlp", "conv2d", "lite_conv2d"],
-        ) if units <= 8 else ()
-        for families in (*candidates, ["mlp", "sparse_mlp"], ["mlp"]):
+        ):
+            if _has_exact_factorization(units, min_population_size=2 * len(families), preferred_population_cap=16):
+                return PrismFamilyPlan(
+                    families,
+                    min_population_size=2 * len(families),
+                    preferred_population_cap=16,
+                )
             if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
-                return families
-        return ["mlp"]
+                return PrismFamilyPlan(families, min_population_size=len(families), preferred_population_cap=8)
+        for families in (["mlp", "sparse_mlp"], ["mlp"]):
+            if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
+                return PrismFamilyPlan(families, min_population_size=len(families), preferred_population_cap=8)
+        return PrismFamilyPlan(["mlp"], min_population_size=1, preferred_population_cap=8)
 
     if has_image:
         for families in (
@@ -305,16 +321,23 @@ def _prism_allowed_families(pack, *, budget: int) -> list[str]:
             ["mlp"],
         ):
             if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
-                return families
-        return ["mlp"]
+                return PrismFamilyPlan(families, min_population_size=len(families), preferred_population_cap=8)
+        return PrismFamilyPlan(["mlp"], min_population_size=1, preferred_population_cap=8)
 
     for families in (
+        ["mlp", "sparse_mlp", "moe_mlp"],
         ["mlp", "sparse_mlp"],
         ["mlp"],
     ):
-        if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
-            return families
-    return ["mlp"]
+        preferred_cap = 12 if len(families) > 2 else 8
+        min_population_size = 2 * len(families) if len(families) > 2 else len(families)
+        if _has_exact_factorization(units, min_population_size=min_population_size, preferred_population_cap=preferred_cap):
+            return PrismFamilyPlan(
+                families,
+                min_population_size=min_population_size,
+                preferred_population_cap=preferred_cap,
+            )
+    return PrismFamilyPlan(["mlp"], min_population_size=1, preferred_population_cap=8)
 
 
 def _is_image_benchmark(entry: Any) -> bool:
@@ -324,7 +347,13 @@ def _is_image_benchmark(entry: Any) -> bool:
     return benchmark_group in {"image", "image-classification"} or "image" in benchmark_id or modality == "image"
 
 
-def _prism_budget_patch(*, budget: int, benchmark_count: int, required_family_count: int = 1) -> dict[str, Any]:
+def _prism_budget_patch(
+    *,
+    budget: int,
+    benchmark_count: int,
+    required_family_count: int = 1,
+    preferred_population_cap: int = 8,
+) -> dict[str, Any]:
     if budget % benchmark_count != 0:
         raise ValueError(f"budget {budget} not divisible by benchmark_count {benchmark_count}")
     units = budget // benchmark_count
@@ -335,7 +364,7 @@ def _prism_budget_patch(*, budget: int, benchmark_count: int, required_family_co
         )
     population_size, generations = _exact_factorization(
         units,
-        preferred_population_cap=8,
+        preferred_population_cap=preferred_population_cap,
         min_population_size=required_family_count,
     )
     return {
