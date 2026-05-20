@@ -1,0 +1,260 @@
+{
+  "generated_at": "2026-05-20T13:26:57.624015+00:00",
+  "registry": "/Users/timokruth/Projekte/Evo Neural Nets/evidence",
+  "record_count": 6,
+  "summary_count": 6,
+  "min_seeds": 2,
+  "groups": [
+    {
+      "label": "tier-c-engine-only-regression-calibrated",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval132",
+      "budget": 132,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "contract-fair"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 1.666667,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "not_applicable"
+        ]
+      },
+      "effect_strength": "medium",
+      "leader": "prism",
+      "system_rows": [
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 3.6666666666666665,
+          "score_range": 2.5
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 7.833333333333333,
+          "score_range": 2.0
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 6.166666666666667,
+          "score_range": 1.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 4.333333333333333,
+          "score_range": 1.0
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-20T13:26:56.997267+00:00"
+    },
+    {
+      "label": "tier-c-engine-only-regression-calibrated",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval528",
+      "budget": 528,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "contract-fair"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 1.666667,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "not_applicable"
+        ]
+      },
+      "effect_strength": "medium",
+      "leader": "topograph",
+      "system_rows": [
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 3.5,
+          "score_range": 3.5
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 6.166666666666667,
+          "score_range": 3.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 4.833333333333333,
+          "score_range": 3.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 7.833333333333333,
+          "score_range": 3.5
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-20T13:26:56.997267+00:00"
+    }
+  ],
+  "before_after_comparisons": [],
+  "engine_roles": [
+    {
+      "system": "prism",
+      "role": "leader_candidate",
+      "leader_group_count": 1,
+      "top_two_group_count": 2,
+      "family_leads": [
+        "image-classification",
+        "synthetic"
+      ]
+    },
+    {
+      "system": "topograph",
+      "role": "leader_candidate",
+      "leader_group_count": 1,
+      "top_two_group_count": 1,
+      "family_leads": [
+        "tabular",
+        "tabular-regression"
+      ]
+    },
+    {
+      "system": "stratograph",
+      "role": "challenger",
+      "leader_group_count": 0,
+      "top_two_group_count": 1,
+      "family_leads": []
+    },
+    {
+      "system": "primordia",
+      "role": "seed_source_specialist",
+      "leader_group_count": 0,
+      "top_two_group_count": 0,
+      "family_leads": [
+        "synthetic",
+        "synthetic-regression"
+      ]
+    },
+    {
+      "system": "contenders",
+      "role": "watch",
+      "leader_group_count": 0,
+      "top_two_group_count": 0,
+      "family_leads": []
+    }
+  ],
+  "lm_flatline_diagnostics": [],
+  "transfer_evidence": {
+    "seeded_trend_row_count": 0,
+    "seed_sources": [],
+    "transfer_boundaries": [],
+    "proof_states": [],
+    "native_transfer_claim_ready": false,
+    "native_transfer_case_count": 0,
+    "native_transfer_verdict_counts": {},
+    "native_transfer_consensus": {},
+    "all_transfer_case_count": 0,
+    "portable_transfer_case_count": 0,
+    "portable_transfer_verdict_counts": {},
+    "portable_transfer_regime_counts": {},
+    "portable_transfer_consensus": {}
+  },
+  "quality_diversity_evidence": {
+    "descriptor_or_archive_row_count": 0,
+    "summary_archive_evidence_count": 0,
+    "systems": [],
+    "claim_ready": false
+  },
+  "artifact_validation": {
+    "ok": true,
+    "record_count": 6,
+    "issues": [],
+    "warnings": []
+  }
+}

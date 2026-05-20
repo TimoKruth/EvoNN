@@ -119,6 +119,11 @@ What is still not fully finished:
   -> remeasure -> accept/scrap loop.
 - There is no explicit rule for engine portfolio decisions: specialize,
   merge, graduate, or retire.
+- The latest promoted Tier C engine-only evidence shows the four EvoNN engines
+  are now measurable across 22 cumulative Tier C benchmarks and multiple seeds,
+  but not yet balanced. Prism leads at low budget, Topograph leads at higher
+  budget, Stratograph is seed-volatile, and Primordia is still better treated as
+  a specialization/seed-source engine than a broad generalist.
 
 ## Strategic End State
 
@@ -135,6 +140,31 @@ This plan is complete when EvoNN can make these claims honestly:
 - Engine-specific work is driven by evidence: each engine has a clear research
   role, measurable failure modes, and a rule for continued investment.
 - New benchmark tiers or modalities can be added without weakening trust.
+- Engine-only evidence and contender-including evidence are both used correctly:
+  engine-only runs drive portfolio/parity decisions, while contender-including
+  runs drive external performance claims.
+
+## Immediate Hard-Remainder Focus After 2026-05-20 Evidence
+
+The next hard work should not be more dashboard breadth or more plan files. The
+new evidence makes the main risk concrete: the engines can all run, but their
+quality curves differ too much by budget and benchmark family.
+
+Priority sequence:
+
+1. Add family-aware budget allocation experiments for Prism and Topograph,
+   because they currently show the strongest generalist signal and the clearest
+   budget response.
+2. Add Stratograph hierarchy-specific ablation evidence, because it needs to
+   prove hierarchy contributes something distinct rather than acting as a noisy
+   secondary challenger.
+3. Add Primordia seed-source validation against downstream Prism or Topograph,
+   because broad Tier C generalist evidence is not yet its strongest path.
+4. Rerun the same engine-only Tier C cumulative multi-seed budgets after each
+   engine-quality slice, then rerun a contender-including Tier C cohort only
+   when engine-only evidence shows a real improvement.
+5. Keep promoted evidence compact in `evidence/` and avoid committing raw `.tmp`
+   workspaces unless a specific raw artifact is needed for audit.
 
 ## Workstream 1: Durable Evidence Registry
 

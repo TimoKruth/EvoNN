@@ -1,6 +1,6 @@
 # EvoNN Consolidated Plan
 
-_Last consolidated: 2026-05-13._
+_Last consolidated: 2026-05-20._
 
 ## Purpose
 
@@ -62,10 +62,87 @@ The trust substrate is now real enough to operate from:
   until its promotion run requirements are met.
 - Real LM caches are used for `tinystories_lm` and `wikitext2_lm`; smoke-only LM
   evidence is no longer the main LM surface for expanded lanes.
+- Regression target normalization plus final affine calibration are now applied
+  in the MLX training paths for Prism, Topograph, and Primordia. This removed a
+  major raw-target regression failure mode and makes Tier C regression evidence
+  more comparable across engines.
+- A promoted multi-seed engine-only Tier C cumulative evidence cohort now exists
+  in `evidence/` under label `tier-c-engine-only-regression-calibrated`.
 
 The main remaining strategic gap is not another planning layer. It is turning
 the existing compare, dashboard, performance, and portable transfer surfaces
-into repeated native engine-improvement evidence.
+into repeated native engine-improvement evidence, then using that evidence to
+make the four EvoNN engines deliberately complementary instead of accidentally
+uneven.
+
+## Latest Promoted Evidence
+
+Recorded on 2026-05-20 from `main` using the current working engine-training
+changes and promoted into `evidence/`.
+
+Command shape:
+
+```bash
+uv run --package evonn-compare evonn-compare fair-matrix \
+  --preset tier_c_local_cumulative \
+  --seeds 42,43,44 \
+  --budgets 132,528 \
+  --workspace .tmp/tier-c-engine-only-multiseed-multibudget \
+  --reset-workspace \
+  --no-contenders \
+  --no-open
+
+uv run --package evonn-compare evonn-compare evidence promote \
+  .tmp/tier-c-engine-only-multiseed-multibudget \
+  --registry evidence \
+  --label tier-c-engine-only-regression-calibrated \
+  --copy-artifacts
+```
+
+Scope:
+
+- Pack: `tier_c_architecture_sensitive_cumulative`
+- Benchmarks: 22
+- Seeds: `42,43,44`
+- Budgets: `132,528`
+- Systems: Prism, Topograph, Stratograph, Primordia
+- Contenders: intentionally excluded
+- Lane state: `contract-fair`, with `trusted-core` unmet only because
+  contenders were not participating
+- Output completeness: all four engines produced `66/66` ok rows per budget
+
+Engine-only win-credit means:
+
+| Budget | Prism | Topograph | Stratograph | Primordia | Leader |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 132 | 7.83 | 4.33 | 6.17 | 3.67 | Prism |
+| 528 | 6.17 | 7.83 | 4.83 | 3.50 | Topograph |
+
+Interpretation:
+
+- Prism is still the strongest low-budget generalist in this cohort.
+- Topograph converts the higher budget into the clearest Tier C engine-only
+  improvement and becomes the 528-budget leader.
+- Stratograph remains competitive but volatile by seed; hierarchy-specific
+  evidence needs sharper search pressure, not more compare plumbing.
+- Primordia remains the weakest broad Tier C generalist, but it still shows
+  pockets on synthetic and regression-style families and should stay positioned
+  as a motif/seed-source engine before being judged as a broad architecture
+  engine.
+- Because contenders were excluded, these numbers are useful for engine parity
+  and specialization planning, not for claims that EvoNN beats the external
+  floor.
+
+Planning consequences:
+
+- Treat Tier C cumulative multi-seed engine-only runs as the default parity loop
+  after engine-search changes.
+- Use contender-including Tier C runs for external-floor claims, but use
+  engine-only Tier C runs to see whether Prism, Topograph, Stratograph, and
+  Primordia are converging or specializing.
+- The next engine-quality slice should focus on family-aware budget allocation,
+  image/tabular candidate pressure, and regression-safe scaling rather than
+  additional artifact/schema work.
 
 ## Latest Run-Derived Planning Signal
 

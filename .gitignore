@@ -5,6 +5,7 @@
 # Agent / local state
 .cmux/
 **/.cmux/
+.codex-file-refactor/
 .repo-backups/
 .playwright-mcp/
 .env

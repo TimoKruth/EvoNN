@@ -102,6 +102,42 @@ def _compute_metric(task: str, y_true: np.ndarray, y_pred: np.ndarray) -> tuple[
         return "mse", mse, -mse
 
 
+def _regression_target_stats(y_train: np.ndarray) -> tuple[float, float]:
+    values = y_train.reshape(-1).astype(np.float32)
+    mean = float(np.mean(values)) if values.size else 0.0
+    std = float(np.std(values)) if values.size else 1.0
+    if not math.isfinite(std) or std < 1e-8:
+        std = 1.0
+    return mean, std
+
+
+def _standardize_regression_targets(y_train: np.ndarray, mean: float, std: float) -> np.ndarray:
+    return ((y_train.reshape(-1).astype(np.float32) - mean) / std).astype(np.float32)
+
+
+def _restore_regression_predictions(y_pred: np.ndarray, mean: float, std: float) -> np.ndarray:
+    return (y_pred.reshape(-1).astype(np.float32) * std + mean).astype(np.float32)
+
+
+def _calibrate_regression_predictions(
+    *,
+    train_pred: np.ndarray,
+    y_train: np.ndarray,
+    val_pred: np.ndarray,
+) -> np.ndarray:
+    train_x = train_pred.reshape(-1).astype(np.float64)
+    train_y = y_train.reshape(-1).astype(np.float64)
+    val_x = val_pred.reshape(-1).astype(np.float64)
+    if train_x.size < 2 or train_y.size != train_x.size or float(np.std(train_x)) < 1e-8:
+        return val_pred.reshape(-1).astype(np.float32)
+    design = np.column_stack([train_x, np.ones_like(train_x)])
+    slope, intercept = np.linalg.lstsq(design, train_y, rcond=None)[0]
+    if not (math.isfinite(float(slope)) and math.isfinite(float(intercept))):
+        return val_pred.reshape(-1).astype(np.float32)
+    calibrated = val_x * float(slope) + float(intercept)
+    return calibrated.astype(np.float32)
+
+
 def train_and_evaluate(
     model,
     X_train: np.ndarray,
@@ -148,11 +184,23 @@ def train_and_evaluate(
         # Setup optimizer
         optimizer = optim.AdamW(learning_rate=lr, weight_decay=weight_decay)
 
-        # Determine dtypes
+        # Determine dtypes. Regression trains on standardized targets but
+        # reports metrics on the original target scale.
+        regression_target_mean = 0.0
+        regression_target_std = 1.0
+        y_train_for_loss = y_train
+        if task == "regression":
+            regression_target_mean, regression_target_std = _regression_target_stats(y_train)
+            y_train_for_loss = _standardize_regression_targets(
+                y_train,
+                regression_target_mean,
+                regression_target_std,
+            )
+
         y_dtype = np.int32 if task in {"classification", "language_modeling"} else np.float32
         x_dtype = np.int32 if task == "language_modeling" else np.float32
         x_train = mx.array(X_train.astype(x_dtype))
-        y_train_t = mx.array(y_train.astype(y_dtype))
+        y_train_t = mx.array(y_train_for_loss.astype(y_dtype))
         x_val = mx.array(X_val.astype(x_dtype))
 
         # Setup loss+grad function
@@ -210,6 +258,12 @@ def train_and_evaluate(
             val_preds = model(x_val)
             mx.eval(val_preds)
             val_preds_np = np.array(val_preds)
+            if task == "regression":
+                val_preds_np = _restore_regression_predictions(
+                    val_preds_np,
+                    regression_target_mean,
+                    regression_target_std,
+                )
             _, _, val_quality = _compute_metric(task, y_val, val_preds_np)
             model.train()
 
@@ -229,9 +283,30 @@ def train_and_evaluate(
 
         # Final evaluation on validation set
         model.eval()
+        train_preds_np = None
+        if task == "regression":
+            train_preds = model(x_train)
+            mx.eval(train_preds)
+            train_preds_np = _restore_regression_predictions(
+                np.array(train_preds),
+                regression_target_mean,
+                regression_target_std,
+            )
         val_preds = model(x_val)
         mx.eval(val_preds)
         val_preds_np = np.array(val_preds)
+        if task == "regression":
+            val_preds_np = _restore_regression_predictions(
+                val_preds_np,
+                regression_target_mean,
+                regression_target_std,
+            )
+            if train_preds_np is not None:
+                val_preds_np = _calibrate_regression_predictions(
+                    train_pred=train_preds_np,
+                    y_train=y_train,
+                    val_pred=val_preds_np,
+                )
         metric_name, metric_value, quality = _compute_metric(task, y_val, val_preds_np)
 
         return EvaluationResult(
