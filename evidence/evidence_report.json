@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-05-20T13:26:57.624015+00:00",
+  "generated_at": "2026-05-20T18:42:03.639191+00:00",
   "registry": "/Users/timokruth/Projekte/Evo Neural Nets/evidence",
-  "record_count": 6,
-  "summary_count": 6,
+  "record_count": 18,
+  "summary_count": 18,
   "min_seeds": 2,
   "groups": [
     {
@@ -180,6 +180,402 @@
       ],
       "pairwise": [],
       "last_promoted_at": "2026-05-20T13:26:56.997267+00:00"
+    },
+    {
+      "label": "tier-c-full-midbudget-3seed",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+      "budget": 154,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "trusted-extended"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 15.166667,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "passed"
+        ]
+      },
+      "effect_strength": "large",
+      "leader": "contenders",
+      "system_rows": [
+        {
+          "system": "contenders",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 18.0,
+          "score_range": 1.5
+        },
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.5,
+          "score_range": 1.5
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.8333333333333335,
+          "score_range": 2.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.6666666666666666,
+          "score_range": 0.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.0,
+          "score_range": 0.0
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-20T18:42:01.941482+00:00"
+    },
+    {
+      "label": "tier-c-full-midbudget-3seed",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+      "budget": 264,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "trusted-extended"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 14.666667,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "passed"
+        ]
+      },
+      "effect_strength": "large",
+      "leader": "contenders",
+      "system_rows": [
+        {
+          "system": "contenders",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 17.0,
+          "score_range": 1.0
+        },
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.0,
+          "score_range": 1.0
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.3333333333333335,
+          "score_range": 0.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.5,
+          "score_range": 1.0
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.6666666666666666,
+          "score_range": 1.5
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-20T18:42:01.941482+00:00"
+    },
+    {
+      "label": "tier-c-full-midbudget-3seed",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+      "budget": 374,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "trusted-extended"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 13.666667,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "passed"
+        ]
+      },
+      "effect_strength": "large",
+      "leader": "contenders",
+      "system_rows": [
+        {
+          "system": "contenders",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 16.666666666666668,
+          "score_range": 2.0
+        },
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.8333333333333334,
+          "score_range": 0.5
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 3.0,
+          "score_range": 1.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.0,
+          "score_range": 1.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.0,
+          "score_range": 0.0
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-20T18:42:01.941482+00:00"
+    },
+    {
+      "label": "tier-c-full-midbudget-3seed",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval484",
+      "budget": 484,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "trusted-extended"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 15.0,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "passed"
+        ]
+      },
+      "effect_strength": "large",
+      "leader": "contenders",
+      "system_rows": [
+        {
+          "system": "contenders",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 17.166666666666668,
+          "score_range": 1.0
+        },
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.0,
+          "score_range": 2.5
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.1666666666666665,
+          "score_range": 1.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.6666666666666667,
+          "score_range": 1.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.16666666666666666,
+          "score_range": 0.5
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-20T18:42:01.941482+00:00"
     }
   ],
   "before_after_comparisons": [],
@@ -188,9 +584,8 @@
       "system": "prism",
       "role": "leader_candidate",
       "leader_group_count": 1,
-      "top_two_group_count": 2,
+      "top_two_group_count": 6,
       "family_leads": [
-        "image-classification",
         "synthetic"
       ]
     },
@@ -199,10 +594,7 @@
       "role": "leader_candidate",
       "leader_group_count": 1,
       "top_two_group_count": 1,
-      "family_leads": [
-        "tabular",
-        "tabular-regression"
-      ]
+      "family_leads": []
     },
     {
       "system": "stratograph",
@@ -213,20 +605,22 @@
     },
     {
       "system": "primordia",
-      "role": "seed_source_specialist",
-      "leader_group_count": 0,
-      "top_two_group_count": 0,
-      "family_leads": [
-        "synthetic",
-        "synthetic-regression"
-      ]
-    },
-    {
-      "system": "contenders",
       "role": "watch",
       "leader_group_count": 0,
       "top_two_group_count": 0,
       "family_leads": []
+    },
+    {
+      "system": "contenders",
+      "role": "leader_candidate",
+      "leader_group_count": 4,
+      "top_two_group_count": 4,
+      "family_leads": [
+        "image-classification",
+        "synthetic-regression",
+        "tabular",
+        "tabular-regression"
+      ]
     }
   ],
   "lm_flatline_diagnostics": [],
@@ -253,7 +647,7 @@
   },
   "artifact_validation": {
     "ok": true,
-    "record_count": 6,
+    "record_count": 18,
     "issues": [],
     "warnings": []
   }

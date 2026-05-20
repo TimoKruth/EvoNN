@@ -159,6 +159,55 @@ Next evidence loop:
   promotion gate. The formal Tier C promotion budgets remain `512` and `1024`
   equivalents from the lane definition.
 
+Result recorded on 2026-05-20:
+
+- Workspace: `.tmp/tier-c-full-midbudget-3seed`
+- Evidence label: `tier-c-full-midbudget-3seed`
+- Cases: 12 completed, all `trusted-extended`
+- Failures: 0
+- Output completeness: every system produced `66/66` ok rows per budget
+
+Mean full-system wins over 22 benchmarks:
+
+| Budget | Contenders | Prism | Topograph | Stratograph | Primordia |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 154 | 17.67 | 2.33 | 0.00 | 0.33 | 0.33 |
+| 264 | 16.33 | 1.67 | 0.33 | 0.67 | 0.33 |
+| 374 | 16.00 | 1.67 | 0.00 | 1.33 | 0.33 |
+| 484 | 16.67 | 1.00 | 0.00 | 1.00 | 0.67 |
+
+Mean engine-only wins over the same runs:
+
+| Budget | Prism | Topograph | Stratograph | Primordia |
+| ---: | ---: | ---: | ---: | ---: |
+| 154 | 10.33 | 1.50 | 8.17 | 2.17 |
+| 264 | 7.67 | 5.83 | 6.67 | 2.33 |
+| 374 | 11.17 | 1.50 | 6.67 | 3.17 |
+| 484 | 8.33 | 0.67 | 10.00 | 3.00 |
+
+Interpretation:
+
+- The regression-calibrated engines are stable enough to complete a full
+  contender-including Tier C cumulative sweep across multiple mid-range budgets
+  and seeds.
+- Contenders remain the clear external floor leader. EvoNN is not yet beating
+  the floor on broad Tier C.
+- Prism remains the strongest overall EvoNN generalist across the cohort.
+- Stratograph becomes increasingly important at the high end of this
+  mid-budget range, especially on tabular and tabular-regression families.
+- Topograph's previous engine-only `528` strength did not survive this
+  contender-including mid-budget sweep; this points to budget/profile
+  sensitivity rather than a stable broad advantage.
+- Primordia remains a specialist/seed-source candidate, not a broad Tier C
+  generalist.
+
+Immediate consequence:
+
+- The next engine work should not broaden benchmarks further. It should target
+  the gap against the contender floor on Tier C, with Prism generalist scaling
+  and Stratograph hierarchy/tabular improvement as the strongest near-term
+  candidates.
+
 ## Latest Run-Derived Planning Signal
 
 Recorded on 2026-05-13 from the recent small-lane and broad-lane comparison

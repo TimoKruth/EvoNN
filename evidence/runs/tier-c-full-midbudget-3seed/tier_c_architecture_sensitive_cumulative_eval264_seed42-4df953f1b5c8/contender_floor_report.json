@@ -1,0 +1,582 @@
+{
+  "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+  "lane_floor_status": "passed",
+  "benchmarks": [
+    {
+      "benchmark_id": "iris_classification",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "extra_trees",
+      "best_required_contender_metric": 0.9666666666666667,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "wine_classification",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "extra_trees",
+      "best_required_contender_metric": 1.0,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "breast_cancer",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "hist_gb",
+      "best_required_contender_metric": 0.9736842105263158,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "moons_classification",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "svm_nystroem_rbf"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "svm_nystroem_rbf"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "svm_nystroem_rbf",
+      "best_required_contender_metric": 0.99,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "digits_image",
+      "required_contenders": [
+        "mlp_wide",
+        "extra_trees"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "mlp_wide"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "extra_trees",
+      "best_required_contender_metric": 0.9833333333333333,
+      "enhanced_optional_contenders": [
+        "cnn_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "diabetes_regression",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "ridge_or_linear",
+        "svr_or_nystroem_svr"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "ridge_or_linear",
+        "svr_or_nystroem_svr"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "extra_trees",
+      "best_required_contender_metric": 2787.837865936622,
+      "enhanced_optional_contenders": [],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "mse",
+      "metric_direction": "min",
+      "score_ceiling": null
+    },
+    {
+      "benchmark_id": "friedman1_regression",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "ridge_or_linear",
+        "svr_or_nystroem_svr"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "ridge_or_linear",
+        "svr_or_nystroem_svr"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "hist_gb",
+      "best_required_contender_metric": 2.1027931084744442,
+      "enhanced_optional_contenders": [],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "mse",
+      "metric_direction": "min",
+      "score_ceiling": null
+    },
+    {
+      "benchmark_id": "credit_g_classification",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "extra_trees",
+      "best_required_contender_metric": 0.755,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "openml_bank_marketing",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "hist_gb",
+      "best_required_contender_metric": 0.916015625,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "openml_letter",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "extra_trees",
+      "best_required_contender_metric": 0.8828125,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "openml_gas_sensor",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "linear_svc",
+      "best_required_contender_metric": 0.990234375,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "circles_classification",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "svm_nystroem_rbf"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "svm_nystroem_rbf"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "svm_nystroem_rbf",
+      "best_required_contender_metric": 0.995,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "fashionmnist_image",
+      "required_contenders": [
+        "mlp_wide",
+        "extra_trees"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "mlp_wide"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "mlp_wide",
+      "best_required_contender_metric": 0.841796875,
+      "enhanced_optional_contenders": [
+        "cnn_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "openml_cpu_activity",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "ridge_or_linear",
+        "svr_or_nystroem_svr"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "ridge_or_linear",
+        "svr_or_nystroem_svr"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "hist_gb",
+      "best_required_contender_metric": 6.028964195382861,
+      "enhanced_optional_contenders": [],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "mse",
+      "metric_direction": "min",
+      "score_ceiling": null
+    },
+    {
+      "benchmark_id": "openml_nomao",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "hist_gb",
+      "best_required_contender_metric": 0.955078125,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "openml_mfeat_factors",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "linear_svc",
+      "best_required_contender_metric": 0.975,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "openml_segment",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "hist_gb",
+      "best_required_contender_metric": 0.9826839826839827,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "openml_phoneme",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "extra_trees",
+      "best_required_contender_metric": 0.859375,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "openml_steel_plates_fault",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "hist_gb",
+      "best_required_contender_metric": 0.8046272493573264,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "openml_qsar_biodeg",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "hist_gb",
+      "best_required_contender_metric": 0.8767772511848341,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "openml_wilt",
+      "required_contenders": [
+        "hist_gb",
+        "extra_trees",
+        "linear_svc"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "hist_gb",
+        "linear_svc"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "extra_trees",
+      "best_required_contender_metric": 0.9765625,
+      "enhanced_optional_contenders": [
+        "xgb_small",
+        "lgbm_small",
+        "catboost_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    },
+    {
+      "benchmark_id": "mnist_image",
+      "required_contenders": [
+        "mlp_wide",
+        "extra_trees"
+      ],
+      "required_contenders_ran": [
+        "extra_trees",
+        "mlp_wide"
+      ],
+      "required_contenders_ok": true,
+      "best_required_contender": "extra_trees",
+      "best_required_contender_metric": 0.931640625,
+      "enhanced_optional_contenders": [
+        "cnn_small"
+      ],
+      "enhanced_optional_skips": [],
+      "floor_status": "passed",
+      "admission_status": "decision_grade",
+      "metric_name": "accuracy",
+      "metric_direction": "max",
+      "score_ceiling": 1.0
+    }
+  ]
+}

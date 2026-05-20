@@ -1,8 +1,8 @@
 # EvoNN Evidence Registry Report
 
-- Generated At: `2026-05-20T13:26:57.624015+00:00`
+- Generated At: `2026-05-20T18:42:03.639191+00:00`
 - Registry: `/Users/timokruth/Projekte/Evo Neural Nets/evidence`
-- Records: `6`
+- Records: `18`
 - Minimum Seeds For Decision Labels: `2`
 
 ## Decision Groups
@@ -11,6 +11,10 @@
 | --- | --- | ---: | --- | --- | --- | --- |
 | tier-c-engine-only-regression-calibrated | tier_c_architecture_sensitive_cumulative_eval132 | 132 | 42, 43, 44 | gain | prism | none |
 | tier-c-engine-only-regression-calibrated | tier_c_architecture_sensitive_cumulative_eval528 | 528 | 42, 43, 44 | gain | topograph | none |
+| tier-c-full-midbudget-3seed | tier_c_architecture_sensitive_cumulative_eval154 | 154 | 42, 43, 44 | gain | contenders | none |
+| tier-c-full-midbudget-3seed | tier_c_architecture_sensitive_cumulative_eval264 | 264 | 42, 43, 44 | gain | contenders | none |
+| tier-c-full-midbudget-3seed | tier_c_architecture_sensitive_cumulative_eval374 | 374 | 42, 43, 44 | gain | contenders | none |
+| tier-c-full-midbudget-3seed | tier_c_architecture_sensitive_cumulative_eval484 | 484 | 42, 43, 44 | gain | contenders | none |
 
 ## Before/After Comparisons
 
@@ -22,11 +26,11 @@
 
 | System | Role | Leader Groups | Family Leads |
 | --- | --- | ---: | --- |
-| prism | leader_candidate | 1 | image-classification, synthetic |
-| topograph | leader_candidate | 1 | tabular, tabular-regression |
+| prism | leader_candidate | 1 | synthetic |
+| topograph | leader_candidate | 1 | none |
 | stratograph | challenger | 0 | none |
-| primordia | seed_source_specialist | 0 | synthetic, synthetic-regression |
-| contenders | watch | 0 | none |
+| primordia | watch | 0 | none |
+| contenders | leader_candidate | 4 | image-classification, synthetic-regression, tabular, tabular-regression |
 
 ## LM Flatline Diagnostics
 
