@@ -144,6 +144,21 @@ Planning consequences:
   image/tabular candidate pressure, and regression-safe scaling rather than
   additional artifact/schema work.
 
+Next evidence loop:
+
+- Run a contender-including Tier C cumulative mid-budget sweep after the
+  regression-calibration change to see whether the engine-only signal survives
+  against the external floor.
+- Use valid total budgets in the requested 150-500 range that divide cleanly
+  across the 22 cumulative Tier C benchmarks: `154`, `264`, `374`, `484`.
+- Use seeds `42,43,44` for each budget.
+- Promote the compact summaries if the run is clean enough to guide planning;
+  otherwise record the exact blocking benchmarks/systems before changing search
+  code again.
+- Interpret this as a mid-budget scaling cohort, not as the final Tier C
+  promotion gate. The formal Tier C promotion budgets remain `512` and `1024`
+  equivalents from the lane definition.
+
 ## Latest Run-Derived Planning Signal
 
 Recorded on 2026-05-13 from the recent small-lane and broad-lane comparison
