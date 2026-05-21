@@ -632,6 +632,71 @@ If a new branch needs planning, use either:
 - a small section added to this consolidated plan if the work changes the
   roadmap.
 
+## Planned Repository Cleanup Run
+
+Planned on 2026-05-21 after the promoted Tier C mid-budget evidence cohort.
+
+Goal:
+reduce stale planning surface, align docs with the newest evidence, and improve
+code readability without changing benchmark semantics.
+
+Scope:
+
+- Remove obsolete temporary planning artifacts after confirming their content is
+  represented in this plan. Current known candidate:
+  `EVONN_NEXT_BIG_STEPS_OVERVIEW.html`.
+- Re-scan the repo for old plan/roadmap/next-step files and keep only the
+  active hierarchy:
+  `EVONN_CONSOLIDATED_PLAN.md`, `EVONN_HARD_REMAINDER_PLAN.md`, `VISION.md`,
+  package `VISION.md` files, and operational docs such as `README.md`,
+  `MONOREPO.md`, `BENCHMARK_LADDER.md`, `BUDGET_CONTRACT.md`,
+  `TELEMETRY_SPEC.md`, and `RESEARCH_DECISION_GATE.md`.
+- Update stale wording in `README.md`, `MONOREPO.md`, package READMEs, and
+  benchmark docs so they reflect the current evidence state:
+  promoted evidence registry, additive/cumulative tiers, real-LM surface,
+  regression-calibrated MLX training, and the latest Tier C findings.
+- Keep the evidence registry compact and auditable. Do not commit raw `.tmp`
+  workspaces. Keep only promoted summaries and registry rows.
+- Review duplicated training helpers introduced across Prism, Topograph, and
+  Primordia for a readability cleanup. Any extraction must preserve package
+  boundaries and must not move engine-specific search logic into Shared.
+- Review Compare reporting/evidence code for low-risk naming, helper extraction,
+  and dead-path cleanup. Do not alter scoring, fairness, budget accounting, or
+  lane-state semantics unless backed by tests.
+- Leave unrelated local helper files uncommitted unless they are explicitly
+  adopted into the repo. Current known untracked local file:
+  `scripts/codex_file_refactor.py`.
+
+Non-goals:
+
+- No benchmark-ladder expansion.
+- No new engine-search feature work.
+- No dashboard redesign.
+- No rewrite of budget, fairness, contender-floor, or evidence semantics.
+- No deletion of evidence used by current plan claims.
+
+Execution order:
+
+1. Inventory docs and plan-like artifacts with `find`/`rg`; classify as active,
+   operational, vision, evidence, stale, or local-only.
+2. Remove or archive stale temporary planning artifacts.
+3. Update active docs with the 2026-05-20 Tier C results and current roadmap
+   priorities.
+4. Refactor only obvious duplicated helper code where tests can pin behavior.
+5. Run targeted formatting/tests for touched packages.
+6. Run `evonn-compare evidence validate --registry evidence --require-artifacts`.
+7. Commit and push in small slices: docs cleanup first, then code cleanup if any.
+
+Acceptance criteria:
+
+- `find . -maxdepth 4` shows no obsolete active-plan competitors.
+- A new contributor can identify active plans, evidence, benchmark tiers, and
+  validation commands from root docs without reading stale HTML artifacts.
+- Evidence validation remains green.
+- Targeted package tests pass for every code area touched.
+- Git history clearly separates doc cleanup from behavior-preserving code
+  cleanup.
+
 ## Near-Term Execution Order
 
 1. Keep the dashboard/evidence loop healthy after every compare change.
