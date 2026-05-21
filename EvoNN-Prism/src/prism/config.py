@@ -26,6 +26,17 @@ class TrainingConfig(BaseModel):
     multi_fidelity_schedule: list[float] = Field(default_factory=lambda: [0.35, 0.65, 1.0])
     benchmark_epoch_min_scale: float = 0.75
     benchmark_epoch_max_scale: float = 1.25
+    benchmark_static_epoch_min_scale: float = 0.75
+    benchmark_static_epoch_max_scale: float = 1.2
+    benchmark_static_epoch_scales: dict[str, float] = Field(
+        default_factory=lambda: {
+            "image-classification": 1.10,
+            "openml-classification": 1.08,
+            "openml-regression": 1.12,
+            "sklearn-regression": 1.05,
+            "tabular-regression": 1.10,
+        }
+    )
     efficiency_epoch_min_scale: float = 0.85
     efficiency_epoch_max_scale: float = 1.15
     operator_adaptation_rate: float = 0.35

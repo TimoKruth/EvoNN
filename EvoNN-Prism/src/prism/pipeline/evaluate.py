@@ -104,6 +104,12 @@ def evaluate(
                     training.benchmark_epoch_min_scale,
                     training.benchmark_epoch_max_scale,
                 )
+                static_benchmark_scale = _static_benchmark_epoch_multiplier(
+                    spec,
+                    training.benchmark_static_epoch_scales,
+                    training.benchmark_static_epoch_min_scale,
+                    training.benchmark_static_epoch_max_scale,
+                )
                 genome_scale = _genome_epoch_multiplier(
                     genome,
                     genome_profiles,
@@ -117,7 +123,7 @@ def evaluate(
                     genome=genome,
                     spec=spec,
                     training=training,
-                    epoch_scale=epoch_scale * benchmark_scale * genome_scale,
+                    epoch_scale=epoch_scale * benchmark_scale * static_benchmark_scale * genome_scale,
                     cache=cache,
                     parent_ids=parent_ids,
                     dataset=_load_data_if_available(spec, seed=42, data_cache=data_cache),
@@ -604,6 +610,51 @@ def _benchmark_epoch_multiplier(
         return 1.0
     normalized = (score - min_score) / (max_score - min_score)
     return min_scale + normalized * (max_scale - min_scale)
+
+
+def _static_benchmark_epoch_multiplier(
+    spec,
+    scale_map: dict[str, float],
+    min_scale: float,
+    max_scale: float,
+) -> float:
+    """Return a deterministic benchmark-family multiplier without changing eval counts."""
+    if not scale_map:
+        return 1.0
+    for key in _benchmark_profile_keys(spec):
+        if key in scale_map:
+            return _clamp_float(scale_map[key], min_scale, max_scale)
+    return 1.0
+
+
+def _benchmark_profile_keys(spec) -> tuple[str, ...]:
+    benchmark_id = str(getattr(spec, "id", "") or getattr(spec, "name", "") or "")
+    task = str(getattr(spec, "task", "") or "")
+    modality = str(getattr(spec, "modality", "") or "tabular")
+    source = str(getattr(spec, "source", "") or "")
+    domain = str(getattr(spec, "domain", "") or "")
+    keys: list[str] = []
+    if benchmark_id:
+        keys.append(benchmark_id)
+    if domain:
+        keys.append(domain)
+    if source and task:
+        keys.append(f"{source}-{task}")
+    if modality == "image" and task == "classification":
+        keys.append("image-classification")
+    if modality == "tabular" and task == "regression":
+        keys.append("tabular-regression")
+    if modality and task:
+        keys.append(f"{modality}-{task}")
+    if source:
+        keys.append(source)
+    if task:
+        keys.append(task)
+    return tuple(dict.fromkeys(keys))
+
+
+def _clamp_float(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, float(value)))
 
 
 def _genome_profiles(state: GenerationState) -> dict[str, dict[str, float]]:

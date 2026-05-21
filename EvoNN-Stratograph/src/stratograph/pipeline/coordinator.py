@@ -379,6 +379,7 @@ def run_evolution(
             "parent_selection_strategy": _parent_selection_strategy(),
             "mutation_pressure": _mutation_pressure_strategy(),
             "hierarchy_selection_policy": _hierarchy_selection_policy(architecture_mode),
+            "search_profile_policy": _search_profile_policy(),
             "novelty_archive_final_size": len(novelty_scores),
             "novelty_score_mean": (sum(novelty_scores) / len(novelty_scores)) if novelty_scores else 0.0,
             "novelty_score_max": max(novelty_scores, default=0.0),
@@ -420,9 +421,18 @@ def _make_candidate(
     variant_policy = _variant_policy(architecture_mode)
     base_mode = str(variant_policy["base_mode"])
     motif_bias = bool(variant_policy["motif_bias"])
-    depth = 3 + (candidate_index % 3)
-    width_choices = [16, 24, 32, 48, 64, 96, 128]
-    width = max(8, min(max(input_dim, min(output_dim, 128)), rng.choice(width_choices)))
+    search_profile = _benchmark_search_profile(
+        benchmark_name=benchmark_name,
+        task=task,
+        input_dim=input_dim,
+        output_dim=output_dim,
+    )
+    depth = 3 + (candidate_index % 3) + int(search_profile["depth_bonus"])
+    width_choices = list(search_profile["width_choices"])
+    width = max(
+        int(search_profile["width_floor"]),
+        min(max(input_dim, min(output_dim, 128)), rng.choice(width_choices)),
+    )
     shared = base_mode == "two_level_shared" and candidate_index % 2 == 0
     cells: dict[str, CellGene] = {}
     macro_nodes: list[MacroNodeGene] = []
@@ -433,7 +443,11 @@ def _make_candidate(
         if base_mode in {"two_level_unshared", "flat_macro"}:
             cell_id = f"cell_{macro_index}"
         if cell_id not in cells:
-            inner_depth = 1 if base_mode == "flat_macro" else 2 + ((candidate_index + macro_index) % 3)
+            inner_depth = (
+                1
+                if base_mode == "flat_macro"
+                else 2 + ((candidate_index + macro_index) % 3) + int(search_profile["cell_depth_bonus"])
+            )
             node_ids = [f"node_{macro_index}_{node_index}" for node_index in range(inner_depth)]
             if base_mode == "flat_macro":
                 nodes = [
@@ -453,6 +467,26 @@ def _make_candidate(
                         kind=motif[node_index % len(motif)][0],
                         width=width,
                         activation=motif[node_index % len(motif)][1],
+                    )
+                    for node_index, node_id in enumerate(node_ids)
+                ]
+            elif search_profile["primitive_bias"] == "regression":
+                regression_primitives = (
+                    (PrimitiveKind.LINEAR, ActivationKind.IDENTITY),
+                    (PrimitiveKind.RESIDUAL, ActivationKind.RELU),
+                    (PrimitiveKind.GATE, ActivationKind.TANH),
+                    (PrimitiveKind.NORM, ActivationKind.IDENTITY),
+                )
+                nodes = [
+                    CellNodeGene(
+                        node_id=node_id,
+                        kind=regression_primitives[
+                            (candidate_index + macro_index + node_index) % len(regression_primitives)
+                        ][0],
+                        width=width,
+                        activation=regression_primitives[
+                            (candidate_index + macro_index + node_index) % len(regression_primitives)
+                        ][1],
                     )
                     for node_index, node_id in enumerate(node_ids)
                 ]
@@ -499,6 +533,57 @@ def _make_candidate(
         macro_edges=macro_edges,
         cell_library=cells,
     )
+
+
+def _benchmark_search_profile(
+    *,
+    benchmark_name: str,
+    task: str,
+    input_dim: int,
+    output_dim: int,
+) -> dict[str, object]:
+    name = benchmark_name.lower()
+    is_image = "mnist" in name or "digits" in name or "image" in name
+    is_high_dimensional = input_dim >= 16 or output_dim >= 4
+    if task == "regression":
+        return {
+            "width_choices": (32, 48, 64, 96, 128, 160, 192),
+            "width_floor": 32,
+            "depth_bonus": 1,
+            "cell_depth_bonus": 1,
+            "primitive_bias": "regression",
+        }
+    if task == "language_modeling":
+        return {
+            "width_choices": (48, 64, 96, 128),
+            "width_floor": 32,
+            "depth_bonus": 0,
+            "cell_depth_bonus": 0,
+            "primitive_bias": "none",
+        }
+    if is_image:
+        return {
+            "width_choices": (64, 96, 128, 160, 192),
+            "width_floor": 48,
+            "depth_bonus": 0,
+            "cell_depth_bonus": 0,
+            "primitive_bias": "none",
+        }
+    if is_high_dimensional:
+        return {
+            "width_choices": (32, 48, 64, 96, 128, 160),
+            "width_floor": 32,
+            "depth_bonus": 1,
+            "cell_depth_bonus": 0,
+            "primitive_bias": "none",
+        }
+    return {
+        "width_choices": (16, 24, 32, 48, 64, 96, 128),
+        "width_floor": 8,
+        "depth_bonus": 0,
+        "cell_depth_bonus": 0,
+        "primitive_bias": "none",
+    }
 
 
 def _is_better(metric_direction: str, candidate: EvaluationRecord, incumbent: EvaluationRecord | None) -> bool:
@@ -701,6 +786,10 @@ def _hierarchy_selection_policy(architecture_mode: str) -> str:
     if architecture_mode == "flat_macro":
         return "flat_macro_linear_cells"
     return "unknown"
+
+
+def _search_profile_policy() -> str:
+    return "task_dimension_aware_initial_hierarchy_profiles"
 
 
 def _artifact_compatible(genome: HierarchicalGenome, artifact: TrainingArtifact | None) -> bool:

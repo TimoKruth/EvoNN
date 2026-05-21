@@ -4,6 +4,7 @@ from stratograph.benchmarks import get_benchmark
 from stratograph.config import load_config
 from stratograph.genome import HierarchicalGenome, dict_to_genome, genome_to_dict
 from stratograph.genome.models import PrimitiveKind
+from stratograph.pipeline.coordinator import _benchmark_search_profile, _make_candidate
 from stratograph.runtime import compile_genome
 
 
@@ -110,3 +111,39 @@ def test_primitive_kind_changes_runtime_output() -> None:
     linear_output = compile_genome(linear_genome).forward(sample)
     gate_output = compile_genome(gate_genome).forward(sample)
     assert not np.allclose(linear_output, gate_output)
+
+
+def test_benchmark_search_profile_expands_regression_and_high_dimensional_seeds() -> None:
+    regression_profile = _benchmark_search_profile(
+        benchmark_name="diabetes",
+        task="regression",
+        input_dim=10,
+        output_dim=1,
+    )
+    tabular_profile = _benchmark_search_profile(
+        benchmark_name="nomao",
+        task="classification",
+        input_dim=118,
+        output_dim=2,
+    )
+
+    assert regression_profile["primitive_bias"] == "regression"
+    assert regression_profile["depth_bonus"] == 1
+    assert max(regression_profile["width_choices"]) > 128
+    assert tabular_profile["width_floor"] == 32
+
+
+def test_task_aware_seed_candidate_keeps_valid_hierarchy() -> None:
+    candidate = _make_candidate(
+        benchmark_name="diabetes",
+        task="regression",
+        input_dim=10,
+        output_dim=1,
+        seed=42,
+        candidate_index=0,
+        architecture_mode="two_level_shared_no_motif_bias",
+    )
+
+    assert candidate.macro_depth >= 4
+    assert candidate.average_cell_depth >= 3.0
+    assert min(node.output_width for node in candidate.macro_nodes) >= 32

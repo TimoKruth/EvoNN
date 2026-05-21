@@ -770,6 +770,45 @@ Execution order:
      Overall EvoNN full-system wins improve by a repeated-seed margin while all
      cases remain `trusted-extended`.
 
+Progress on 2026-05-21:
+
+- Implemented the first bounded Prism slice: deterministic benchmark-profile
+  epoch scaling for image classification, OpenML classification/regression, and
+  tabular regression. This changes training allocation only; it does not change
+  candidate evaluation counts or shared output contracts.
+- Implemented the first bounded Stratograph slice: task/dimension-aware initial
+  hierarchy profiles. Regression seeds now start wider/deeper with a
+  regression-biased primitive mix, high-dimensional tabular seeds start from a
+  stronger width floor, and image/LM profiles are explicit.
+- Verification passed:
+  - `uv run --package prism ruff check EvoNN-Prism/src/prism/config.py EvoNN-Prism/src/prism/pipeline/evaluate.py EvoNN-Prism/tests/test_failure_paths.py`
+  - `uv run --package stratograph ruff check EvoNN-Stratograph/src/stratograph/pipeline/coordinator.py EvoNN-Stratograph/tests/test_config_genome_compile.py`
+  - `uv run --package prism pytest EvoNN-Prism/tests -q` -> 96 passed
+  - `uv run --package stratograph pytest EvoNN-Stratograph/tests -q` -> 51 passed
+- Engine-only smoke proof:
+  - Command: `uv run --package evonn-compare evonn-compare fair-matrix --preset tier_c_local_cumulative --seeds 42 --budgets 154 --workspace .tmp/tier-c-floor-gap-after-smoke --reset-workspace --no-contenders --no-open`
+  - Result: 22/22 benchmarks complete, fair budget accounting, 0 Stratograph
+    failures/invalids.
+  - Same budget/seed engine-only baseline changed from
+    `Prism 10.5 / Topograph 2.33 / Stratograph 7.83 / Primordia 1.33` to
+    `Prism 10 / Topograph 1 / Stratograph 10 / Primordia 1`.
+- Contender-including smoke proof:
+  - Command: `uv run --package evonn-compare evonn-compare fair-matrix --preset tier_c_local_cumulative --seeds 42 --budgets 154 --workspace .tmp/tier-c-floor-gap-after-contenders-smoke --reset-workspace --no-open`
+  - Result: `trusted-extended`, decision-grade, 22/22 benchmarks complete, all
+    parity checks fair, no blockers.
+  - Full-system wins at the same budget/seed changed from
+    `Prism 2 / Stratograph 0 / Contenders 18 / ties 2` to
+    `Prism 1 / Stratograph 1 / Contenders 18 / ties 2`.
+
+Interpretation:
+the implementation is contract-safe and gives Stratograph a clearer engine-only
+Tier C signal at the low proof budget, but it is not yet a proven broad gain
+against the contender floor. The next required step is the planned repeated
+proof over `154,264,374,484` and seeds `42,43,44`. If the repeated proof only
+reshuffles wins between EvoNN engines without reducing contender dominance, keep
+the Stratograph profile only if tabular-family wins improve consistently and
+tune or revert the Prism static scales.
+
 Validation commands:
 
 ```bash

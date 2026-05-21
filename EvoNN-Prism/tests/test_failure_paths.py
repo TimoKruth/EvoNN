@@ -46,6 +46,7 @@ _benchmark_priority_scores = evaluate_mod._benchmark_priority_scores
 _evaluate_single = evaluate_mod._evaluate_single
 _genome_epoch_multiplier = evaluate_mod._genome_epoch_multiplier
 _resolve_output_dim = evaluate_mod._resolve_output_dim
+_static_benchmark_epoch_multiplier = evaluate_mod._static_benchmark_epoch_multiplier
 EvaluationResult = training_mod.EvaluationResult
 train_and_evaluate = training_mod.train_and_evaluate
 
@@ -384,6 +385,22 @@ def test_benchmark_priority_scores_and_epoch_multiplier():
     assert scores["flaky"] > scores["easy"]
     assert _benchmark_epoch_multiplier("flaky", scores, 0.75, 1.25) > 1.0
     assert _benchmark_epoch_multiplier("easy", scores, 0.75, 1.25) < 1.0
+
+
+def test_static_benchmark_epoch_multiplier_uses_family_and_source_keys():
+    image_spec = SimpleNamespace(id="mnist", task="classification", modality="image", source="image")
+    openml_spec = SimpleNamespace(id="nomao", task="classification", modality="tabular", source="openml")
+    regression_spec = SimpleNamespace(id="diabetes", task="regression", modality="tabular", source="sklearn")
+
+    scales = {
+        "image-classification": 1.1,
+        "openml-classification": 1.08,
+        "tabular-regression": 1.5,
+    }
+
+    assert _static_benchmark_epoch_multiplier(image_spec, scales, 0.75, 1.2) == 1.1
+    assert _static_benchmark_epoch_multiplier(openml_spec, scales, 0.75, 1.2) == 1.08
+    assert _static_benchmark_epoch_multiplier(regression_spec, scales, 0.75, 1.2) == 1.2
 
 
 def test_reproduce_records_crossover_lineage(monkeypatch):
