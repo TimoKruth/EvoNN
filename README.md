@@ -56,6 +56,14 @@ uv run --package evonn-compare python -m evonn_compare fair-matrix \
 
 - Prism is the default operating engine for routine work.
 - Topograph is the primary challenger on the shared compare surface.
+- Promoted comparison evidence lives in `evidence/`; use
+  `uv run --package evonn-compare evonn-compare evidence report --registry evidence`
+  to rebuild the compact evidence view.
+- Latest promoted Tier C cumulative mid-budget evidence is clean across
+  `154/264/374/484` budgets and seeds `42/43/44`. It shows the stack is
+  stable enough for repeated Tier C comparison, but contenders still dominate
+  the external floor; Prism and Stratograph are the current strongest EvoNN
+  signals in that cohort.
 - `fair-matrix` and `campaign` default to the trusted daily `local` lane
   (`tier1_core` @ `64`) when no pack or preset is supplied.
 - Expanded benchmark-ladder presets are available for staged research. Tier
@@ -76,7 +84,9 @@ uv run --package evonn-compare python -m evonn_compare fair-matrix \
   while `tier_d_broad_shared_cumulative` is the full A+B+C+D pack for complete
   broad comparisons.
 - Shared infrastructure should converge where it improves trust, parity, and
-  maintenance, while search-core logic stays package-local.
+  maintenance, while search-core logic stays package-local. Current shared
+  training helpers cover only generic regression target scaling/calibration,
+  not engine search policy.
 
 ## Git Workflow
 

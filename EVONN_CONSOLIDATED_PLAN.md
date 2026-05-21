@@ -643,8 +643,8 @@ code readability without changing benchmark semantics.
 Scope:
 
 - Remove obsolete temporary planning artifacts after confirming their content is
-  represented in this plan. Current known candidate:
-  `EVONN_NEXT_BIG_STEPS_OVERVIEW.html`.
+  represented in this plan. `EVONN_NEXT_BIG_STEPS_OVERVIEW.html` was the known
+  stale candidate for this pass.
 - Re-scan the repo for old plan/roadmap/next-step files and keep only the
   active hierarchy:
   `EVONN_CONSOLIDATED_PLAN.md`, `EVONN_HARD_REMAINDER_PLAN.md`, `VISION.md`,
@@ -696,6 +696,18 @@ Acceptance criteria:
 - Targeted package tests pass for every code area touched.
 - Git history clearly separates doc cleanup from behavior-preserving code
   cleanup.
+
+Cleanup progress:
+
+- 2026-05-21: removed `EVONN_NEXT_BIG_STEPS_OVERVIEW.html` and extended the
+  consolidated-plan policy test so temporary next-step HTML files cannot
+  reappear as active planning competitors.
+- 2026-05-21: moved duplicated regression target scaling and affine calibration
+  helpers from Prism, Topograph, and Primordia into `evonn_shared.training`.
+  This is shared preprocessing, not shared search policy.
+- 2026-05-21: updated root entry docs to surface the promoted evidence registry,
+  the latest Tier C mid-budget finding, and the narrow scope of shared training
+  helpers.
 
 ## Near-Term Execution Order
 

@@ -41,6 +41,7 @@ IGNORED_DIRS = {
     "node_modules",
 }
 TEXT_SUFFIXES = {".md", ".py", ".sh", ".toml", ".yaml", ".yml"}
+OBSOLETE_TEMPORARY_DOCS = {"EVONN_NEXT_BIG_STEPS_OVERVIEW.html"}
 
 
 def _repo_files() -> list[Path]:
@@ -71,6 +72,8 @@ def test_consolidated_plan_is_the_only_active_execution_plan() -> None:
         ):
             disallowed_paths.append(str(relative))
         if len(relative.parts) == 1 and path.name in OBSOLETE_ROOT_PLANS:
+            disallowed_paths.append(str(relative))
+        if len(relative.parts) == 1 and path.name in OBSOLETE_TEMPORARY_DOCS:
             disallowed_paths.append(str(relative))
         if path.name == OBSOLETE_PACKAGE_PLAN:
             disallowed_paths.append(str(relative))

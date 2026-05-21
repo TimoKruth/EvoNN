@@ -30,11 +30,13 @@ over time:
 - report-rendering helpers
 - run-storage/schema helpers
 - telemetry/budget/seeding metadata models
+- narrow training preprocessing helpers that preserve engine-local search logic
 - CLI support helpers
 
 The first shared substrate package now lives in `EvoNN-Shared/` as `evonn_shared`.
 Its current role is intentionally narrow: shared compare/export contracts, minimal
-benchmark descriptors, budget metadata, and run identity helpers.
+benchmark descriptors, budget metadata, run identity helpers, real-LM cache
+validation, and generic regression target scaling/calibration helpers.
 
 Search packages:
 - `EvoNN-Primordia`
@@ -77,6 +79,7 @@ Keep package-local unless strong evidence suggests otherwise:
 - mutation and crossover logic
 - compiler/runtime implementations
 - search-loop coordinators
+- optimizer/search-policy choices
 - abstraction-specific telemetry that sits above the umbrella minimum contract
 
 In short:
@@ -129,6 +132,10 @@ For the current local-first workflow:
   - `tier_d_weekend_cumulative` → `tier_d_broad_shared_cumulative` @ `1728`
 - run `uv run --package evonn-compare evonn-compare benchmark-audit --pack <pack>`
   before treating any expanded pack as decision-grade
+- use `uv run --package evonn-compare evonn-compare evidence report --registry evidence`
+  for the compact promoted-evidence view. The current promoted Tier C
+  mid-budget cohort is clean and `trusted-extended`, but still shows contenders
+  well ahead of the EvoNN engines on broad external-floor claims.
 - `tier_d_broad_shared` is decision-grade for the current Tier D-only admitted
   increment after clean proof runs; `tier_d_broad_shared_cumulative` is the
   full A+B+C+D comparison pack and stays on a separate broad-lane leaderboard
