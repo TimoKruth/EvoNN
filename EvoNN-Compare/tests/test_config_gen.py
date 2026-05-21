@@ -278,6 +278,70 @@ def test_generate_prism_config_uses_specialists_and_generalists_for_large_mixed_
     assert prism_payload["evolution"]["num_generations"] == 2
 
 
+def test_mixed_prime_units_keep_population_diversity(tmp_path: Path) -> None:
+    pack_path = tmp_path / "prime_mixed_non_lm.yaml"
+    pack_path.write_text(
+        yaml.safe_dump(
+            {
+                "name": "prime_mixed_non_lm_pack",
+                "tier": 1,
+                "description": "prime mixed non-lm",
+                "benchmarks": [
+                    {
+                        "benchmark_id": "iris_classification",
+                        "native_ids": {"prism": "iris", "topograph": "iris", "stratograph": "iris"},
+                        "task_kind": "classification",
+                        "benchmark_group": "tabular",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                    },
+                    {
+                        "benchmark_id": "digits_image",
+                        "native_ids": {"prism": "digits", "topograph": "digits", "stratograph": "digits"},
+                        "task_kind": "classification",
+                        "benchmark_group": "image",
+                        "metric_name": "accuracy",
+                        "metric_direction": "max",
+                    },
+                ],
+                "budget_policy": {"evaluation_count": 34, "epochs_per_candidate": 1},
+                "seed_policy": {"mode": "campaign", "required": True},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    prism_path = generate_prism_config(
+        output_path=tmp_path / "configs" / "prism.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=34,
+    )
+    topograph_path = generate_topograph_config(
+        output_path=tmp_path / "configs" / "topograph.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=34,
+        run_dir=tmp_path / "runs" / "topograph",
+    )
+    stratograph_path = generate_stratograph_config(
+        output_path=tmp_path / "configs" / "stratograph.yaml",
+        pack_path=pack_path,
+        seed=42,
+        budget=34,
+    )
+
+    prism_payload = yaml.safe_load(prism_path.read_text(encoding="utf-8"))
+    topograph_payload = yaml.safe_load(topograph_path.read_text(encoding="utf-8"))
+    stratograph_payload = yaml.safe_load(stratograph_path.read_text(encoding="utf-8"))
+
+    assert len(prism_payload["evolution"]["allowed_families"]) == 5
+    assert prism_payload["evolution"]["population_size"] == 17
+    assert topograph_payload["evolution"]["population_size"] == 17
+    assert stratograph_payload["evolution"]["population_size"] == 17
+
+
 def test_generate_prism_config_uses_common_families_for_tabular_pack(tmp_path: Path) -> None:
     pack_path = tmp_path / "tabular.yaml"
     pack_path.write_text(
@@ -633,6 +697,8 @@ def test_generate_primordia_config_sets_training_epochs_from_pack_budget(tmp_pat
 
     assert primordia_payload["search"]["mode"] == "budget_matched"
     assert primordia_payload["search"]["target_evaluation_count"] == 64
+    assert primordia_payload["search"]["mutation_rounds_per_parent"] == 2
+    assert primordia_payload["search"]["seed_hidden_width"] == 96
     assert primordia_payload["training"]["epochs_per_candidate"] == pack_payload["budget_policy"]["epochs_per_candidate"]
 
 

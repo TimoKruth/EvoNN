@@ -13,7 +13,12 @@ from topograph.config import RunConfig
 from topograph.genome.codec import genome_to_dict
 from topograph.genome.genome import Genome, InnovationCounter
 from topograph.pipeline import coordinator as coordinator_mod
-from topograph.pipeline.evaluate import GenerationState, _aggregate_pool_fitness, _make_evaluation_plan
+from topograph.pipeline.evaluate import (
+    GenerationState,
+    _aggregate_pool_fitness,
+    _make_evaluation_plan,
+    _static_benchmark_epoch_multiplier,
+)
 from topograph.pipeline.reproduce import reproduce
 from topograph.pipeline.schedule import MutationScheduler
 from topograph.storage import RunStore
@@ -476,3 +481,23 @@ def test_family_transfer_uses_family_namespace_cache():
     assert plan["reused"] is False
     assert plan["weight_snapshot"] is not None
     assert int(plan["epochs"]) == 5
+
+
+def test_static_benchmark_epoch_multiplier_uses_task_profile():
+    cfg = RunConfig.model_validate(
+        {
+            "benchmark_pool": {"benchmarks": ["demo"], "sample_k": 1},
+            "training": {
+                "benchmark_static_epoch_scales": {"tabular-regression": 1.4},
+                "benchmark_static_epoch_max_scale": 1.25,
+            },
+        }
+    )
+
+    assert _static_benchmark_epoch_multiplier(
+        benchmark_name="diabetes",
+        task="regression",
+        input_dim=10,
+        num_classes=1,
+        config=cfg,
+    ) == 1.25

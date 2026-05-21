@@ -27,14 +27,14 @@ class TrainingConfig(BaseModel):
     benchmark_epoch_min_scale: float = 0.75
     benchmark_epoch_max_scale: float = 1.25
     benchmark_static_epoch_min_scale: float = 0.75
-    benchmark_static_epoch_max_scale: float = 1.2
+    benchmark_static_epoch_max_scale: float = 1.35
     benchmark_static_epoch_scales: dict[str, float] = Field(
         default_factory=lambda: {
-            "image-classification": 1.10,
-            "openml-classification": 1.08,
-            "openml-regression": 1.12,
+            "image-classification": 1.18,
+            "openml-classification": 1.15,
+            "openml-regression": 1.25,
             "sklearn-regression": 1.05,
-            "tabular-regression": 1.10,
+            "tabular-regression": 1.20,
         }
     )
     efficiency_epoch_min_scale: float = 0.85

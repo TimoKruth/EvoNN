@@ -343,6 +343,7 @@ def _run_benchmark_search(
         runtime=runtime,
         config=config,
         allowed_families=allowed_families,
+        benchmark_group=benchmark_group,
         count=population_size,
     )
 
@@ -396,6 +397,7 @@ def _run_benchmark_search(
             runtime=runtime,
             config=config,
             allowed_families=allowed_families,
+            benchmark_group=benchmark_group,
             parents=parents,
             generation=generation,
             count=max(1, min(population_size, remaining)),
@@ -409,16 +411,19 @@ def _spawn_initial_candidates(
     runtime: RuntimeBindings,
     config: RunConfig,
     allowed_families: list[str],
+    benchmark_group: str,
     count: int,
 ) -> list[CandidateSeed]:
     seeds: list[CandidateSeed] = []
+    profile = _search_profile_for_group(benchmark_group, config)
     for index in range(count):
         family = allowed_families[index % len(allowed_families)]
         genome = runtime.create_seed_genome(
             family,
-            config.search.seed_hidden_width,
-            config.search.seed_hidden_layers,
+            profile["seed_width"],
+            profile["seed_layers"],
         )
+        genome = _apply_group_seed_profile(genome, benchmark_group=benchmark_group, index=index)
         seeds.append(CandidateSeed(genome=genome, generation=0, parent_genome_id=None, mutation_operator=None))
     return seeds
 
@@ -428,6 +433,7 @@ def _spawn_offspring(
     runtime: RuntimeBindings,
     config: RunConfig,
     allowed_families: list[str],
+    benchmark_group: str,
     parents: list[dict[str, Any]],
     generation: int,
     count: int,
@@ -438,6 +444,7 @@ def _spawn_offspring(
         genome = _rebuild_parent_genome(
             parent,
             fallback_family=allowed_families[index % len(allowed_families)],
+            benchmark_group=benchmark_group,
             config=config,
         )
         parent_id = str(parent.get("genome_id")) if parent.get("genome_id") is not None else None
@@ -513,7 +520,7 @@ def _evaluate_candidate(
                 x_val_np,
                 y_val_np,
                 task=spec.task,
-                epochs=config.training.epochs_per_candidate,
+                epochs=_effective_epochs_for_group(config, benchmark_group),
                 lr=getattr(genome, "learning_rate", config.training.learning_rate),
                 batch_size=config.training.batch_size,
                 parameter_count=compiled.parameter_count,
@@ -529,7 +536,7 @@ def _evaluate_candidate(
                 x_val_np,
                 y_val_np,
                 task=spec.task,
-                epochs=config.training.epochs_per_candidate,
+                epochs=_effective_epochs_for_group(config, benchmark_group),
                 lr=getattr(genome, "learning_rate", config.training.learning_rate),
                 batch_size=config.training.batch_size,
                 parameter_count=compiled.parameter_count,
@@ -598,6 +605,50 @@ def _evaluate_candidate(
     return record
 
 
+def _search_profile_for_group(benchmark_group: str, config: RunConfig) -> dict[str, int]:
+    base_width = int(config.search.seed_hidden_width)
+    base_layers = int(config.search.seed_hidden_layers)
+    max_width = int(config.search.max_hidden_width)
+    max_layers = int(config.search.max_hidden_layers)
+    if benchmark_group == "image":
+        return {"seed_width": min(max_width, max(base_width, 96)), "seed_layers": min(max_layers, max(base_layers, 3))}
+    if benchmark_group == "language_modeling":
+        return {"seed_width": min(max_width, max(base_width, 128)), "seed_layers": min(max_layers, max(base_layers, 3))}
+    if benchmark_group in {"tabular", "synthetic"}:
+        return {"seed_width": min(max_width, max(base_width, 96)), "seed_layers": min(max_layers, max(base_layers, 3))}
+    return {"seed_width": base_width, "seed_layers": base_layers}
+
+
+def _apply_group_seed_profile(genome: Any, *, benchmark_group: str, index: int) -> Any:
+    if not isinstance(genome, ModelGenome):
+        return genome
+    update: dict[str, object] = {}
+    if benchmark_group == "image":
+        update.update({"activation": "relu", "kernel_size": 3, "dropout": 0.05 if index % 2 else 0.0})
+        if genome.family in {"conv2d", "lite_conv2d"}:
+            update["hidden_layers"] = [max(64, width) for width in genome.hidden_layers]
+    elif benchmark_group == "language_modeling":
+        update.update({"activation": "gelu", "embedding_dim": 128, "num_heads": 4, "norm_type": "layer"})
+    elif benchmark_group in {"tabular", "synthetic"}:
+        update.update({"activation": "gelu", "residual": True, "norm_type": "layer", "weight_decay": 1e-4})
+        if genome.family == "sparse_mlp":
+            update["activation_sparsity"] = 0.25
+        if genome.family == "moe_mlp":
+            update.update({"num_experts": 4, "moe_top_k": 2})
+    return genome.model_copy(update=update) if update else genome
+
+
+def _effective_epochs_for_group(config: RunConfig, benchmark_group: str) -> int:
+    base = int(config.training.epochs_per_candidate)
+    scale = {
+        "tabular": 1.15,
+        "synthetic": 1.10,
+        "image": 1.12,
+        "language_modeling": 1.05,
+    }.get(benchmark_group, 1.0)
+    return max(1, int(base * scale))
+
+
 def _bounded_runtime_genome(genome: Any, *, benchmark_group: str) -> Any:
     """Clamp high-cost image candidates without changing budget semantics."""
     if benchmark_group != "image" or not isinstance(genome, ModelGenome):
@@ -661,15 +712,22 @@ def _serialize_genome_payload(genome: Any) -> dict[str, Any]:
     return payload
 
 
-def _rebuild_parent_genome(parent: dict[str, Any], *, fallback_family: str, config: RunConfig) -> ModelGenome:
+def _rebuild_parent_genome(
+    parent: dict[str, Any],
+    *,
+    fallback_family: str,
+    benchmark_group: str,
+    config: RunConfig,
+) -> ModelGenome:
     payload = dict(parent.get("genome_payload") or {})
+    profile = _search_profile_for_group(benchmark_group, config)
     if not payload:
         payload = {
             "family": str(parent.get("primitive_family") or fallback_family),
-            "hidden_layers": [config.search.seed_hidden_width] * config.search.seed_hidden_layers,
+            "hidden_layers": [profile["seed_width"]] * profile["seed_layers"],
         }
     payload.setdefault("family", str(parent.get("primitive_family") or fallback_family))
-    payload.setdefault("hidden_layers", [config.search.seed_hidden_width] * config.search.seed_hidden_layers)
+    payload.setdefault("hidden_layers", [profile["seed_width"]] * profile["seed_layers"])
     return ModelGenome.model_validate(payload)
 
 

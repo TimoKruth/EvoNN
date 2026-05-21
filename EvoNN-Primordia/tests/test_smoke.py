@@ -14,7 +14,13 @@ from evonn_primordia.export.report import enrich_best_results, write_report
 from evonn_primordia.export.seeding import write_seed_candidates
 from evonn_primordia.export.symbiosis import export_symbiosis_contract
 from evonn_primordia.genome import ModelGenome
-from evonn_primordia.pipeline import _bounded_runtime_genome, run_search
+from evonn_primordia.pipeline import (
+    _apply_group_seed_profile,
+    _effective_epochs_for_group,
+    _search_profile_for_group,
+    run_search,
+    _bounded_runtime_genome,
+)
 from evonn_shared.contracts import ResultRecord, RunManifest
 
 
@@ -350,6 +356,21 @@ def test_runtime_genome_bounds_do_not_touch_tabular_candidates() -> None:
     assert _bounded_runtime_genome(genome, benchmark_group="tabular") is genome
 
 
+def test_group_search_profiles_strengthen_seed_candidates() -> None:
+    config = load_config(REPO_ROOT / "EvoNN-Primordia" / "configs" / "tier1_core_eval64.yaml")
+    image_profile = _search_profile_for_group("image", config)
+    tabular_genome = ModelGenome(family="sparse_mlp", hidden_layers=[64, 64])
+
+    profiled = _apply_group_seed_profile(tabular_genome, benchmark_group="tabular", index=0)
+
+    assert image_profile["seed_width"] >= 96
+    assert image_profile["seed_layers"] >= 3
+    assert profiled.residual is True
+    assert profiled.norm_type == "layer"
+    assert profiled.activation_sparsity >= 0.25
+    assert _effective_epochs_for_group(config, "tabular") >= config.training.epochs_per_candidate
+
+
 def test_named_lane_config_can_complete_regression_and_classification_surface(tmp_path: Path, monkeypatch) -> None:
     class Phase2Runtime(FakeRuntimeBindings):
         def __init__(self) -> None:
@@ -608,7 +629,7 @@ primitive_pool:
     generations = [row["generation"] for row in trials]
 
     assert generations == [0, 1, 2]
-    assert widths == [64, 65, 66]
+    assert widths == [96, 97, 98]
     assert trials[1]["parent_genome_id"] == trials[0]["genome_id"]
     assert trials[2]["parent_genome_id"] == trials[1]["genome_id"]
     assert trials[1]["mutation_operator"] == "width+1"
@@ -1458,8 +1479,8 @@ primitive_pool:
             "best_metric_value": 0.78,
             "best_search_score": primitive_bank_summary["primitive_families"][0]["best_search_score"],
             "best_generation": 0,
-            "representative_genome_id": "mlp-64x64",
-            "representative_architecture_summary": "mlp[64x64]",
+            "representative_genome_id": "mlp-96x96x96",
+            "representative_architecture_summary": "mlp[96x96x96]",
         }
     ]
     assert regenerated_path == report_path
@@ -1469,7 +1490,7 @@ primitive_pool:
     assert "| mlp | 1 |" in regenerated
     assert "## Primitive Bank Summary" in regenerated
     assert "| Family | Evaluations | Benchmark Wins | Won Benchmarks | Best Metric | Best Value | Representative Genome | Representative Architecture |" in regenerated
-    assert "| mlp | 1 | 1 | iris | accuracy | 0.780000 | mlp-64x64 | mlp[64x64] |" in regenerated
+    assert "| mlp | 1 | 1 | iris | accuracy | 0.780000 | mlp-96x96x96 | mlp[96x96x96] |" in regenerated
     assert "## Benchmark Leaders" in regenerated
     assert "## Family Leaders" in regenerated
     assert "## Benchmark Group Coverage" in regenerated

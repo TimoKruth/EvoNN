@@ -1005,7 +1005,19 @@ def _make_evaluation_plan(
     epochs = _apply_epoch_scaling(
         config=config,
         generation=generation,
-        base_epochs=base_epochs,
+        base_epochs=max(
+            1,
+            int(
+                base_epochs
+                * _static_benchmark_epoch_multiplier(
+                    benchmark_name=cache_namespace,
+                    task=task,
+                    input_dim=input_dim,
+                    num_classes=num_classes,
+                    config=config,
+                )
+            ),
+        ),
         multi_fidelity_schedule=multi_fidelity_schedule,
     )
 
@@ -1095,6 +1107,56 @@ def _apply_epoch_scaling(
             scale = 0.3 + 0.7 * progress
             epochs = max(1, int(epochs * scale))
     return epochs
+
+
+def _static_benchmark_epoch_multiplier(
+    *,
+    benchmark_name: str,
+    task: str,
+    input_dim: int,
+    num_classes: int,
+    config: RunConfig,
+) -> float:
+    tc = config.training
+    scale_map = getattr(tc, "benchmark_static_epoch_scales", {}) or {}
+    for key in _benchmark_profile_keys(
+        benchmark_name=benchmark_name,
+        task=task,
+        input_dim=input_dim,
+        num_classes=num_classes,
+    ):
+        if key in scale_map:
+            return _clamp_float(
+                float(scale_map[key]),
+                float(getattr(tc, "benchmark_static_epoch_min_scale", 0.75)),
+                float(getattr(tc, "benchmark_static_epoch_max_scale", 1.35)),
+            )
+    return 1.0
+
+
+def _benchmark_profile_keys(
+    *,
+    benchmark_name: str,
+    task: str,
+    input_dim: int,
+    num_classes: int,
+) -> tuple[str, ...]:
+    name = benchmark_name.lower()
+    keys: list[str] = [name]
+    if "openml" in name or input_dim >= 16 or num_classes >= 4:
+        keys.append(f"openml-{task}")
+    if task == "regression":
+        keys.append("tabular-regression")
+    if "mnist" in name or "digits" in name or "image" in name:
+        keys.append("image-classification")
+    if task == "language_modeling":
+        keys.append("language-modeling")
+    keys.append(task)
+    return tuple(dict.fromkeys(keys))
+
+
+def _clamp_float(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
 
 
 def _lookup_runtime_result(

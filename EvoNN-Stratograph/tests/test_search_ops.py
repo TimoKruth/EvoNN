@@ -6,7 +6,7 @@ from stratograph.genome.models import MacroNodeGene
 from stratograph.pipeline.coordinator import _next_population, _select_parent_pool
 from stratograph.pipeline.evaluator import EvaluationRecord
 from stratograph.search import crossover_genomes, descriptor, mutate_genome, novelty_score
-from stratograph.search.operators import MAX_MACRO_NODES
+from stratograph.search.operators import MAX_MACRO_NODES, TASK_MOTIFS
 
 
 def _seed(name: str = "moons") -> HierarchicalGenome:
@@ -35,6 +35,21 @@ def test_mutate_genome_without_clone_keeps_valid_hierarchy() -> None:
     assert mutated.genome_id == "mutant_nc"
     assert mutated.macro_depth >= 1
     assert len(mutated.cell_library) >= 1
+
+
+def test_regression_motif_mutation_is_available() -> None:
+    genome = _seed("diabetes")
+    mutated = mutate_genome(
+        genome,
+        rng=random.Random(9),
+        candidate_id="regression_motif",
+        preferred_modes=("motif_rewrite",),
+    )
+
+    assert "regression" in TASK_MOTIFS
+    assert mutated.genome_id == "regression_motif"
+    assert mutated.task == "regression"
+    assert mutated.macro_depth >= 1
 
 
 def test_crossover_genome_keeps_valid_hierarchy() -> None:

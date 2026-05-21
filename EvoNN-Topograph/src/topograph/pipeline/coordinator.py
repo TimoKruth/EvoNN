@@ -557,11 +557,91 @@ def _create_seed_population(
     )
     if primordia_seeding is not None:
         _apply_primordia_seed_bias(population, primordia_seeding)
+    _apply_benchmark_seed_profiles(population, benchmark_spec=benchmark_spec, benchmark_specs=benchmark_specs)
 
     for genome in population:
         genome.learning_rate = _sample_learning_rate(config, rng)
         genome.batch_size = _sample_batch_size(config, rng)
     return population
+
+
+def _apply_benchmark_seed_profiles(
+    population: list[Genome],
+    *,
+    benchmark_spec: BenchmarkSpec | None,
+    benchmark_specs: list[BenchmarkSpec] | None,
+) -> None:
+    specs = benchmark_specs or ([benchmark_spec] if benchmark_spec is not None else [])
+    families = {benchmark_family_name(spec) for spec in specs}
+    if not population or not families:
+        return
+    if "tabular-regression" in families:
+        _specialize_population_slice(
+            population,
+            start=0,
+            stop=max(1, len(population) // 4),
+            width_floor=128,
+            operator=OperatorType.RESIDUAL,
+            activation=Activation.GELU,
+        )
+    if "tabular" in families or "synthetic" in families:
+        _specialize_population_slice(
+            population,
+            start=max(1, len(population) // 4),
+            stop=max(2, len(population) // 2),
+            width_floor=96,
+            operator=OperatorType.SPARSE_DENSE,
+            activation=Activation.SILU,
+            sparsity=0.15,
+        )
+    if "image-classification" in families:
+        _specialize_population_slice(
+            population,
+            start=max(2, len(population) // 2),
+            stop=max(3, (3 * len(population)) // 4),
+            width_floor=96,
+            operator=OperatorType.SPATIAL,
+            activation=Activation.RELU,
+        )
+    if "language-modeling" in families:
+        _specialize_population_slice(
+            population,
+            start=max(3, (3 * len(population)) // 4),
+            stop=len(population),
+            width_floor=128,
+            operator=OperatorType.ATTENTION_LITE,
+            activation=Activation.GELU,
+        )
+
+
+def _specialize_population_slice(
+    population: list[Genome],
+    *,
+    start: int,
+    stop: int,
+    width_floor: int,
+    operator: OperatorType,
+    activation: Activation,
+    sparsity: float = 0.0,
+) -> None:
+    for genome in population[start:stop]:
+        for index, layer in enumerate(genome.layers):
+            if not layer.enabled:
+                continue
+            update: dict[str, object] = {
+                "width": max(int(layer.width), width_floor),
+                "operator": operator,
+                "activation": activation,
+            }
+            if sparsity > 0.0:
+                update["sparsity"] = max(float(layer.sparsity), sparsity)
+            if operator in {OperatorType.ATTENTION_LITE, OperatorType.TRANSFORMER_LITE}:
+                width = int(update["width"])
+                heads = min(4, max(1, int(layer.num_heads)))
+                while heads > 1 and width % heads != 0:
+                    heads -= 1
+                update["num_heads"] = heads
+            genome.layers[index] = layer.model_copy(update=update)
 
 
 def _resolve_primordia_seeding(

@@ -208,6 +208,53 @@ Immediate consequence:
   and Stratograph hierarchy/tabular improvement as the strongest near-term
   candidates.
 
+Large engine-quality slice recorded on 2026-05-21:
+
+- Workspace: `.tmp/tier-c-floor-gap-large-slice`
+- Evidence label: `tier-c-floor-gap-large-slice`
+- Cases: 12 completed, all `trusted-extended`
+- Failures/blockers: 0
+- Scope: same contender-including Tier C cumulative sweep as the previous
+  floor-gap cohort: budgets `154`, `264`, `374`, `484`; seeds `42`, `43`, `44`;
+  22 cumulative Tier C benchmarks; Prism, Topograph, Stratograph, Primordia,
+  and Contenders.
+
+Before/after signal against `tier-c-floor-gap-after`:
+
+| System | Winner Delta | Floor-Clear Delta |
+| --- | ---: | ---: |
+| Prism | +2 | +4.17 pp |
+| Topograph | +4 | +5.11 pp |
+| Stratograph | -2 | +0.57 pp |
+| Primordia | +5 | +5.68 pp |
+| Contenders | -12 | n/a |
+
+Floor-clear rates after the slice:
+
+| Budget | Prism | Topograph | Stratograph | Primordia |
+| ---: | ---: | ---: | ---: | ---: |
+| 154 | 18.18% | 2.27% | 6.82% | 13.64% |
+| 264 | 21.97% | 3.03% | 16.67% | 15.15% |
+| 374 | 17.42% | 9.09% | 13.64% | 15.91% |
+| 484 | 23.48% | 12.12% | 18.94% | 16.67% |
+
+Interpretation:
+
+- The slice moved the broad external-floor numbers in the right direction for
+  all four EvoNN engines. Contenders still dominate the Tier C cumulative lane,
+  but the margin narrowed materially.
+- Primordia and Topograph gained the most floor-clear percentage, which means
+  family-aware seed/profile work is now paying back beyond isolated smoke
+  tasks.
+- Prism remains the strongest broad floor clearer after the slice and improved
+  without losing its generalist role.
+- Stratograph improved slightly against the floor but lost two full-system wins;
+  its next work should be more targeted hierarchy/motif search quality rather
+  than more generic population broadening.
+- The runtime cost increased, especially for Primordia at budgets `374` and
+  `484`. Future slices should include runtime/performance telemetry gates so
+  quality gains are not bought blindly with excessive wall-clock cost.
+
 ## Latest Run-Derived Planning Signal
 
 Recorded on 2026-05-13 from the recent small-lane and broad-lane comparison

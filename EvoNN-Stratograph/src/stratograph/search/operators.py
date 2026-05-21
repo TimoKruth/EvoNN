@@ -37,6 +37,23 @@ MOTIF_LIBRARY: tuple[tuple[tuple[PrimitiveKind, ActivationKind], ...], ...] = (
     ),
 )
 TASK_MOTIFS: dict[str, tuple[tuple[tuple[PrimitiveKind, ActivationKind], ...], ...]] = {
+    "regression": (
+        (
+            (PrimitiveKind.LINEAR, ActivationKind.IDENTITY),
+            (PrimitiveKind.NORM, ActivationKind.IDENTITY),
+            (PrimitiveKind.RESIDUAL, ActivationKind.TANH),
+        ),
+        (
+            (PrimitiveKind.LINEAR, ActivationKind.IDENTITY),
+            (PrimitiveKind.GATE, ActivationKind.TANH),
+            (PrimitiveKind.MIX, ActivationKind.IDENTITY),
+        ),
+        (
+            (PrimitiveKind.NORM, ActivationKind.GELU),
+            (PrimitiveKind.RESIDUAL, ActivationKind.GELU),
+            (PrimitiveKind.LINEAR, ActivationKind.IDENTITY),
+        ),
+    ),
     "classification": MOTIF_LIBRARY
     + (
         (
@@ -84,7 +101,7 @@ def mutate_genome(
     modes = ["width", "activation", "add_macro", "specialize_cell", "add_skip_edge", "rewire_macro"]
     if allow_clone_mutation:
         modes.append("clone_cell")
-    if motif_bias and genome.task != "regression":
+    if motif_bias:
         modes.append("motif_rewrite")
     candidate_modes = [mode for mode in (preferred_modes or ()) if mode in modes]
     mode = rng.choice(candidate_modes or modes)

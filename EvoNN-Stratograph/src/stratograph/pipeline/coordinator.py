@@ -638,6 +638,7 @@ def _next_population(
                 motif_bias=motif_bias,
                 preferred_mutation_modes=_offspring_mutation_modes(
                     index,
+                    task=task,
                     architecture_mode=architecture_mode,
                     allow_clone_mutation=allow_clone_mutation,
                     motif_bias=motif_bias,
@@ -662,6 +663,7 @@ def _next_population(
                 motif_bias=motif_bias,
                 preferred_modes=_offspring_mutation_modes(
                     index,
+                    task=task,
                     architecture_mode=architecture_mode,
                     allow_clone_mutation=allow_clone_mutation,
                     motif_bias=motif_bias,
@@ -755,12 +757,21 @@ def _selection_key(
 def _offspring_mutation_modes(
     index: int,
     *,
+    task: str = "",
     architecture_mode: str,
     allow_clone_mutation: bool,
     motif_bias: bool,
 ) -> tuple[str, ...] | None:
     if not architecture_mode.startswith("two_level_shared"):
         return None
+    if task == "regression":
+        if index % 4 == 0 and motif_bias:
+            return ("motif_rewrite", "activation")
+        if index % 4 == 1:
+            return ("width", "specialize_cell")
+        if index % 4 == 2:
+            return ("add_skip_edge", "rewire_macro")
+        return ("add_macro", "add_skip_edge")
     if index % 4 == 1 and allow_clone_mutation:
         return ("specialize_cell", "clone_cell")
     if index % 4 == 2 and motif_bias:

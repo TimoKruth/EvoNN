@@ -296,18 +296,19 @@ def _prism_family_plan(pack, *, budget: int) -> PrismFamilyPlan:
         return PrismFamilyPlan(["attention"], min_population_size=1, preferred_population_cap=8)
 
     if has_image and has_tabular_or_synthetic:
+        prime_mixed_cap = max(8, min(17, units))
         for families in (
             ["mlp", "sparse_mlp", "moe_mlp", "conv2d", "lite_conv2d"],
             ["mlp", "sparse_mlp", "conv2d", "lite_conv2d"],
         ):
-            if _has_exact_factorization(units, min_population_size=2 * len(families), preferred_population_cap=16):
+            if _has_exact_factorization(units, min_population_size=2 * len(families), preferred_population_cap=prime_mixed_cap):
                 return PrismFamilyPlan(
                     families,
                     min_population_size=2 * len(families),
-                    preferred_population_cap=16,
+                    preferred_population_cap=prime_mixed_cap,
                 )
-            if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
-                return PrismFamilyPlan(families, min_population_size=len(families), preferred_population_cap=8)
+            if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=prime_mixed_cap):
+                return PrismFamilyPlan(families, min_population_size=len(families), preferred_population_cap=prime_mixed_cap)
         for families in (["mlp", "sparse_mlp"], ["mlp"]):
             if _has_exact_factorization(units, min_population_size=len(families), preferred_population_cap=8):
                 return PrismFamilyPlan(families, min_population_size=len(families), preferred_population_cap=8)
@@ -380,7 +381,7 @@ def _topograph_budget_patch(*, budget: int, benchmark_count: int) -> dict[str, A
     if budget % benchmark_count != 0:
         raise ValueError(f"budget {budget} not divisible by benchmark_count {benchmark_count}")
     units = budget // benchmark_count
-    preferred_cap = 4 if units <= 16 else 8
+    preferred_cap = max(4, min(17, units))
     population_size, generations = _exact_factorization(units, preferred_population_cap=preferred_cap)
     return {
         "evolution": {

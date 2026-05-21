@@ -302,6 +302,8 @@ def test_create_seed_population_keeps_unique_genome_ids():
     population = coordinator._create_seed_population(evolution, random.Random(42))
     assert len(population) == 8
     assert len({g.genome_id for g in population}) == 8
+    assert any(g.residual for g in population)
+    assert any(g.norm_type in {"layer", "rms"} for g in population)
 
 
 def test_prior_elapsed_seconds_prefers_persisted_resume_runtime(tmp_path: Path):

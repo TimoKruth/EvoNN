@@ -312,7 +312,11 @@ def generate_stratograph_config(
     if budget % len(pack.benchmarks) != 0:
         raise ValueError(f"budget {budget} not divisible by benchmark_count {len(pack.benchmarks)}")
     benchmark_ids = resolve_supported_benchmark_ids(pack.benchmarks, "stratograph")
-    population_size, generations = _exact_factorization(budget // len(pack.benchmarks), preferred_population_cap=8)
+    units = budget // len(pack.benchmarks)
+    population_size, generations = _exact_factorization(
+        units,
+        preferred_population_cap=max(4, min(17, units)),
+    )
     payload = {
         "seed": seed,
         "run_name": output_path.stem,
@@ -404,6 +408,15 @@ def generate_primordia_config(
         "search": {
             "mode": "budget_matched",
             "target_evaluation_count": budget,
+            "elite_fraction": 0.45,
+            "mutation_rounds_per_parent": 2,
+            "family_exploration_floor": 2,
+            "novelty_weight": 0.02,
+            "complexity_penalty_weight": 0.005,
+            "seed_hidden_width": 96,
+            "seed_hidden_layers": 3,
+            "max_hidden_width": 320,
+            "max_hidden_layers": 7,
         },
         "training": {
             "epochs_per_candidate": pack.budget_policy.epochs_per_candidate,

@@ -63,6 +63,16 @@ class TrainingConfig(BaseModel):
     partial_epoch_ratio: float = 0.6
     multi_fidelity: bool = True
     multi_fidelity_schedule: list[float] | None = None
+    benchmark_static_epoch_min_scale: float = 0.75
+    benchmark_static_epoch_max_scale: float = 1.35
+    benchmark_static_epoch_scales: dict[str, float] = Field(
+        default_factory=lambda: {
+            "image-classification": 1.15,
+            "openml-classification": 1.12,
+            "tabular-regression": 1.20,
+            "language-modeling": 1.05,
+        }
+    )
     parallel_workers: int = 0  # 0 = conservative auto, 1 = sequential
     parallel_cpu_fraction_limit: float = 0.5
     parallel_memory_fraction_limit: float = 0.5

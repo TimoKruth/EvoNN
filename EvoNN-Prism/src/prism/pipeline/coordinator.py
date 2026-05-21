@@ -233,10 +233,13 @@ def _create_seed_population(
     # One seed per family
     for family in allowed:
         genome = create_seed_genome(family, evolution, rng)
-        if genome.genome_id in seen_ids:
-            continue
-        population.append(genome)
-        seen_ids.add(genome.genome_id)
+        for candidate in _seed_variants(genome, evolution):
+            if candidate.genome_id in seen_ids:
+                continue
+            population.append(candidate)
+            seen_ids.add(candidate.genome_id)
+            if len(population) >= evolution.population_size:
+                return population[: evolution.population_size]
 
     # Fill remaining slots via mutation from diverse seeds
     while len(population) < evolution.population_size:
@@ -254,6 +257,50 @@ def _create_seed_population(
         seen_ids.add(child.genome_id)
 
     return population[: evolution.population_size]
+
+
+def _seed_variants(genome: ModelGenome, evolution) -> list[ModelGenome]:
+    """Front-load broad specialists before stochastic mutation fills the rest."""
+    max_width = int(getattr(evolution, "max_hidden_width", 512))
+    max_layers = int(getattr(evolution, "max_hidden_layers", 8))
+
+    def clamp_width(width: int) -> int:
+        return max(16, min(max_width, int(width)))
+
+    base_width = max(genome.hidden_layers or [128])
+    variants = [genome]
+    variants.append(
+        genome.model_copy(
+            update={
+                "hidden_layers": [clamp_width(max(base_width, 160))] * min(max_layers, max(3, len(genome.hidden_layers))),
+                "activation": "gelu",
+                "residual": True,
+                "norm_type": "layer",
+                "weight_decay": 1e-4,
+            }
+        )
+    )
+    variants.append(
+        genome.model_copy(
+            update={
+                "hidden_layers": [clamp_width(max(base_width, 192))] * min(max_layers, max(4, len(genome.hidden_layers) + 1)),
+                "activation": "tanh" if genome.family in {"mlp", "sparse_mlp"} else "gelu",
+                "dropout": 0.1,
+                "residual": True,
+                "norm_type": "rms",
+                "learning_rate": 8e-4,
+            }
+        )
+    )
+    if genome.family == "sparse_mlp":
+        variants.append(genome.model_copy(update={"activation_sparsity": 0.25, "norm_type": "layer"}))
+    if genome.family == "moe_mlp":
+        variants.append(genome.model_copy(update={"num_experts": 4, "moe_top_k": 2, "hidden_layers": [clamp_width(192)] * 3}))
+    if genome.family in {"attention", "sparse_attention"}:
+        variants.append(genome.model_copy(update={"embedding_dim": 128, "num_heads": 4, "norm_type": "layer"}))
+    if genome.family in {"conv2d", "lite_conv2d"}:
+        variants.append(genome.model_copy(update={"kernel_size": 3, "hidden_layers": [clamp_width(96), clamp_width(128), clamp_width(160)]}))
+    return variants
 
 
 def _validate_offspring_batch(
