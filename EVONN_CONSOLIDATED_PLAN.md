@@ -709,19 +709,121 @@ Cleanup progress:
   the latest Tier C mid-budget finding, and the narrow scope of shared training
   helpers.
 
+## Next Execution Slice: Tier C Floor Gap Reduction
+
+Planned on 2026-05-21 from the promoted cohorts:
+
+- `tier-c-engine-only-regression-calibrated`
+- `tier-c-full-midbudget-3seed`
+
+Problem:
+the repo can now run clean repeated Tier C cumulative evidence, but the external
+contender floor still wins most broad Tier C benchmarks. The next valuable work
+is therefore not another benchmark expansion. It is improving the best EvoNN
+engines against the existing Tier C pressure surface while preserving the clean
+evidence loop.
+
+Primary target:
+increase EvoNN contender-floor wins on `tier_c_architecture_sensitive_cumulative`
+without reducing artifact completeness, budget honesty, or engine-only
+comparability.
+
+Working hypothesis:
+
+- Prism is the best broad generalist and should receive the first
+  family-aware scaling slice.
+- Stratograph has the strongest upper-midbudget tabular/hierarchy signal and
+  should receive the first hierarchy/tabular specialization slice.
+- Topograph should not get broad rewrite work until its budget/profile
+  sensitivity is understood.
+- Primordia should stay focused on seed-source/specialist value rather than
+  being forced into a broad generalist role.
+
+Execution order:
+
+1. Baseline inspection:
+   - Use the promoted `tier-c-full-midbudget-3seed` evidence as the fixed
+     baseline.
+   - Break down losses by benchmark family, budget, and seed.
+   - Identify the smallest benchmark family where Prism or Stratograph is close
+     to the contender floor.
+2. Prism slice:
+   - Add or tune family-aware budget/candidate allocation only inside Prism.
+   - Preserve the shared output contract and current regression preprocessing.
+   - Validate with a short engine-only cumulative Tier C run before running
+     contenders.
+3. Stratograph slice:
+   - Add one hierarchy/tabular quality improvement or ablation-backed selection
+     change only inside Stratograph.
+   - Record whether hierarchy-specific structure helps tabular and
+     tabular-regression families.
+4. Proof run:
+   - Rerun the same contender-including budgets and seeds:
+     `154,264,374,484` with seeds `42,43,44`.
+   - Promote the compact summaries only if the run is clean.
+5. Decision:
+   - Keep changes only if at least one of these holds without regressions:
+     Prism improves full-system wins or contender-floor clears on at least two
+     budgets.
+     Stratograph improves full-system wins or tabular-family engine-only wins on
+     at least two budgets.
+     Overall EvoNN full-system wins improve by a repeated-seed margin while all
+     cases remain `trusted-extended`.
+
+Validation commands:
+
+```bash
+uv run --package evonn-compare evonn-compare fair-matrix \
+  --preset tier_c_local_cumulative \
+  --seeds 42,43,44 \
+  --budgets 154,264,374,484 \
+  --workspace .tmp/tier-c-floor-gap-after \
+  --reset-workspace \
+  --no-open
+
+uv run --package evonn-compare evonn-compare evidence promote \
+  .tmp/tier-c-floor-gap-after \
+  --registry evidence \
+  --label tier-c-floor-gap-after \
+  --copy-artifacts
+
+uv run --package evonn-compare evonn-compare evidence validate \
+  --registry evidence \
+  --require-artifacts
+```
+
+Non-goals:
+
+- Do not alter contender strength to make EvoNN look better.
+- Do not add benchmark tiers.
+- Do not change score semantics, fairness semantics, or lane-state semantics.
+- Do not move genome/search-policy code into Shared.
+- Do not claim broad EvoNN superiority from engine-only runs.
+
+Acceptance criteria:
+
+- Before/after evidence is promoted and comparable by label.
+- All proof cases remain `trusted-extended`.
+- The evidence report can explain whether the slice is `gain`, `regression`, or
+  `inconclusive`.
+- If no repeated-seed gain appears, revert or isolate the engine change rather
+  than letting it become silent complexity.
+
 ## Near-Term Execution Order
 
 1. Keep the dashboard/evidence loop healthy after every compare change.
 2. Keep the resolved Tier B default lane split visible in presets and docs.
-3. Use additive Tier B/C runs as the default before/after proof for engine
+3. Execute the Tier C floor-gap reduction slice before broadening benchmarks
+   again.
+4. Use additive Tier B/C runs as the default before/after proof for engine
    quality work; use `_cumulative` variants only when a full A-through-tier
    comparison is needed.
-4. Run/update `tier1_core@64/256/1000` evidence with output-quality checks.
-5. Repeat promising Tier B/C signals across at least two or three seeds before
+5. Run/update `tier1_core@64/256/1000` evidence with output-quality checks.
+6. Repeat promising Tier B/C signals across at least two or three seeds before
    using them as architecture evidence.
-6. Execute the first native Primordia-seeded transfer experiment beyond the
+7. Execute the first native Primordia-seeded transfer experiment beyond the
    portable contract proof.
-7. Use the transfer result and Tier B/C scaling evidence to decide whether the
+8. Use the transfer result and Tier B/C scaling evidence to decide whether the
    next major branch emphasizes:
    - seed-source quality,
    - target-engine seed consumption,
