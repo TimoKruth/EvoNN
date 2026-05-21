@@ -7,6 +7,13 @@ import time
 from dataclasses import dataclass
 
 import numpy as np
+from evonn_shared.training import (
+    calibrate_regression_predictions,
+    regression_target_stats,
+    restore_regression_predictions,
+    standardize_regression_targets,
+)
+
 try:  # pragma: no cover - depends on host runtime
     import mlx
     import mlx.core as mx
@@ -140,42 +147,6 @@ def _compute_metric(
     return "mse", "min", mse, -mse
 
 
-def _regression_target_stats(y_train: np.ndarray) -> tuple[float, float]:
-    values = y_train.reshape(-1).astype(np.float32)
-    mean = float(np.mean(values)) if values.size else 0.0
-    std = float(np.std(values)) if values.size else 1.0
-    if not math.isfinite(std) or std < 1e-8:
-        std = 1.0
-    return mean, std
-
-
-def _standardize_regression_targets(y_train: np.ndarray, mean: float, std: float) -> np.ndarray:
-    return ((y_train.reshape(-1).astype(np.float32) - mean) / std).astype(np.float32)
-
-
-def _restore_regression_predictions(y_pred: np.ndarray, mean: float, std: float) -> np.ndarray:
-    return (y_pred.reshape(-1).astype(np.float32) * std + mean).astype(np.float32)
-
-
-def _calibrate_regression_predictions(
-    *,
-    train_pred: np.ndarray,
-    y_train: np.ndarray,
-    val_pred: np.ndarray,
-) -> np.ndarray:
-    train_x = train_pred.reshape(-1).astype(np.float64)
-    train_y = y_train.reshape(-1).astype(np.float64)
-    val_x = val_pred.reshape(-1).astype(np.float64)
-    if train_x.size < 2 or train_y.size != train_x.size or float(np.std(train_x)) < 1e-8:
-        return val_pred.reshape(-1).astype(np.float32)
-    design = np.column_stack([train_x, np.ones_like(train_x)])
-    slope, intercept = np.linalg.lstsq(design, train_y, rcond=None)[0]
-    if not (math.isfinite(float(slope)) and math.isfinite(float(intercept))):
-        return val_pred.reshape(-1).astype(np.float32)
-    calibrated = val_x * float(slope) + float(intercept)
-    return calibrated.astype(np.float32)
-
-
 # ---------------------------------------------------------------------------
 # Gradient clipping
 # ---------------------------------------------------------------------------
@@ -260,8 +231,8 @@ def train_and_evaluate(
     y_train_for_loss = y_train
     if task == "regression":
         y_train_np = np.array(y_train)
-        regression_target_mean, regression_target_std = _regression_target_stats(y_train_np)
-        y_train_for_loss = _standardize_regression_targets(
+        regression_target_mean, regression_target_std = regression_target_stats(y_train_np)
+        y_train_for_loss = standardize_regression_targets(
             y_train_np,
             regression_target_mean,
             regression_target_std,
@@ -340,17 +311,17 @@ def train_and_evaluate(
         if task == "regression":
             train_preds = model(X)
             mx.eval(train_preds)
-            train_preds_np = _restore_regression_predictions(
+            train_preds_np = restore_regression_predictions(
                 np.array(train_preds),
                 regression_target_mean,
                 regression_target_std,
             )
-            restored_preds_np = _restore_regression_predictions(
+            restored_preds_np = restore_regression_predictions(
                 preds_np,
                 regression_target_mean,
                 regression_target_std,
             )
-            restored_preds_np = _calibrate_regression_predictions(
+            restored_preds_np = calibrate_regression_predictions(
                 train_pred=train_preds_np,
                 y_train=np.array(y_train),
                 val_pred=restored_preds_np,

@@ -32,6 +32,12 @@ from evonn_shared.lm_cache import (
     validate_lm_cache,
 )
 from evonn_shared.runs import RunCoordinates
+from evonn_shared.training import (
+    calibrate_regression_predictions,
+    regression_target_stats,
+    restore_regression_predictions,
+    standardize_regression_targets,
+)
 
 __all__ = [
     "ArtifactPaths",
@@ -53,11 +59,15 @@ __all__ = [
     "SearchTelemetry",
     "TaskKind",
     "benchmark_signature",
+    "calibrate_regression_predictions",
     "default_artifact",
     "default_data_signature",
     "fairness_manifest",
     "default_lm_cache_spec",
     "generate_lm_cache",
+    "regression_target_stats",
+    "restore_regression_predictions",
+    "standardize_regression_targets",
     "summary_core_from_results",
     "validate_default_lm_cache",
     "validate_lm_cache",
