@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-05-20T18:42:03.639191+00:00",
+  "generated_at": "2026-05-21T12:23:35.991596+00:00",
   "registry": "/Users/timokruth/Projekte/Evo Neural Nets/evidence",
-  "record_count": 18,
-  "summary_count": 18,
+  "record_count": 30,
+  "summary_count": 30,
   "min_seeds": 2,
   "groups": [
     {
@@ -180,6 +180,402 @@
       ],
       "pairwise": [],
       "last_promoted_at": "2026-05-20T13:26:56.997267+00:00"
+    },
+    {
+      "label": "tier-c-floor-gap-after",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+      "budget": 154,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "trusted-extended"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 16.333333,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "passed"
+        ]
+      },
+      "effect_strength": "large",
+      "leader": "contenders",
+      "system_rows": [
+        {
+          "system": "contenders",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 18.5,
+          "score_range": 2.0
+        },
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.8333333333333334,
+          "score_range": 0.5
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.1666666666666665,
+          "score_range": 1.0
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.0,
+          "score_range": 1.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.0,
+          "score_range": 0.0
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-21T12:23:34.255248+00:00"
+    },
+    {
+      "label": "tier-c-floor-gap-after",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+      "budget": 264,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "trusted-extended"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 13.833333,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "passed"
+        ]
+      },
+      "effect_strength": "large",
+      "leader": "contenders",
+      "system_rows": [
+        {
+          "system": "contenders",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 16.0,
+          "score_range": 1.0
+        },
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.1666666666666667,
+          "score_range": 1.5
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.1666666666666665,
+          "score_range": 3.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.1666666666666665,
+          "score_range": 3.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.1666666666666667,
+          "score_range": 1.5
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-21T12:23:34.255248+00:00"
+    },
+    {
+      "label": "tier-c-floor-gap-after",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+      "budget": 374,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "trusted-extended"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 12.666667,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "passed"
+        ]
+      },
+      "effect_strength": "large",
+      "leader": "contenders",
+      "system_rows": [
+        {
+          "system": "contenders",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 16.333333333333332,
+          "score_range": 1.5
+        },
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.5,
+          "score_range": 1.0
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 3.6666666666666665,
+          "score_range": 0.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.8333333333333333,
+          "score_range": 1.0
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.0,
+          "score_range": 0.0
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-21T12:23:34.255248+00:00"
+    },
+    {
+      "label": "tier-c-floor-gap-after",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval484",
+      "budget": 484,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "trusted-extended"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 14.0,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "passed"
+        ]
+      },
+      "effect_strength": "large",
+      "leader": "contenders",
+      "system_rows": [
+        {
+          "system": "contenders",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 16.833333333333332,
+          "score_range": 3.0
+        },
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.3333333333333333,
+          "score_range": 0.5
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.8333333333333335,
+          "score_range": 0.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.5,
+          "score_range": 2.0
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.0,
+          "score_range": 0.0
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-21T12:23:34.255248+00:00"
     },
     {
       "label": "tier-c-full-midbudget-3seed",
@@ -578,13 +974,110 @@
       "last_promoted_at": "2026-05-20T18:42:01.941482+00:00"
     }
   ],
-  "before_after_comparisons": [],
+  "before_after_comparisons": [
+    {
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+      "budget": 154,
+      "before_label": "tier-c-full-midbudget-3seed",
+      "after_label": "tier-c-floor-gap-after",
+      "common_systems": [
+        "contenders",
+        "primordia",
+        "prism",
+        "stratograph",
+        "topograph"
+      ],
+      "system_score_deltas": {
+        "contenders": 0.5,
+        "primordia": 0.333333,
+        "prism": -0.666667,
+        "stratograph": 0.333333,
+        "topograph": 0.0
+      },
+      "aggregate_score_delta": 0.1,
+      "best_system_score_delta": 0.5,
+      "worst_system_score_delta": -0.666667,
+      "decision_label": "likely_gain"
+    },
+    {
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+      "budget": 264,
+      "before_label": "tier-c-full-midbudget-3seed",
+      "after_label": "tier-c-floor-gap-after",
+      "common_systems": [
+        "contenders",
+        "primordia",
+        "prism",
+        "stratograph",
+        "topograph"
+      ],
+      "system_score_deltas": {
+        "contenders": -1.0,
+        "primordia": 0.166667,
+        "prism": -0.166667,
+        "stratograph": 0.666667,
+        "topograph": 0.5
+      },
+      "aggregate_score_delta": 0.033333,
+      "best_system_score_delta": 0.666667,
+      "worst_system_score_delta": -1.0,
+      "decision_label": "likely_gain"
+    },
+    {
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+      "budget": 374,
+      "before_label": "tier-c-full-midbudget-3seed",
+      "after_label": "tier-c-floor-gap-after",
+      "common_systems": [
+        "contenders",
+        "primordia",
+        "prism",
+        "stratograph",
+        "topograph"
+      ],
+      "system_score_deltas": {
+        "contenders": -0.333333,
+        "primordia": -0.333333,
+        "prism": 0.666667,
+        "stratograph": -0.166667,
+        "topograph": 0.0
+      },
+      "aggregate_score_delta": -0.033333,
+      "best_system_score_delta": 0.666667,
+      "worst_system_score_delta": -0.333333,
+      "decision_label": "likely_gain"
+    },
+    {
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval484",
+      "budget": 484,
+      "before_label": "tier-c-full-midbudget-3seed",
+      "after_label": "tier-c-floor-gap-after",
+      "common_systems": [
+        "contenders",
+        "primordia",
+        "prism",
+        "stratograph",
+        "topograph"
+      ],
+      "system_score_deltas": {
+        "contenders": -0.333333,
+        "primordia": 0.333333,
+        "prism": 0.666667,
+        "stratograph": -0.166667,
+        "topograph": -0.166667
+      },
+      "aggregate_score_delta": 0.066667,
+      "best_system_score_delta": 0.666667,
+      "worst_system_score_delta": -0.333333,
+      "decision_label": "likely_gain"
+    }
+  ],
   "engine_roles": [
     {
       "system": "prism",
       "role": "leader_candidate",
       "leader_group_count": 1,
-      "top_two_group_count": 6,
+      "top_two_group_count": 10,
       "family_leads": [
         "synthetic"
       ]
@@ -613,8 +1106,8 @@
     {
       "system": "contenders",
       "role": "leader_candidate",
-      "leader_group_count": 4,
-      "top_two_group_count": 4,
+      "leader_group_count": 8,
+      "top_two_group_count": 8,
       "family_leads": [
         "image-classification",
         "synthetic-regression",
@@ -647,7 +1140,7 @@
   },
   "artifact_validation": {
     "ok": true,
-    "record_count": 18,
+    "record_count": 30,
     "issues": [],
     "warnings": []
   }

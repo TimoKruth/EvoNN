@@ -1,8 +1,8 @@
 # EvoNN Evidence Registry Report
 
-- Generated At: `2026-05-20T18:42:03.639191+00:00`
+- Generated At: `2026-05-21T12:23:35.991596+00:00`
 - Registry: `/Users/timokruth/Projekte/Evo Neural Nets/evidence`
-- Records: `18`
+- Records: `30`
 - Minimum Seeds For Decision Labels: `2`
 
 ## Decision Groups
@@ -11,6 +11,10 @@
 | --- | --- | ---: | --- | --- | --- | --- |
 | tier-c-engine-only-regression-calibrated | tier_c_architecture_sensitive_cumulative_eval132 | 132 | 42, 43, 44 | gain | prism | none |
 | tier-c-engine-only-regression-calibrated | tier_c_architecture_sensitive_cumulative_eval528 | 528 | 42, 43, 44 | gain | topograph | none |
+| tier-c-floor-gap-after | tier_c_architecture_sensitive_cumulative_eval154 | 154 | 42, 43, 44 | gain | contenders | none |
+| tier-c-floor-gap-after | tier_c_architecture_sensitive_cumulative_eval264 | 264 | 42, 43, 44 | gain | contenders | none |
+| tier-c-floor-gap-after | tier_c_architecture_sensitive_cumulative_eval374 | 374 | 42, 43, 44 | gain | contenders | none |
+| tier-c-floor-gap-after | tier_c_architecture_sensitive_cumulative_eval484 | 484 | 42, 43, 44 | gain | contenders | none |
 | tier-c-full-midbudget-3seed | tier_c_architecture_sensitive_cumulative_eval154 | 154 | 42, 43, 44 | gain | contenders | none |
 | tier-c-full-midbudget-3seed | tier_c_architecture_sensitive_cumulative_eval264 | 264 | 42, 43, 44 | gain | contenders | none |
 | tier-c-full-midbudget-3seed | tier_c_architecture_sensitive_cumulative_eval374 | 374 | 42, 43, 44 | gain | contenders | none |
@@ -20,7 +24,10 @@
 
 | Comparison | Pack | Budget | Aggregate Delta | Decision |
 | --- | --- | ---: | ---: | --- |
-| n/a | n/a | 0 | 0 | inconclusive |
+| tier-c-full-midbudget-3seed -> tier-c-floor-gap-after | tier_c_architecture_sensitive_cumulative_eval154 | 154 | 0.1 | likely_gain |
+| tier-c-full-midbudget-3seed -> tier-c-floor-gap-after | tier_c_architecture_sensitive_cumulative_eval264 | 264 | 0.033333 | likely_gain |
+| tier-c-full-midbudget-3seed -> tier-c-floor-gap-after | tier_c_architecture_sensitive_cumulative_eval374 | 374 | -0.033333 | likely_gain |
+| tier-c-full-midbudget-3seed -> tier-c-floor-gap-after | tier_c_architecture_sensitive_cumulative_eval484 | 484 | 0.066667 | likely_gain |
 
 ## Engine Roles
 
@@ -30,7 +37,7 @@
 | topograph | leader_candidate | 1 | none |
 | stratograph | challenger | 0 | none |
 | primordia | watch | 0 | none |
-| contenders | leader_candidate | 4 | image-classification, synthetic-regression, tabular, tabular-regression |
+| contenders | leader_candidate | 8 | image-classification, synthetic-regression, tabular, tabular-regression |
 
 ## LM Flatline Diagnostics
 

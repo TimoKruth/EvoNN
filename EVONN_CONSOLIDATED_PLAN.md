@@ -809,6 +809,41 @@ reshuffles wins between EvoNN engines without reducing contender dominance, keep
 the Stratograph profile only if tabular-family wins improve consistently and
 tune or revert the Prism static scales.
 
+Proof result on 2026-05-21:
+
+- Command: `uv run --package evonn-compare evonn-compare fair-matrix --preset tier_c_local_cumulative --seeds 42,43,44 --budgets 154,264,374,484 --workspace .tmp/tier-c-floor-gap-after --reset-workspace --no-open`
+- Promotion: `uv run --package evonn-compare evonn-compare evidence promote .tmp/tier-c-floor-gap-after --registry evidence --label tier-c-floor-gap-after --copy-artifacts`
+- Validation: `uv run --package evonn-compare evonn-compare evidence validate --registry evidence --require-artifacts` -> `ok True`, `30` records.
+- All 12 proof cases completed with `trusted-extended`, no blockers, and valid
+  artifacts.
+
+Full-system mean wins by budget after the slice:
+
+| Budget | Contenders | Prism | Topograph | Stratograph | Primordia | Ties |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 154 | 17.67 | 1.33 | 0.00 | 0.67 | 0.33 | 2.00 |
+| 264 | 15.67 | 1.33 | 1.00 | 1.33 | 0.33 | 2.33 |
+| 374 | 16.00 | 2.67 | 0.00 | 1.33 | 0.00 | 2.00 |
+| 484 | 16.33 | 2.00 | 0.00 | 1.00 | 0.67 | 2.00 |
+
+Engine-only mean wins by budget after the slice:
+
+| Budget | Prism | Topograph | Stratograph | Primordia |
+| ---: | ---: | ---: | ---: | ---: |
+| 154 | 8.78 | 0.67 | 9.28 | 3.28 |
+| 264 | 7.83 | 6.67 | 6.33 | 1.17 |
+| 374 | 11.56 | 1.83 | 5.89 | 2.72 |
+| 484 | 8.22 | 0.83 | 8.72 | 4.22 |
+
+Proof interpretation:
+the slice is clean but not a broad confirmed gain. It improves some higher-budget
+full-system pressure (`374` and `484` Prism wins rise, `264` Stratograph rises)
+and gives Stratograph a better low-budget engine-only signal. It also regresses
+some Prism/engine-only low-budget and regression-floor clears. Decision:
+classify the slice as `inconclusive/mixed`, keep the promoted evidence for
+auditability, and use the next slice to reduce regression/tabular floor gaps
+before adding more benchmark breadth.
+
 Validation commands:
 
 ```bash
