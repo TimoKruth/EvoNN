@@ -89,6 +89,7 @@ class MatrixTrendRow:
     epochs_per_candidate: int
     budget_policy_name: str | None
     wall_clock_seconds: float | None
+    train_seconds: float | None
     matrix_scope: str
     search_profile: str
     expected_specialization: str
@@ -335,6 +336,7 @@ def build_matrix_trend_rows(
                     epochs_per_candidate=manifest.budget.epochs_per_candidate,
                     budget_policy_name=manifest.budget.budget_policy_name,
                     wall_clock_seconds=manifest.budget.wall_clock_seconds,
+                    train_seconds=record.train_seconds if record is not None else None,
                     matrix_scope=matrix_scope,
                     search_profile=infer_search_profile(system),
                     expected_specialization=infer_expected_specialization(system),

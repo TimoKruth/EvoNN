@@ -70,6 +70,23 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
             f"| {comparison_label} | {budget} | {run_count} | {budget_lane_states} | {budget_accounting_states} | {budget_repeatability_states} |"
         )
 
+    lines.extend(
+        [
+            "",
+            "## Runtime Performance By System",
+            "",
+            "| Comparison | Budget | System | Runs | Wall Seconds | Evals/sec | Sec/eval | Score/sec | Train Seconds |",
+            "|---|---:|---|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in _runtime_summary_rows(trend_rows):
+        lines.append(
+            f"| {row['comparison_label']} | {row['budget']} | {row['system']} | {row['run_count']} | "
+            f"{_float_cell(row['wall_clock_seconds'])} | {_float_cell(row['evals_per_second'])} | "
+            f"{_float_cell(row['seconds_per_evaluation'])} | {_float_cell(row['score_per_second'])} | "
+            f"{_float_cell(row['train_seconds'])} |"
+        )
+
     seed_snapshots = build_scope_run_summaries(trend_rows, systems=tuple(systems))
     lines.extend(
         [
@@ -235,6 +252,67 @@ def render_fair_matrix_trend_markdown(rows: Iterable[MatrixTrendRow]) -> str:
         )
 
     return "\n".join(lines)
+
+
+def _runtime_summary_rows(rows: list[MatrixTrendRow]) -> list[dict[str, object]]:
+    grouped: dict[tuple[str, int, str], list[MatrixTrendRow]] = defaultdict(list)
+    for row in rows:
+        grouped[(_comparison_label(row), row.budget, row.system)].append(row)
+    output: list[dict[str, object]] = []
+    for (comparison_label, budget, system), entries in sorted(grouped.items()):
+        run_groups: dict[str, list[MatrixTrendRow]] = defaultdict(list)
+        for entry in entries:
+            run_groups[_comparison_case_id(entry)].append(entry)
+        wall_total = 0.0
+        eval_total = 0
+        train_total = 0.0
+        score_total = 0.0
+        for run_entries in run_groups.values():
+            first = run_entries[0]
+            wall_total += float(first.wall_clock_seconds or 0.0)
+            eval_total += int(first.evaluation_count or 0)
+            train_total += sum(float(row.train_seconds or 0.0) for row in run_entries)
+            score_total += _score_rows(run_entries)
+        output.append(
+            {
+                "comparison_label": comparison_label,
+                "budget": budget,
+                "system": system,
+                "run_count": len(run_groups),
+                "wall_clock_seconds": wall_total,
+                "evals_per_second": _safe_div(eval_total, wall_total),
+                "seconds_per_evaluation": _safe_div(wall_total, eval_total),
+                "score_per_second": _safe_div(score_total, wall_total),
+                "train_seconds": train_total,
+            }
+        )
+    return output
+
+
+def _score_rows(rows: list[MatrixTrendRow]) -> float:
+    by_benchmark: dict[str, list[MatrixTrendRow]] = defaultdict(list)
+    for row in rows:
+        by_benchmark[row.benchmark_id].append(row)
+    score = 0.0
+    for benchmark_rows in by_benchmark.values():
+        ok_rows = [row for row in benchmark_rows if row.outcome_status == "ok" and row.metric_value is not None]
+        if not ok_rows:
+            continue
+        direction = ok_rows[0].metric_direction
+        values = [float(row.metric_value) for row in ok_rows if row.metric_value is not None]
+        best = min(values) if direction == "min" else max(values)
+        winners = [row for row in ok_rows if row.metric_value is not None and abs(float(row.metric_value) - best) <= 1e-12]
+        if len(winners) == 1:
+            score += 1.0
+        else:
+            score += 0.5
+    return score
+
+
+def _safe_div(numerator: float | int, denominator: float | int) -> float | None:
+    if denominator in (0, 0.0):
+        return None
+    return float(numerator) / float(denominator)
 
 
 def _float_cell(value: float | None) -> str:

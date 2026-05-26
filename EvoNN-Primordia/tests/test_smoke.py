@@ -16,10 +16,11 @@ from evonn_primordia.export.symbiosis import export_symbiosis_contract
 from evonn_primordia.genome import ModelGenome
 from evonn_primordia.pipeline import (
     _apply_group_seed_profile,
+    _bounded_runtime_genome,
     _effective_epochs_for_group,
+    _mutation_rounds_for_parent,
     _search_profile_for_group,
     run_search,
-    _bounded_runtime_genome,
 )
 from evonn_shared.contracts import ResultRecord, RunManifest
 
@@ -351,9 +352,12 @@ def test_image_runtime_genome_bounds_high_cost_conv_candidates() -> None:
 
 
 def test_runtime_genome_bounds_do_not_touch_tabular_candidates() -> None:
-    genome = ModelGenome(family="sparse_mlp", hidden_layers=[256, 192, 160])
+    genome = ModelGenome(family="sparse_mlp", hidden_layers=[256, 192, 160, 128, 96], activation_sparsity=0.75)
 
-    assert _bounded_runtime_genome(genome, benchmark_group="tabular") is genome
+    bounded = _bounded_runtime_genome(genome, benchmark_group="tabular")
+
+    assert bounded.hidden_layers == [160, 160, 160, 128]
+    assert bounded.activation_sparsity == 0.5
 
 
 def test_group_search_profiles_strengthen_seed_candidates() -> None:
@@ -369,6 +373,35 @@ def test_group_search_profiles_strengthen_seed_candidates() -> None:
     assert profiled.norm_type == "layer"
     assert profiled.activation_sparsity >= 0.25
     assert _effective_epochs_for_group(config, "tabular") >= config.training.epochs_per_candidate
+
+
+def test_runtime_control_caps_expensive_profile_epochs_and_mutation_rounds() -> None:
+    config = load_config(REPO_ROOT / "EvoNN-Primordia" / "configs" / "tier1_core_eval64.yaml")
+    parent = {"train_seconds": 3.0, "search_score": 0.1}
+
+    assert _effective_epochs_for_group(config, "tabular", benchmark_slots=32) == 2
+    assert _effective_epochs_for_group(config, "image", benchmark_slots=32) == 1
+    assert _mutation_rounds_for_parent(
+        config=config,
+        benchmark_group="image",
+        parent=parent,
+        parent_rank=3,
+    ) == 1
+
+
+def test_runtime_genome_bounds_lm_attention_candidates() -> None:
+    genome = ModelGenome(
+        family="attention",
+        hidden_layers=[256, 192, 160, 128, 96],
+        embedding_dim=256,
+        num_heads=8,
+    )
+
+    bounded = _bounded_runtime_genome(genome, benchmark_group="language_modeling")
+
+    assert bounded.hidden_layers == [160, 160, 160, 128]
+    assert bounded.embedding_dim == 160
+    assert bounded.num_heads == 4
 
 
 def test_named_lane_config_can_complete_regression_and_classification_surface(tmp_path: Path, monkeypatch) -> None:

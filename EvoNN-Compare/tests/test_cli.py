@@ -1980,8 +1980,15 @@ def test_dashboard_payload_adds_evidence_explorer(tmp_path: Path) -> None:
     assert {row["budget"] for row in explorer["rows"]} == {64, 256}
     assert len(explorer["recent_full_runs"]) == 2
     assert {row["budget"] for row in explorer["budget_overview"]} == {64, 256}
+    runtime = payload["runtime_performance"]
+    prism_runtime = next(row for row in runtime["systems"] if row["system"] == "prism")
+    assert prism_runtime["run_count"] == 2
+    assert prism_runtime["evals_per_second"] > 0
+    assert prism_runtime["quality_per_second"] > 0
+    assert any(row["family"] == "language-modeling" for row in runtime["families"])
     html = output_path.read_text(encoding="utf-8")
     assert "Evidence Explorer" in html
+    assert "Runtime Performance" in html
     assert "Budget Performance: Last 20 Full Runs" in html
     assert "evidence-chart" in html
 
@@ -2100,6 +2107,7 @@ def _dashboard_row(
         "epochs_per_candidate": 20,
         "budget_policy_name": "prototype_equal_budget",
         "wall_clock_seconds": 1.0,
+        "train_seconds": 0.25,
         "matrix_scope": "fair",
         "search_profile": search_profile,
         "expected_specialization": expected_specialization,

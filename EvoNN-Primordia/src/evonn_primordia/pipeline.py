@@ -371,6 +371,7 @@ def _run_benchmark_search(
                 parent_genome_id=seed.parent_genome_id,
                 mutation_operator=seed.mutation_operator,
                 slot_index=len(benchmark_records),
+                benchmark_slots=slots,
                 seed_value=config.seed + benchmark_index * 1009 + len(benchmark_records),
                 seen_signatures=seen_signatures,
                 selection_mode=config.search.selection_mode,
@@ -449,7 +450,13 @@ def _spawn_offspring(
         )
         parent_id = str(parent.get("genome_id")) if parent.get("genome_id") is not None else None
         mutation_label = None
-        for mutation_round in range(max(1, config.search.mutation_rounds_per_parent)):
+        mutation_rounds = _mutation_rounds_for_parent(
+            config=config,
+            benchmark_group=benchmark_group,
+            parent=parent,
+            parent_rank=index,
+        )
+        for mutation_round in range(mutation_rounds):
             mutated = runtime.mutate_genome(genome, generation * 1000 + index * 10 + mutation_round + 1, allowed_families, config)
             if isinstance(mutated, tuple):
                 genome, mutation_label = mutated
@@ -488,6 +495,7 @@ def _evaluate_candidate(
     parent_genome_id: str | None,
     mutation_operator: str | None,
     slot_index: int,
+    benchmark_slots: int,
     seed_value: int,
     seen_signatures: set[str],
     selection_mode: str,
@@ -520,7 +528,7 @@ def _evaluate_candidate(
                 x_val_np,
                 y_val_np,
                 task=spec.task,
-                epochs=_effective_epochs_for_group(config, benchmark_group),
+                epochs=_effective_epochs_for_group(config, benchmark_group, benchmark_slots=benchmark_slots),
                 lr=getattr(genome, "learning_rate", config.training.learning_rate),
                 batch_size=config.training.batch_size,
                 parameter_count=compiled.parameter_count,
@@ -536,7 +544,7 @@ def _evaluate_candidate(
                 x_val_np,
                 y_val_np,
                 task=spec.task,
-                epochs=_effective_epochs_for_group(config, benchmark_group),
+                epochs=_effective_epochs_for_group(config, benchmark_group, benchmark_slots=benchmark_slots),
                 lr=getattr(genome, "learning_rate", config.training.learning_rate),
                 batch_size=config.training.batch_size,
                 parameter_count=compiled.parameter_count,
@@ -638,7 +646,25 @@ def _apply_group_seed_profile(genome: Any, *, benchmark_group: str, index: int) 
     return genome.model_copy(update=update) if update else genome
 
 
-def _effective_epochs_for_group(config: RunConfig, benchmark_group: str) -> int:
+def _mutation_rounds_for_parent(
+    *,
+    config: RunConfig,
+    benchmark_group: str,
+    parent: dict[str, Any],
+    parent_rank: int,
+) -> int:
+    base_rounds = max(1, int(config.search.mutation_rounds_per_parent))
+    if not config.search.runtime_control_enabled:
+        return base_rounds
+    expensive_group = benchmark_group in {"image", "language_modeling"}
+    expensive_parent = float(parent.get("train_seconds") or 0.0) >= 1.0
+    lower_priority_parent = parent_rank >= max(1, int(config.search.family_exploration_floor))
+    if expensive_group and (expensive_parent or lower_priority_parent):
+        return max(1, min(base_rounds, int(config.search.weak_parent_mutation_rounds)))
+    return base_rounds
+
+
+def _effective_epochs_for_group(config: RunConfig, benchmark_group: str, *, benchmark_slots: int | None = None) -> int:
     base = int(config.training.epochs_per_candidate)
     scale = {
         "tabular": 1.15,
@@ -646,14 +672,48 @@ def _effective_epochs_for_group(config: RunConfig, benchmark_group: str) -> int:
         "image": 1.12,
         "language_modeling": 1.05,
     }.get(benchmark_group, 1.0)
+    if config.search.runtime_control_enabled and benchmark_slots is not None:
+        threshold = max(1, int(config.search.expensive_profile_slot_threshold))
+        if benchmark_slots >= threshold:
+            scaled_epochs = max(1, int(base * scale))
+            general_cap = max(1, int(config.search.high_slot_epoch_cap))
+            expensive_cap = max(1, int(config.search.expensive_profile_epoch_cap))
+            cap = expensive_cap if benchmark_group in {"image", "language_modeling"} else general_cap
+            return min(scaled_epochs, cap)
     return max(1, int(base * scale))
 
 
 def _bounded_runtime_genome(genome: Any, *, benchmark_group: str) -> Any:
-    """Clamp high-cost image candidates without changing budget semantics."""
-    if benchmark_group != "image" or not isinstance(genome, ModelGenome):
+    """Clamp high-cost candidates without changing budget semantics."""
+    if not isinstance(genome, ModelGenome):
         return genome
-    if genome.family not in {"conv2d", "lite_conv2d"}:
+    if benchmark_group == "language_modeling" and genome.family in {"attention", "sparse_attention", "embedding"}:
+        layers = [max(32, min(160, int(width))) for width in genome.hidden_layers[:4]]
+        if not layers:
+            layers = [128]
+        return genome.model_copy(
+            update={
+                "hidden_layers": layers,
+                "embedding_dim": min(160, int(genome.embedding_dim)),
+                "num_heads": min(4, int(genome.num_heads)),
+                "activation_sparsity": min(0.5, float(genome.activation_sparsity)),
+            }
+        )
+    if benchmark_group != "image" or genome.family not in {"conv2d", "lite_conv2d"}:
+        if benchmark_group in {"tabular", "synthetic"}:
+            max_width = 160 if genome.family in {"sparse_mlp", "moe_mlp"} else 192
+            max_layers = 4
+            layers = [max(16, min(max_width, int(width))) for width in genome.hidden_layers[:max_layers]]
+            if not layers:
+                layers = [min(max_width, 96)]
+            return genome.model_copy(
+                update={
+                    "hidden_layers": layers,
+                    "num_experts": min(4, int(genome.num_experts)),
+                    "moe_top_k": min(2, int(genome.moe_top_k)),
+                    "activation_sparsity": min(0.5, float(genome.activation_sparsity)),
+                }
+            )
         return genome
 
     max_width = 128 if genome.family == "conv2d" else 96

@@ -94,6 +94,7 @@ def build_dashboard_payload(
             "projects_only": build_scope_run_summaries(all_rows, systems=PROJECT_SYSTEMS),
         },
         "evidence_explorer": _build_evidence_explorer(runs),
+        "runtime_performance": _build_runtime_performance(runs),
         "transfer": transfer,
         "campaign_state": campaign_state_payload,
     }
@@ -153,6 +154,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
         _stat_card("Runs Loaded", str(summary_count)),
         "</section>",
         _evidence_explorer_panel(payload.get("evidence_explorer") or {}),
+        _runtime_performance_panel(payload.get("runtime_performance") or {}),
         "<section class='panel'>",
         "<h2>Campaign State</h2>",
         "<p>Workspace state is the live orchestration surface. It stays meaningful before summary JSON exists, so interrupted or in-flight cases can be resumed without guessing from partial artifacts.</p>",
@@ -526,6 +528,9 @@ def _build_evidence_explorer(runs: list[dict[str, Any]]) -> dict[str, Any]:
             for row in benchmark_rows:
                 system = str(row.get("system") or "unknown")
                 fairness = dict(row.get("fairness_metadata") or {})
+                run_wall_clock = _optional_float(row.get("wall_clock_seconds"))
+                evaluation_count = _optional_float(row.get("evaluation_count"))
+                benchmark_wall_clock = None if run_wall_clock is None else run_wall_clock / max(1, len(grouped))
                 graph_rows.append(
                     {
                         "case_index": case_index,
@@ -544,6 +549,12 @@ def _build_evidence_explorer(runs: list[dict[str, Any]]) -> dict[str, Any]:
                         "status": str(row.get("outcome_status") or "unknown"),
                         "metric": _optional_float(row.get("metric_value")),
                         "score": scores.get(system),
+                        "run_wall_clock_seconds": run_wall_clock,
+                        "benchmark_wall_clock_seconds": benchmark_wall_clock,
+                        "train_seconds": _optional_float(row.get("train_seconds")),
+                        "evals_per_second": _safe_div(evaluation_count, run_wall_clock),
+                        "seconds_per_successful_candidate": _safe_div(run_wall_clock, evaluation_count),
+                        "quality_per_second": _safe_div(scores.get(system), benchmark_wall_clock),
                         "architecture": str(row.get("architecture_summary") or ""),
                         "is_lm": row.get("task_kind") == "language_modeling",
                         "floor_status": floor.get("floor_status"),
@@ -639,6 +650,232 @@ def _budget_performance_overview(cases: list[dict[str, Any]]) -> list[dict[str, 
             }
         )
     return overview
+
+
+def _build_runtime_performance(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate runtime cost beside quality scores without double-counting benchmark rows."""
+
+    system_totals: dict[str, dict[str, Any]] = {
+        system: {
+            "system": system,
+            "run_count": 0,
+            "wall_clock_seconds": 0.0,
+            "evaluation_count": 0,
+            "benchmark_rows": 0,
+            "successful_benchmark_rows": 0,
+            "score": 0.0,
+            "floor_score": 0.0,
+            "train_seconds": 0.0,
+        }
+        for system in ALL_SYSTEMS
+    }
+    family_totals: dict[tuple[str, str], dict[str, Any]] = {}
+    case_rows: list[dict[str, Any]] = []
+    for run in runs:
+        all_scope_rows = {row["system"]: row for row in (run.get("all_scope") or {}).get("rows") or []}
+        floor_by_benchmark = {
+            str(row.get("benchmark_id")): row
+            for row in ((run.get("contender_floor") or {}).get("benchmarks") or [])
+            if row.get("benchmark_id")
+        }
+        rows_by_system: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in run.get("trend_rows") or []:
+            system = str(row.get("system") or "")
+            if system in ALL_SYSTEMS:
+                rows_by_system[system].append(row)
+
+        for system, rows in rows_by_system.items():
+            wall_clock = _first_float(rows, "wall_clock_seconds")
+            evaluation_count = _first_int(rows, "evaluation_count")
+            ok_rows = [row for row in rows if row.get("outcome_status") == "ok"]
+            train_seconds = sum(float(row.get("train_seconds") or 0.0) for row in rows)
+            score_row = all_scope_rows.get(system) or {}
+            score = float(score_row.get("solo_wins") or 0.0) + 0.5 * float(score_row.get("shared_wins") or 0.0)
+            floor_score = _system_floor_score(rows, floor_by_benchmark)
+
+            total = system_totals[system]
+            total["run_count"] += 1
+            total["wall_clock_seconds"] += wall_clock or 0.0
+            total["evaluation_count"] += evaluation_count or 0
+            total["benchmark_rows"] += len(rows)
+            total["successful_benchmark_rows"] += len(ok_rows)
+            total["score"] += score
+            total["floor_score"] += floor_score
+            total["train_seconds"] += train_seconds
+
+            case_rows.append(
+                _runtime_case_row(
+                    run=run,
+                    system=system,
+                    wall_clock=wall_clock,
+                    evaluation_count=evaluation_count,
+                    score=score,
+                    floor_score=floor_score,
+                    successful_benchmark_rows=len(ok_rows),
+                    train_seconds=train_seconds,
+                )
+            )
+
+            benchmark_count = max(1, len({str(row.get("benchmark_id") or "unknown") for row in rows}))
+            allocated_wall_per_row = None if wall_clock is None else wall_clock / benchmark_count
+            for row in rows:
+                family = str(row.get("benchmark_family") or "unknown")
+                key = (system, family)
+                family_total = family_totals.setdefault(
+                    key,
+                    {
+                        "system": system,
+                        "family": family,
+                        "benchmark_rows": 0,
+                        "successful_benchmark_rows": 0,
+                        "allocated_wall_clock_seconds": 0.0,
+                        "train_seconds": 0.0,
+                        "score_sum": 0.0,
+                        "score_count": 0,
+                    },
+                )
+                family_total["benchmark_rows"] += 1
+                if row.get("outcome_status") == "ok":
+                    family_total["successful_benchmark_rows"] += 1
+                if allocated_wall_per_row is not None:
+                    family_total["allocated_wall_clock_seconds"] += allocated_wall_per_row
+                family_total["train_seconds"] += float(row.get("train_seconds") or 0.0)
+                normalized_score = _optional_float(row.get("score"))
+                if normalized_score is not None:
+                    family_total["score_sum"] += normalized_score
+                    family_total["score_count"] += 1
+
+    systems = [_runtime_total_row(total) for total in system_totals.values() if total["run_count"]]
+    systems.sort(key=lambda row: (-float(row.get("quality_per_second") or 0.0), row["system"]))
+    families = [_runtime_family_row(total) for total in family_totals.values()]
+    families.sort(key=lambda row: (row["system"], row["family"]))
+    case_rows.sort(key=lambda row: (row["budget"], row["seed"], row["system"]))
+    return {"systems": systems, "families": families, "cases": case_rows}
+
+
+def _runtime_case_row(
+    *,
+    run: dict[str, Any],
+    system: str,
+    wall_clock: float | None,
+    evaluation_count: int | None,
+    score: float,
+    floor_score: float,
+    successful_benchmark_rows: int,
+    train_seconds: float,
+) -> dict[str, Any]:
+    return {
+        "pack_name": run["pack_name"],
+        "budget": int(run["budget"]),
+        "seed": int(run["seed"]),
+        "system": system,
+        "wall_clock_seconds": wall_clock,
+        "evaluation_count": evaluation_count,
+        "evals_per_second": _safe_div(evaluation_count, wall_clock),
+        "seconds_per_successful_candidate": _safe_div(wall_clock, evaluation_count),
+        "successful_benchmark_rows": successful_benchmark_rows,
+        "score": round(score, 6),
+        "floor_score": round(floor_score, 6),
+        "quality_per_second": _safe_div(score, wall_clock),
+        "floor_score_per_second": _safe_div(floor_score, wall_clock),
+        "train_seconds": train_seconds,
+    }
+
+
+def _runtime_total_row(total: dict[str, Any]) -> dict[str, Any]:
+    wall_clock = float(total["wall_clock_seconds"])
+    evaluation_count = int(total["evaluation_count"])
+    score = float(total["score"])
+    floor_score = float(total["floor_score"])
+    run_count = int(total["run_count"])
+    return {
+        "system": total["system"],
+        "run_count": run_count,
+        "wall_clock_seconds_total": wall_clock,
+        "wall_clock_seconds_mean": _safe_div(wall_clock, run_count),
+        "evaluation_count": evaluation_count,
+        "evals_per_second": _safe_div(evaluation_count, wall_clock),
+        "seconds_per_successful_candidate": _safe_div(wall_clock, evaluation_count),
+        "score_total": round(score, 6),
+        "floor_score_total": round(floor_score, 6),
+        "quality_per_second": _safe_div(score, wall_clock),
+        "floor_score_per_second": _safe_div(floor_score, wall_clock),
+        "benchmark_rows": int(total["benchmark_rows"]),
+        "successful_benchmark_rows": int(total["successful_benchmark_rows"]),
+        "train_seconds_total": float(total["train_seconds"]),
+    }
+
+
+def _runtime_family_row(total: dict[str, Any]) -> dict[str, Any]:
+    wall_clock = float(total["allocated_wall_clock_seconds"])
+    success = int(total["successful_benchmark_rows"])
+    score_count = int(total["score_count"])
+    return {
+        "system": total["system"],
+        "family": total["family"],
+        "benchmark_rows": int(total["benchmark_rows"]),
+        "successful_benchmark_rows": success,
+        "allocated_wall_clock_seconds": wall_clock,
+        "mean_normalized_score": _safe_div(float(total["score_sum"]), score_count),
+        "successful_rows_per_second": _safe_div(success, wall_clock),
+        "train_seconds_total": float(total["train_seconds"]),
+    }
+
+
+def _system_floor_score(rows: list[dict[str, Any]], floor_by_benchmark: dict[str, dict[str, Any]]) -> float:
+    score = 0.0
+    for row in rows:
+        if row.get("system") == "contenders" or row.get("outcome_status") != "ok":
+            continue
+        floor = floor_by_benchmark.get(str(row.get("benchmark_id") or ""))
+        if not floor or floor.get("best_required_contender_metric") is None or row.get("metric_value") is None:
+            continue
+        metric_value = float(row["metric_value"])
+        floor_value = float(floor["best_required_contender_metric"])
+        direction = str(row.get("metric_direction") or floor.get("metric_direction") or "max")
+        tolerance = 1e-12 * max(abs(metric_value), abs(floor_value), 1.0)
+        if direction == "min":
+            if metric_value < floor_value - tolerance:
+                score += 1.0
+            elif abs(metric_value - floor_value) <= tolerance:
+                score += 0.5
+        elif metric_value > floor_value + tolerance:
+            score += 1.0
+        elif abs(metric_value - floor_value) <= tolerance:
+            score += 0.5
+    return score
+
+
+def _first_float(rows: list[dict[str, Any]], key: str) -> float | None:
+    for row in rows:
+        value = _optional_float(row.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _first_int(rows: list[dict[str, Any]], key: str) -> int | None:
+    for row in rows:
+        value = row.get(key)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _safe_div(numerator: Any, denominator: Any) -> float | None:
+    if numerator is None or denominator in (None, 0):
+        return None
+    try:
+        denominator_float = float(denominator)
+        if denominator_float == 0.0:
+            return None
+        return float(numerator) / denominator_float
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
 
 
 def _metric_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1026,6 +1263,109 @@ def _recent_full_runs_overview(explorer: dict[str, Any]) -> str:
     return "\n".join(budget_lines + recent_lines)
 
 
+def _runtime_performance_panel(performance: dict[str, Any]) -> str:
+    systems = list(performance.get("systems") or [])
+    families = list(performance.get("families") or [])
+    cases = list(performance.get("cases") or [])
+    if not systems:
+        return (
+            "<section class='panel'>"
+            "<h2>Runtime Performance</h2>"
+            "<p>No runtime telemetry found in the loaded fair-matrix summaries.</p>"
+            "</section>"
+        )
+    return "\n".join(
+        [
+            "<section class='panel'>",
+            "<h2>Runtime Performance</h2>",
+            "<p>Runtime is aggregated per engine/run without double-counting benchmark rows. "
+            "Quality per second is score credit divided by wall-clock seconds; floor score per second uses the required contender floor where available.</p>",
+            _runtime_system_table(systems),
+            "<h3>Benchmark-Family Runtime Breakdown</h3>",
+            _runtime_family_table(families),
+            "<h3>Run-Level Runtime Detail</h3>",
+            _runtime_case_table(cases[:80]),
+            "</section>",
+        ]
+    )
+
+
+def _runtime_system_table(rows: list[dict[str, Any]]) -> str:
+    lines = [
+        "<table class='compact-table'>",
+        "<thead><tr><th>System</th><th>Runs</th><th>Total Wall</th><th>Mean Wall</th><th>Evals/sec</th><th>Sec/eval</th><th>Score/sec</th><th>Floor/sec</th><th>Train Seconds</th></tr></thead>",
+        "<tbody>",
+    ]
+    for row in rows:
+        lines.append(
+            "<tr>"
+            f"<td>{html.escape(_titleize(str(row['system'])))}</td>"
+            f"<td>{int(row['run_count'])}</td>"
+            f"<td>{_optional_float_cell(row.get('wall_clock_seconds_total'))}</td>"
+            f"<td>{_optional_float_cell(row.get('wall_clock_seconds_mean'))}</td>"
+            f"<td>{_optional_float_cell(row.get('evals_per_second'))}</td>"
+            f"<td>{_optional_float_cell(row.get('seconds_per_successful_candidate'))}</td>"
+            f"<td>{_optional_float_cell(row.get('quality_per_second'))}</td>"
+            f"<td>{_optional_float_cell(row.get('floor_score_per_second'))}</td>"
+            f"<td>{_optional_float_cell(row.get('train_seconds_total'))}</td>"
+            "</tr>"
+        )
+    lines.extend(["</tbody>", "</table>"])
+    return "\n".join(lines)
+
+
+def _runtime_family_table(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "<p>No benchmark-family runtime rows.</p>"
+    lines = [
+        "<table class='compact-table'>",
+        "<thead><tr><th>System</th><th>Family</th><th>Rows</th><th>OK Rows</th><th>Allocated Wall</th><th>OK/sec</th><th>Train Seconds</th></tr></thead>",
+        "<tbody>",
+    ]
+    for row in rows:
+        lines.append(
+            "<tr>"
+            f"<td>{html.escape(_titleize(str(row['system'])))}</td>"
+            f"<td>{html.escape(str(row['family']))}</td>"
+            f"<td>{int(row['benchmark_rows'])}</td>"
+            f"<td>{int(row['successful_benchmark_rows'])}</td>"
+            f"<td>{_optional_float_cell(row.get('allocated_wall_clock_seconds'))}</td>"
+            f"<td>{_optional_float_cell(row.get('successful_rows_per_second'))}</td>"
+            f"<td>{_optional_float_cell(row.get('train_seconds_total'))}</td>"
+            "</tr>"
+        )
+    lines.extend(["</tbody>", "</table>"])
+    return "\n".join(lines)
+
+
+def _runtime_case_table(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "<p>No run-level runtime rows.</p>"
+    lines = [
+        "<table class='compact-table'>",
+        "<thead><tr><th>Pack</th><th>Budget</th><th>Seed</th><th>System</th><th>Wall</th><th>Evals/sec</th><th>Sec/eval</th><th>Score</th><th>Score/sec</th><th>Floor Score</th><th>Floor/sec</th></tr></thead>",
+        "<tbody>",
+    ]
+    for row in rows:
+        lines.append(
+            "<tr>"
+            f"<td><code>{html.escape(str(row['pack_name']))}</code></td>"
+            f"<td>{int(row['budget'])}</td>"
+            f"<td>{int(row['seed'])}</td>"
+            f"<td>{html.escape(_titleize(str(row['system'])))}</td>"
+            f"<td>{_optional_float_cell(row.get('wall_clock_seconds'))}</td>"
+            f"<td>{_optional_float_cell(row.get('evals_per_second'))}</td>"
+            f"<td>{_optional_float_cell(row.get('seconds_per_successful_candidate'))}</td>"
+            f"<td>{_optional_float_cell(row.get('score'))}</td>"
+            f"<td>{_optional_float_cell(row.get('quality_per_second'))}</td>"
+            f"<td>{_optional_float_cell(row.get('floor_score'))}</td>"
+            f"<td>{_optional_float_cell(row.get('floor_score_per_second'))}</td>"
+            "</tr>"
+        )
+    lines.extend(["</tbody>", "</table>"])
+    return "\n".join(lines)
+
+
 def _score_td(value: Any) -> str:
     return f"<td>{_optional_float_cell(value)}</td>"
 
@@ -1173,8 +1513,8 @@ def _evidence_explorer_script() -> str:
     const floorBlocked = selected.filter((row) => ['missing', 'failed'].includes(row.floor_status)).length;
     summary.innerHTML = `<strong>${selected.length}</strong> cells<br><span>${xValues.length} budgets/cases · ${lmCount} LM · ${floorBlocked} floor issues</span>`;
     const recent = selected.slice(0, 240);
-    detail.innerHTML = `<table class="evidence-table"><thead><tr><th>Tier</th><th>Budget</th><th>Benchmark</th><th>System</th><th>Metric</th><th>Score</th><th>Winner</th><th>Floor</th></tr></thead><tbody>` +
-      recent.map((row) => `<tr><td>${row.tier}</td><td>${row.budget}</td><td><code>${row.benchmark}</code></td><td>${labels[row.system] || row.system}</td><td>${row.metric === null ? '---' : Number(row.metric).toFixed(5)}</td><td>${row.score === null ? '---' : Number(row.score).toFixed(3)}</td><td>${row.winner}</td><td>${row.floor_status || '---'}</td></tr>`).join('') +
+    detail.innerHTML = `<table class="evidence-table"><thead><tr><th>Tier</th><th>Budget</th><th>Benchmark</th><th>System</th><th>Metric</th><th>Score</th><th>Wall/benchmark</th><th>Train sec</th><th>Score/sec</th><th>Winner</th><th>Floor</th></tr></thead><tbody>` +
+      recent.map((row) => `<tr><td>${row.tier}</td><td>${row.budget}</td><td><code>${row.benchmark}</code></td><td>${labels[row.system] || row.system}</td><td>${row.metric == null ? '---' : Number(row.metric).toFixed(5)}</td><td>${row.score == null ? '---' : Number(row.score).toFixed(3)}</td><td>${row.benchmark_wall_clock_seconds == null ? '---' : Number(row.benchmark_wall_clock_seconds).toFixed(3)}</td><td>${row.train_seconds == null ? '---' : Number(row.train_seconds).toFixed(3)}</td><td>${row.quality_per_second == null ? '---' : Number(row.quality_per_second).toFixed(5)}</td><td>${row.winner}</td><td>${row.floor_status || '---'}</td></tr>`).join('') +
       `</tbody></table>`;
   }
   ['ev-tier', 'ev-benchmark', 'ev-task', 'ev-mode', 'ev-budget-mode'].forEach((id) => byId(id).addEventListener('change', renderChart));

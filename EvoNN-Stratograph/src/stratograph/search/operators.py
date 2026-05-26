@@ -62,6 +62,23 @@ TASK_MOTIFS: dict[str, tuple[tuple[tuple[PrimitiveKind, ActivationKind], ...], .
             (PrimitiveKind.LINEAR, ActivationKind.IDENTITY),
         ),
     ),
+    "image": (
+        (
+            (PrimitiveKind.NORM, ActivationKind.RELU),
+            (PrimitiveKind.MIX, ActivationKind.RELU),
+            (PrimitiveKind.RESIDUAL, ActivationKind.GELU),
+        ),
+        (
+            (PrimitiveKind.GATE, ActivationKind.RELU),
+            (PrimitiveKind.MIX, ActivationKind.GELU),
+            (PrimitiveKind.LINEAR, ActivationKind.IDENTITY),
+        ),
+        (
+            (PrimitiveKind.NORM, ActivationKind.IDENTITY),
+            (PrimitiveKind.RESIDUAL, ActivationKind.RELU),
+            (PrimitiveKind.MIX, ActivationKind.RELU),
+        ),
+    ),
     "language_modeling": (
         (
             (PrimitiveKind.GATE, ActivationKind.IDENTITY),
@@ -92,6 +109,7 @@ def mutate_genome(
     candidate_id: str,
     allow_clone_mutation: bool = True,
     motif_bias: bool = True,
+    motif_task: str | None = None,
     preferred_modes: tuple[str, ...] | None = None,
 ) -> HierarchicalGenome:
     """Return mutated copy of a hierarchical genome."""
@@ -119,7 +137,7 @@ def mutate_genome(
         cell = cell_library[cell_id]
         target_node = rng.choice(cell.nodes)
         new_activation = (
-            rng.choice([activation for _, activation in _task_motif(genome.task, rng)])
+            rng.choice([activation for _, activation in _task_motif(motif_task or genome.task, rng)])
             if motif_bias
             else rng.choice(list(ActivationKind))
         )
@@ -137,7 +155,7 @@ def mutate_genome(
         new_cell_id = f"{target.cell_id}_clone_{rng.randint(0, 9999)}"
         new_nodes = old_cell.nodes[:]
         if motif_bias:
-            new_nodes = _apply_motif(old_cell.nodes, _task_motif(genome.task, rng))
+            new_nodes = _apply_motif(old_cell.nodes, _task_motif(motif_task or genome.task, rng))
         elif new_nodes:
             chosen = rng.randrange(len(new_nodes))
             new_nodes[chosen] = new_nodes[chosen].model_copy(
@@ -183,7 +201,7 @@ def mutate_genome(
             new_cell_id = f"{target.cell_id}_spec_{rng.randint(0, 9999)}"
             nodes = old_cell.nodes[:]
             if motif_bias:
-                motif = _task_motif(genome.task, rng)
+                motif = _task_motif(motif_task or genome.task, rng)
                 nodes = _apply_motif(old_cell.nodes, motif)
             else:
                 new_kind = rng.choice(list(PrimitiveKind))
@@ -200,7 +218,7 @@ def mutate_genome(
     elif mode == "motif_rewrite":
         cell_id = rng.choice(list(cell_library))
         cell = cell_library[cell_id]
-        motif = _task_motif(genome.task, rng)
+        motif = _task_motif(motif_task or genome.task, rng)
         cell_library[cell_id] = cell.model_copy(update={"nodes": _apply_motif(cell.nodes, motif)})
 
     elif mode == "add_skip_edge":
@@ -246,6 +264,7 @@ def crossover_genomes(
     candidate_id: str,
     allow_clone_mutation: bool = True,
     motif_bias: bool = True,
+    motif_task: str | None = None,
     preferred_mutation_modes: tuple[str, ...] | None = None,
 ) -> HierarchicalGenome:
     """Combine two parent genomes into one child."""
@@ -300,6 +319,7 @@ def crossover_genomes(
         candidate_id=candidate_id,
         allow_clone_mutation=allow_clone_mutation,
         motif_bias=motif_bias,
+        motif_task=motif_task,
         preferred_modes=preferred_mutation_modes,
     )
 

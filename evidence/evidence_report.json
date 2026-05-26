@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-05-21T17:05:50.063282+00:00",
+  "generated_at": "2026-05-26T11:37:15.768899+00:00",
   "registry": "/Users/timokruth/Projekte/Evo Neural Nets/evidence",
-  "record_count": 42,
-  "summary_count": 42,
+  "record_count": 62,
+  "summary_count": 62,
   "min_seeds": 2,
   "groups": [
     {
@@ -1368,6 +1368,649 @@
       ],
       "pairwise": [],
       "last_promoted_at": "2026-05-20T18:42:01.941482+00:00"
+    },
+    {
+      "label": "tier-c-runtime-diagnostic-engine-only",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+      "budget": 154,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "contract-fair"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 1.833333,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "not_applicable"
+        ]
+      },
+      "effect_strength": "medium",
+      "leader": "prism",
+      "system_rows": [
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.3333333333333335,
+          "score_range": 1.0
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 8.333333333333334,
+          "score_range": 1.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 5.0,
+          "score_range": 3.0
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 6.5,
+          "score_range": 2.0
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-26T11:37:11.297540+00:00"
+    },
+    {
+      "label": "tier-c-runtime-diagnostic-engine-only",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+      "budget": 264,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "contract-fair"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 1.833333,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "not_applicable"
+        ]
+      },
+      "effect_strength": "medium",
+      "leader": "prism",
+      "system_rows": [
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 3.5,
+          "score_range": 3.0
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 8.166666666666666,
+          "score_range": 2.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 4.666666666666667,
+          "score_range": 5.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 6.333333333333333,
+          "score_range": 6.5
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-26T11:37:11.297540+00:00"
+    },
+    {
+      "label": "tier-c-runtime-diagnostic-engine-only",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+      "budget": 374,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "contract-fair"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 3.0,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "not_applicable"
+        ]
+      },
+      "effect_strength": "medium",
+      "leader": "prism",
+      "system_rows": [
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.8333333333333335,
+          "score_range": 2.0
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 9.166666666666666,
+          "score_range": 2.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 4.333333333333333,
+          "score_range": 1.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 6.166666666666667,
+          "score_range": 1.5
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-26T11:37:11.297540+00:00"
+    },
+    {
+      "label": "tier-c-runtime-diagnostic-engine-only",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval484",
+      "budget": 484,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "contract-fair"
+      ],
+      "decision_label": "no_material_change",
+      "decision_margin": 0.166667,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "not_applicable"
+        ]
+      },
+      "effect_strength": "none_or_tie",
+      "leader": "prism",
+      "system_rows": [
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.5,
+          "score_range": 2.0
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 7.333333333333333,
+          "score_range": 3.0
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 5.5,
+          "score_range": 2.0
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 7.166666666666667,
+          "score_range": 1.5
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-26T11:37:11.297540+00:00"
+    },
+    {
+      "label": "tier-c-runtime-diagnostic-with-contenders-partial",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+      "budget": 154,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "trusted-extended"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 14.833333,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "passed"
+        ]
+      },
+      "effect_strength": "large",
+      "leader": "contenders",
+      "system_rows": [
+        {
+          "system": "contenders",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 17.0,
+          "score_range": 2.5
+        },
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.8333333333333333,
+          "score_range": 1.5
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 2.1666666666666665,
+          "score_range": 0.5
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.6666666666666666,
+          "score_range": 0.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.8333333333333334,
+          "score_range": 0.5
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-26T11:37:14.205060+00:00"
+    },
+    {
+      "label": "tier-c-runtime-diagnostic-with-contenders-partial",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+      "budget": 264,
+      "seed_count": 3,
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "record_count": 3,
+      "lane_states": [
+        "trusted-extended"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 13.166667,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "passed"
+        ]
+      },
+      "effect_strength": "large",
+      "leader": "contenders",
+      "system_rows": [
+        {
+          "system": "contenders",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 16.166666666666668,
+          "score_range": 2.5
+        },
+        {
+          "system": "primordia",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.5,
+          "score_range": 1.0
+        },
+        {
+          "system": "prism",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 3.0,
+          "score_range": 3.0
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 1.6666666666666667,
+          "score_range": 1.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 3,
+          "seeds": [
+            42,
+            43,
+            44
+          ],
+          "mean_score": 0.16666666666666666,
+          "score_range": 0.5
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-26T11:37:14.205060+00:00"
+    },
+    {
+      "label": "tier-c-runtime-diagnostic-with-contenders-partial",
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+      "budget": 374,
+      "seed_count": 2,
+      "seeds": [
+        42,
+        43
+      ],
+      "record_count": 2,
+      "lane_states": [
+        "trusted-extended"
+      ],
+      "decision_label": "gain",
+      "decision_margin": 13.0,
+      "decision_blockers": [],
+      "runtime_consistency": {
+        "stable": true,
+        "backend_sets": [
+          [
+            "unknown"
+          ]
+        ],
+        "hardware_sets": [
+          [
+            "unknown"
+          ]
+        ]
+      },
+      "contender_floor_state": {
+        "status": "passed",
+        "blocked_count": 0,
+        "lane_floor_statuses": [
+          "passed"
+        ]
+      },
+      "effect_strength": "large",
+      "leader": "contenders",
+      "system_rows": [
+        {
+          "system": "contenders",
+          "seed_count": 2,
+          "seeds": [
+            42,
+            43
+          ],
+          "mean_score": 16.0,
+          "score_range": 0.0
+        },
+        {
+          "system": "primordia",
+          "seed_count": 2,
+          "seeds": [
+            42,
+            43
+          ],
+          "mean_score": 1.5,
+          "score_range": 1.0
+        },
+        {
+          "system": "prism",
+          "seed_count": 2,
+          "seeds": [
+            42,
+            43
+          ],
+          "mean_score": 3.0,
+          "score_range": 2.0
+        },
+        {
+          "system": "stratograph",
+          "seed_count": 2,
+          "seeds": [
+            42,
+            43
+          ],
+          "mean_score": 1.25,
+          "score_range": 0.5
+        },
+        {
+          "system": "topograph",
+          "seed_count": 2,
+          "seeds": [
+            42,
+            43
+          ],
+          "mean_score": 0.5,
+          "score_range": 1.0
+        }
+      ],
+      "pairwise": [],
+      "last_promoted_at": "2026-05-26T11:37:14.205060+00:00"
     }
   ],
   "before_after_comparisons": [
@@ -1420,6 +2063,50 @@
       "decision_label": "likely_gain"
     },
     {
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+      "budget": 154,
+      "before_label": "tier-c-floor-gap-large-slice",
+      "after_label": "tier-c-runtime-diagnostic-engine-only",
+      "common_systems": [
+        "primordia",
+        "prism",
+        "stratograph",
+        "topograph"
+      ],
+      "system_score_deltas": {
+        "primordia": 0.666667,
+        "prism": 6.0,
+        "stratograph": 4.333333,
+        "topograph": 6.0
+      },
+      "aggregate_score_delta": 4.25,
+      "best_system_score_delta": 6.0,
+      "worst_system_score_delta": 0.666667,
+      "decision_label": "likely_gain"
+    },
+    {
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+      "budget": 154,
+      "before_label": "tier-c-runtime-diagnostic-engine-only",
+      "after_label": "tier-c-runtime-diagnostic-with-contenders-partial",
+      "common_systems": [
+        "primordia",
+        "prism",
+        "stratograph",
+        "topograph"
+      ],
+      "system_score_deltas": {
+        "primordia": -0.5,
+        "prism": -6.166667,
+        "stratograph": -4.333333,
+        "topograph": -5.666667
+      },
+      "aggregate_score_delta": -4.166667,
+      "best_system_score_delta": -0.5,
+      "worst_system_score_delta": -6.166667,
+      "decision_label": "regression"
+    },
+    {
       "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
       "budget": 264,
       "before_label": "tier-c-full-midbudget-3seed",
@@ -1466,6 +2153,50 @@
       "best_system_score_delta": 0.833333,
       "worst_system_score_delta": -0.666667,
       "decision_label": "likely_gain"
+    },
+    {
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+      "budget": 264,
+      "before_label": "tier-c-floor-gap-large-slice",
+      "after_label": "tier-c-runtime-diagnostic-engine-only",
+      "common_systems": [
+        "primordia",
+        "prism",
+        "stratograph",
+        "topograph"
+      ],
+      "system_score_deltas": {
+        "primordia": 1.666667,
+        "prism": 5.166667,
+        "stratograph": 2.833333,
+        "topograph": 5.833333
+      },
+      "aggregate_score_delta": 3.875,
+      "best_system_score_delta": 5.833333,
+      "worst_system_score_delta": 1.666667,
+      "decision_label": "likely_gain"
+    },
+    {
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+      "budget": 264,
+      "before_label": "tier-c-runtime-diagnostic-engine-only",
+      "after_label": "tier-c-runtime-diagnostic-with-contenders-partial",
+      "common_systems": [
+        "primordia",
+        "prism",
+        "stratograph",
+        "topograph"
+      ],
+      "system_score_deltas": {
+        "primordia": -2.0,
+        "prism": -5.166667,
+        "stratograph": -3.0,
+        "topograph": -6.166667
+      },
+      "aggregate_score_delta": -4.083334,
+      "best_system_score_delta": -2.0,
+      "worst_system_score_delta": -6.166667,
+      "decision_label": "regression"
     },
     {
       "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
@@ -1516,6 +2247,50 @@
       "decision_label": "likely_gain"
     },
     {
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+      "budget": 374,
+      "before_label": "tier-c-floor-gap-large-slice",
+      "after_label": "tier-c-runtime-diagnostic-engine-only",
+      "common_systems": [
+        "primordia",
+        "prism",
+        "stratograph",
+        "topograph"
+      ],
+      "system_score_deltas": {
+        "primordia": 1.333333,
+        "prism": 6.166667,
+        "stratograph": 3.5,
+        "topograph": 5.0
+      },
+      "aggregate_score_delta": 4.0,
+      "best_system_score_delta": 6.166667,
+      "worst_system_score_delta": 1.333333,
+      "decision_label": "likely_gain"
+    },
+    {
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+      "budget": 374,
+      "before_label": "tier-c-runtime-diagnostic-engine-only",
+      "after_label": "tier-c-runtime-diagnostic-with-contenders-partial",
+      "common_systems": [
+        "primordia",
+        "prism",
+        "stratograph",
+        "topograph"
+      ],
+      "system_score_deltas": {
+        "primordia": -1.333333,
+        "prism": -6.166667,
+        "stratograph": -3.083333,
+        "topograph": -5.666667
+      },
+      "aggregate_score_delta": -4.0625,
+      "best_system_score_delta": -1.333333,
+      "worst_system_score_delta": -6.166667,
+      "decision_label": "regression"
+    },
+    {
       "pack_name": "tier_c_architecture_sensitive_cumulative_eval484",
       "budget": 484,
       "before_label": "tier-c-full-midbudget-3seed",
@@ -1562,14 +2337,36 @@
       "best_system_score_delta": 1.333333,
       "worst_system_score_delta": -2.333333,
       "decision_label": "likely_gain"
+    },
+    {
+      "pack_name": "tier_c_architecture_sensitive_cumulative_eval484",
+      "budget": 484,
+      "before_label": "tier-c-floor-gap-large-slice",
+      "after_label": "tier-c-runtime-diagnostic-engine-only",
+      "common_systems": [
+        "primordia",
+        "prism",
+        "stratograph",
+        "topograph"
+      ],
+      "system_score_deltas": {
+        "primordia": 1.5,
+        "prism": 4.0,
+        "stratograph": 3.166667,
+        "topograph": 5.833333
+      },
+      "aggregate_score_delta": 3.625,
+      "best_system_score_delta": 5.833333,
+      "worst_system_score_delta": 1.5,
+      "decision_label": "likely_gain"
     }
   ],
   "engine_roles": [
     {
       "system": "prism",
       "role": "leader_candidate",
-      "leader_group_count": 1,
-      "top_two_group_count": 14,
+      "leader_group_count": 5,
+      "top_two_group_count": 21,
       "family_leads": [
         "synthetic"
       ]
@@ -1578,7 +2375,7 @@
       "system": "topograph",
       "role": "leader_candidate",
       "leader_group_count": 1,
-      "top_two_group_count": 1,
+      "top_two_group_count": 5,
       "family_leads": []
     },
     {
@@ -1598,8 +2395,8 @@
     {
       "system": "contenders",
       "role": "leader_candidate",
-      "leader_group_count": 12,
-      "top_two_group_count": 12,
+      "leader_group_count": 15,
+      "top_two_group_count": 15,
       "family_leads": [
         "image-classification",
         "synthetic-regression",
@@ -1609,6 +2406,416 @@
     }
   ],
   "lm_flatline_diagnostics": [],
+  "runtime_performance": {
+    "groups": [
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval132",
+        "budget": 132,
+        "system": "primordia",
+        "run_count": 3,
+        "wall_clock_seconds": 234.04187312512659,
+        "evaluation_count": 396,
+        "evals_per_second": 1.6920049165231437,
+        "seconds_per_evaluation": 0.5910148311240571,
+        "score": 66.0,
+        "score_per_second": 0.28200081942052396,
+        "train_seconds": 0.0
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval132",
+        "budget": 132,
+        "system": "prism",
+        "run_count": 3,
+        "wall_clock_seconds": 400.1149401664734,
+        "evaluation_count": 396,
+        "evals_per_second": 0.9897156048090548,
+        "seconds_per_evaluation": 1.01039126304665,
+        "score": 66.0,
+        "score_per_second": 0.16495260080150914,
+        "train_seconds": 0.0
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval132",
+        "budget": 132,
+        "system": "stratograph",
+        "run_count": 3,
+        "wall_clock_seconds": 328.31016212608665,
+        "evaluation_count": 396,
+        "evals_per_second": 1.2061764930928858,
+        "seconds_per_evaluation": 0.8290660659749663,
+        "score": 66.0,
+        "score_per_second": 0.20102941551548098,
+        "train_seconds": 0.0
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval132",
+        "budget": 132,
+        "system": "topograph",
+        "run_count": 3,
+        "wall_clock_seconds": 1081.24,
+        "evaluation_count": 396,
+        "evals_per_second": 0.3662461618142133,
+        "seconds_per_evaluation": 2.7304040404040406,
+        "score": 66.0,
+        "score_per_second": 0.06104102696903555,
+        "train_seconds": 0.0
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+        "budget": 154,
+        "system": "contenders",
+        "run_count": 3,
+        "wall_clock_seconds": 136.96078779222444,
+        "evaluation_count": 462,
+        "evals_per_second": 3.3732282607842063,
+        "seconds_per_evaluation": 0.2964519216281914,
+        "score": 33.0,
+        "score_per_second": 0.24094487577030047,
+        "train_seconds": 65.87254900301195
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+        "budget": 154,
+        "system": "primordia",
+        "run_count": 6,
+        "wall_clock_seconds": 818.4815997078531,
+        "evaluation_count": 924,
+        "evals_per_second": 1.1289196975592493,
+        "seconds_per_evaluation": 0.8858025970864211,
+        "score": 124.0,
+        "score_per_second": 0.15150004599279968,
+        "train_seconds": 120.95662791799441
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+        "budget": 154,
+        "system": "prism",
+        "run_count": 6,
+        "wall_clock_seconds": 701.8151862621307,
+        "evaluation_count": 924,
+        "evals_per_second": 1.316585930437365,
+        "seconds_per_evaluation": 0.7595402448724359,
+        "score": 123.5,
+        "score_per_second": 0.17597225368940972,
+        "train_seconds": 135.648399033018
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+        "budget": 154,
+        "system": "stratograph",
+        "run_count": 6,
+        "wall_clock_seconds": 835.2648347931336,
+        "evaluation_count": 924,
+        "evals_per_second": 1.1062359643439834,
+        "seconds_per_evaluation": 0.9039662714211402,
+        "score": 118.5,
+        "score_per_second": 0.14187117075190694,
+        "train_seconds": 131.84631858001194
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval154",
+        "budget": 154,
+        "system": "topograph",
+        "run_count": 6,
+        "wall_clock_seconds": 495.36,
+        "evaluation_count": 924,
+        "evals_per_second": 1.8653100775193798,
+        "seconds_per_evaluation": 0.5361038961038961,
+        "score": 128.5,
+        "score_per_second": 0.25940729974160204,
+        "train_seconds": 88.11206954500085
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+        "budget": 264,
+        "system": "contenders",
+        "run_count": 3,
+        "wall_clock_seconds": 132.36793524888344,
+        "evaluation_count": 792,
+        "evals_per_second": 5.983322158125759,
+        "seconds_per_evaluation": 0.16713123137485283,
+        "score": 33.0,
+        "score_per_second": 0.24930508992190661,
+        "train_seconds": 62.54323141701752
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+        "budget": 264,
+        "system": "primordia",
+        "run_count": 6,
+        "wall_clock_seconds": 1469.161437333336,
+        "evaluation_count": 1584,
+        "evals_per_second": 1.0781660610933994,
+        "seconds_per_evaluation": 0.9275009074074091,
+        "score": 120.0,
+        "score_per_second": 0.08167924705253025,
+        "train_seconds": 126.55842137801301
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+        "budget": 264,
+        "system": "prism",
+        "run_count": 6,
+        "wall_clock_seconds": 1207.5282011032104,
+        "evaluation_count": 1584,
+        "evals_per_second": 1.3117706058979335,
+        "seconds_per_evaluation": 0.7623284097873804,
+        "score": 121.0,
+        "score_per_second": 0.1002046990616477,
+        "train_seconds": 142.95904049498859
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+        "budget": 264,
+        "system": "stratograph",
+        "run_count": 6,
+        "wall_clock_seconds": 1487.796416625226,
+        "evaluation_count": 1584,
+        "evals_per_second": 1.0646617926349042,
+        "seconds_per_evaluation": 0.9392654145361274,
+        "score": 119.5,
+        "score_per_second": 0.08032012892668627,
+        "train_seconds": 132.7710975819864
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval264",
+        "budget": 264,
+        "system": "topograph",
+        "run_count": 6,
+        "wall_clock_seconds": 1230.92,
+        "evaluation_count": 1584,
+        "evals_per_second": 1.2868423618106781,
+        "seconds_per_evaluation": 0.7770959595959597,
+        "score": 128.5,
+        "score_per_second": 0.10439346180092939,
+        "train_seconds": 112.65175241302495
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+        "budget": 374,
+        "system": "contenders",
+        "run_count": 3,
+        "wall_clock_seconds": 152.0774072916247,
+        "evaluation_count": 1122,
+        "evals_per_second": 7.37782172895968,
+        "seconds_per_evaluation": 0.1355413612224819,
+        "score": 33.0,
+        "score_per_second": 0.21699475673410826,
+        "train_seconds": 42.4542359190018
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+        "budget": 374,
+        "system": "primordia",
+        "run_count": 6,
+        "wall_clock_seconds": 1880.1679363340008,
+        "evaluation_count": 2244,
+        "evals_per_second": 1.1935104075731704,
+        "seconds_per_evaluation": 0.8378644992575761,
+        "score": 122.5,
+        "score_per_second": 0.0651537544241147,
+        "train_seconds": 112.94111883200821
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+        "budget": 374,
+        "system": "prism",
+        "run_count": 6,
+        "wall_clock_seconds": 1677.7191820144653,
+        "evaluation_count": 2244,
+        "evals_per_second": 1.3375301564506117,
+        "seconds_per_evaluation": 0.7476466943023464,
+        "score": 121.5,
+        "score_per_second": 0.07241974777573498,
+        "train_seconds": 113.73426921197824
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+        "budget": 374,
+        "system": "stratograph",
+        "run_count": 6,
+        "wall_clock_seconds": 2017.095329833981,
+        "evaluation_count": 2244,
+        "evals_per_second": 1.1124908014063444,
+        "seconds_per_evaluation": 0.8988838368244122,
+        "score": 120.5,
+        "score_per_second": 0.059739367900830884,
+        "train_seconds": 101.09321699400243
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval374",
+        "budget": 374,
+        "system": "topograph",
+        "run_count": 6,
+        "wall_clock_seconds": 1033.1799999999998,
+        "evaluation_count": 2244,
+        "evals_per_second": 2.1719351903830892,
+        "seconds_per_evaluation": 0.46041889483065945,
+        "score": 129.5,
+        "score_per_second": 0.12534117965891714,
+        "train_seconds": 97.04209808498126
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval484",
+        "budget": 484,
+        "system": "contenders",
+        "run_count": 3,
+        "wall_clock_seconds": 195.38237420818768,
+        "evaluation_count": 1452,
+        "evals_per_second": 7.431581307599611,
+        "seconds_per_evaluation": 0.13456086377974358,
+        "score": 33.0,
+        "score_per_second": 0.16889957517271845,
+        "train_seconds": 0.0
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval484",
+        "budget": 484,
+        "system": "primordia",
+        "run_count": 6,
+        "wall_clock_seconds": 2479.885723167088,
+        "evaluation_count": 2904,
+        "evals_per_second": 1.1710217018755489,
+        "seconds_per_evaluation": 0.8539551388316419,
+        "score": 127.0,
+        "score_per_second": 0.05121203723767036,
+        "train_seconds": 60.847456624996994
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval484",
+        "budget": 484,
+        "system": "prism",
+        "run_count": 6,
+        "wall_clock_seconds": 2030.7587978839874,
+        "evaluation_count": 2904,
+        "evals_per_second": 1.4300073465277676,
+        "seconds_per_evaluation": 0.6992971067093621,
+        "score": 124.0,
+        "score_per_second": 0.061060919755317904,
+        "train_seconds": 70.93929137099622
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval484",
+        "budget": 484,
+        "system": "stratograph",
+        "run_count": 6,
+        "wall_clock_seconds": 2470.8344072492328,
+        "evaluation_count": 2904,
+        "evals_per_second": 1.1753114621845533,
+        "seconds_per_evaluation": 0.8508382945073115,
+        "score": 124.5,
+        "score_per_second": 0.050387836446961744,
+        "train_seconds": 59.932116079009575
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval484",
+        "budget": 484,
+        "system": "topograph",
+        "run_count": 6,
+        "wall_clock_seconds": 1143.09,
+        "evaluation_count": 2904,
+        "evals_per_second": 2.5404823767157443,
+        "seconds_per_evaluation": 0.3936260330578512,
+        "score": 132.0,
+        "score_per_second": 0.11547647166889748,
+        "train_seconds": 57.49249446102476
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval528",
+        "budget": 528,
+        "system": "primordia",
+        "run_count": 3,
+        "wall_clock_seconds": 1008.8722273746971,
+        "evaluation_count": 1584,
+        "evals_per_second": 1.5700699821244057,
+        "seconds_per_evaluation": 0.6369142849587734,
+        "score": 66.0,
+        "score_per_second": 0.0654195825885169,
+        "train_seconds": 0.0
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval528",
+        "budget": 528,
+        "system": "prism",
+        "run_count": 3,
+        "wall_clock_seconds": 1367.7564401626587,
+        "evaluation_count": 1584,
+        "evals_per_second": 1.158100926076886,
+        "seconds_per_evaluation": 0.8634826011127896,
+        "score": 66.0,
+        "score_per_second": 0.048254205253203585,
+        "train_seconds": 0.0
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval528",
+        "budget": 528,
+        "system": "stratograph",
+        "run_count": 3,
+        "wall_clock_seconds": 1279.8794291247614,
+        "evaluation_count": 1584,
+        "evals_per_second": 1.237616578526627,
+        "seconds_per_evaluation": 0.808004690104016,
+        "score": 66.0,
+        "score_per_second": 0.05156735743860946,
+        "train_seconds": 0.0
+      },
+      {
+        "pack_name": "tier_c_architecture_sensitive_cumulative_eval528",
+        "budget": 528,
+        "system": "topograph",
+        "run_count": 3,
+        "wall_clock_seconds": 1472.25,
+        "evaluation_count": 1584,
+        "evals_per_second": 1.075904228222109,
+        "seconds_per_evaluation": 0.9294507575757576,
+        "score": 66.0,
+        "score_per_second": 0.044829342842587876,
+        "train_seconds": 0.0
+      }
+    ],
+    "systems": [
+      {
+        "system": "contenders",
+        "run_count": 12,
+        "wall_clock_seconds": 616.7885045409203,
+        "evals_per_second": 6.20634135010218,
+        "seconds_per_evaluation": 0.16112552365227803,
+        "score_per_second": 0.21401177069317864
+      },
+      {
+        "system": "topograph",
+        "run_count": 30,
+        "wall_clock_seconds": 6456.04,
+        "evals_per_second": 1.4925558082044101,
+        "seconds_per_evaluation": 0.669991697799917,
+        "score_per_second": 0.10075835961363312
+      },
+      {
+        "system": "prism",
+        "run_count": 30,
+        "wall_clock_seconds": 7385.692747592926,
+        "evals_per_second": 1.3046846557677982,
+        "seconds_per_evaluation": 0.7664687367780122,
+        "score_per_second": 0.08421688002154114
+      },
+      {
+        "system": "primordia",
+        "run_count": 30,
+        "wall_clock_seconds": 7890.610797042102,
+        "evals_per_second": 1.2211982377349266,
+        "seconds_per_evaluation": 0.8188678701787154,
+        "score_per_second": 0.0792714298156078
+      },
+      {
+        "system": "stratograph",
+        "run_count": 30,
+        "wall_clock_seconds": 8419.180579752421,
+        "evals_per_second": 1.144529435937501,
+        "seconds_per_evaluation": 0.873721521352472,
+        "score_per_second": 0.07304748890634735
+      }
+    ]
+  },
   "transfer_evidence": {
     "seeded_trend_row_count": 0,
     "seed_sources": [],
@@ -1632,7 +2839,7 @@
   },
   "artifact_validation": {
     "ok": true,
-    "record_count": 42,
+    "record_count": 62,
     "issues": [],
     "warnings": []
   }

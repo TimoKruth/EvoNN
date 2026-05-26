@@ -255,6 +255,76 @@ Interpretation:
   `484`. Future slices should include runtime/performance telemetry gates so
   quality gains are not bought blindly with excessive wall-clock cost.
 
+Runtime-telemetry diagnostic recorded on 2026-05-26:
+
+- Engine-only workspace: `.tmp/tier-c-runtime-diagnostic-engine-only`
+- Contender-including partial workspace:
+  `.tmp/tier-c-runtime-diagnostic-with-contenders`
+- Pack: `tier_c_architecture_sensitive_cumulative`
+- Budgets requested: `154`, `264`, `374`, `484`
+- Seeds requested: `42`, `43`, `44`
+- Engine-only status: 12/12 slices completed, 0 benchmark failures.
+- With-contenders status: 8/12 slices completed before the foreground proof was
+  stopped because runtime became the blocker. A clean rerun after stricter
+  Primordia controls still showed low-budget Tier C wall-clock instability on
+  this machine, so the full with-contenders matrix should be treated as
+  incomplete evidence, not as a failed quality result.
+
+Engine-only runtime/quality summary across the completed 12 slices:
+
+| System | Score | Wall sec | Evals/sec | Sec/success | Score/sec |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Prism | 99.0 | 3416.4 | 1.120 | 0.892 | 0.02898 |
+| Topograph | 78.5 | 2992.5 | 1.279 | 0.782 | 0.02623 |
+| Stratograph | 58.5 | 3660.1 | 1.046 | 0.956 | 0.01598 |
+| Primordia | 33.5 | 4409.8 | 0.868 | 1.152 | 0.00760 |
+
+Partial with-contenders result across the completed 8 slices:
+
+| System | Full-system score | Wall sec | Evals/sec | Sec/success |
+| --- | ---: | ---: | ---: | ---: |
+| Contenders | 131.5 | 444.5 | 4.504 | 0.222 |
+| Prism | 21.5 | 6478.1 | 0.309 | 3.236 |
+| Primordia | 13.0 | 2247.8 | 0.891 | 1.123 |
+| Stratograph | 9.5 | 1910.6 | 1.048 | 0.954 |
+| Topograph | 4.0 | 8281.3 | 0.242 | 4.137 |
+
+Interpretation:
+
+- Runtime telemetry is now mandatory evidence for Tier C work. The new
+  dashboard/evidence summaries expose wall-clock, evaluations/sec,
+  seconds/successful candidate, family runtime allocation, and score-per-second.
+- The engine-only cohort confirms Prism is still the strongest Tier C generalist
+  on quality and Topograph is the most runtime-efficient among EvoNN engines in
+  that no-contender context.
+- Stratograph remains a mid-pack engine: complete and measurable, but it needs
+  hierarchy/motif pressure to improve quality-per-second.
+- Primordia is the broad Tier C runtime risk. It keeps specialization value, but
+  high-slot and even cumulative low-slot runs need stronger runtime control
+  before it can be part of routine wide Tier C with-contenders proof.
+- Contenders remain both the quality floor and the runtime floor. Any claim that
+  EvoNN improved must now report whether quality gains cost more runtime than
+  they are worth.
+
+Code consequences already applied:
+
+- Compare trend rows, dashboard payloads, dashboard UI, trend markdown, and
+  evidence registry reports now carry runtime/performance telemetry.
+- Stratograph received a targeted hierarchy slice: task-specific motifs,
+  profile-aware parent selection, profile survival bonuses, and family-specific
+  mutation schedules for tabular, regression, and image benchmarks.
+- Primordia received stricter runtime controls: high-slot epoch caps,
+  expensive-family epoch caps, cheaper mutation of weak/expensive parents, and
+  architecture clamps for image, LM, tabular, and synthetic candidates.
+
+Next gate:
+
+- Do not expand Tier C width further until the same budget/seed matrix can
+  complete with contenders in a bounded local runtime.
+- Run the next proof as a runtime-first comparison: start with one seed and one
+  budget, require the dashboard runtime table to stay within an agreed wall-clock
+  envelope, then scale back to 3 seeds and 4 budgets.
+
 ## Latest Run-Derived Planning Signal
 
 Recorded on 2026-05-13 from the recent small-lane and broad-lane comparison

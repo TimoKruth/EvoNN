@@ -617,10 +617,32 @@ def _next_population(
 ) -> tuple[list[HierarchicalGenome], dict[str, TrainingArtifact | None]]:
     scored = sorted(
         evaluated,
-        key=lambda item: _selection_key(item[1], item[2], item[0], architecture_mode),
+        key=lambda item: _selection_key(
+            item[1],
+            item[2],
+            item[0],
+            architecture_mode,
+            profile_key=_benchmark_profile_key(
+                benchmark_name=benchmark_name,
+                task=task,
+                input_dim=input_dim,
+                output_dim=output_dim,
+            ),
+        ),
         reverse=True,
     )
-    elites = _select_parent_pool(scored, population_size=population_size, architecture_mode=architecture_mode)
+    profile_key = _benchmark_profile_key(
+        benchmark_name=benchmark_name,
+        task=task,
+        input_dim=input_dim,
+        output_dim=output_dim,
+    )
+    elites = _select_parent_pool(
+        scored,
+        population_size=population_size,
+        architecture_mode=architecture_mode,
+        profile_key=profile_key,
+    )
     rng = random.Random(seed * 100_000 + generation * 97 + len(benchmark_name))
     next_population: list[HierarchicalGenome] = []
     next_states: dict[str, TrainingArtifact | None] = {}
@@ -636,9 +658,11 @@ def _next_population(
                 candidate_id=candidate_id,
                 allow_clone_mutation=allow_clone_mutation,
                 motif_bias=motif_bias,
+                motif_task=profile_key,
                 preferred_mutation_modes=_offspring_mutation_modes(
                     index,
                     task=task,
+                    profile_key=profile_key,
                     architecture_mode=architecture_mode,
                     allow_clone_mutation=allow_clone_mutation,
                     motif_bias=motif_bias,
@@ -661,9 +685,11 @@ def _next_population(
                 candidate_id=candidate_id,
                 allow_clone_mutation=allow_clone_mutation,
                 motif_bias=motif_bias,
+                motif_task=profile_key,
                 preferred_modes=_offspring_mutation_modes(
                     index,
                     task=task,
+                    profile_key=profile_key,
                     architecture_mode=architecture_mode,
                     allow_clone_mutation=allow_clone_mutation,
                     motif_bias=motif_bias,
@@ -681,6 +707,7 @@ def _select_parent_pool(
     *,
     population_size: int,
     architecture_mode: str,
+    profile_key: str,
 ) -> list[HierarchicalGenome]:
     minimum_elites = 3 if architecture_mode.startswith("two_level_shared") and population_size >= 4 else 2
     elite_target = min(len(scored), max(minimum_elites, population_size // 2 or 1))
@@ -698,6 +725,13 @@ def _select_parent_pool(
 
     add_candidate(scored[0][0] if scored else None)
 
+    profile_leader = max(
+        (genome for genome, record, _ in scored if record.status == "ok"),
+        key=lambda genome: _profile_survival_bonus(genome, profile_key),
+        default=None,
+    )
+    add_candidate(profile_leader)
+
     if architecture_mode.startswith("two_level_shared"):
         reuse_leader = max(
             (genome for genome, record, _ in scored if record.status == "ok"),
@@ -710,13 +744,13 @@ def _select_parent_pool(
     for genome, record, novelty in scored:
         niche = niche_key(descriptor(genome))
         current = niche_leaders.get(niche)
-        if current is None or _selection_key(record, novelty, genome, architecture_mode) > _selection_key(
-            current[1], current[2], current[0], architecture_mode
+        if current is None or _selection_key(record, novelty, genome, architecture_mode, profile_key=profile_key) > _selection_key(
+            current[1], current[2], current[0], architecture_mode, profile_key=profile_key
         ):
             niche_leaders[niche] = (genome, record, novelty)
     for genome, _, _ in sorted(
         niche_leaders.values(),
-        key=lambda item: _selection_key(item[1], item[2], item[0], architecture_mode),
+        key=lambda item: _selection_key(item[1], item[2], item[0], architecture_mode, profile_key=profile_key),
         reverse=True,
     ):
         add_candidate(genome)
@@ -745,26 +779,29 @@ def _selection_key(
     novelty: float,
     genome: HierarchicalGenome | None = None,
     architecture_mode: str = "",
+    profile_key: str = "",
 ) -> float:
     if result.status != "ok":
         return float("-inf")
     hierarchy_bonus = 0.0
     if genome is not None and architecture_mode.startswith("two_level_shared"):
         hierarchy_bonus = min(0.035, genome.reuse_ratio * 0.025 + genome.macro_depth * 0.0015)
-    return result.quality + novelty * 0.05 + hierarchy_bonus
+    profile_bonus = _profile_survival_bonus(genome, profile_key) if genome is not None else 0.0
+    return result.quality + novelty * 0.05 + hierarchy_bonus + profile_bonus
 
 
 def _offspring_mutation_modes(
     index: int,
     *,
     task: str = "",
+    profile_key: str = "",
     architecture_mode: str,
     allow_clone_mutation: bool,
     motif_bias: bool,
 ) -> tuple[str, ...] | None:
     if not architecture_mode.startswith("two_level_shared"):
         return None
-    if task == "regression":
+    if profile_key == "regression" or task == "regression":
         if index % 4 == 0 and motif_bias:
             return ("motif_rewrite", "activation")
         if index % 4 == 1:
@@ -772,6 +809,22 @@ def _offspring_mutation_modes(
         if index % 4 == 2:
             return ("add_skip_edge", "rewire_macro")
         return ("add_macro", "add_skip_edge")
+    if profile_key == "image":
+        if index % 4 == 0 and motif_bias:
+            return ("motif_rewrite", "specialize_cell")
+        if index % 4 == 1:
+            return ("width", "activation")
+        if index % 4 == 2:
+            return ("add_skip_edge", "rewire_macro")
+        return ("specialize_cell", "add_skip_edge")
+    if profile_key == "tabular":
+        if index % 4 == 0 and motif_bias:
+            return ("motif_rewrite", "activation")
+        if index % 4 == 1:
+            return ("width", "specialize_cell")
+        if index % 4 == 2:
+            return ("add_skip_edge", "rewire_macro")
+        return ("specialize_cell", "clone_cell") if allow_clone_mutation else ("specialize_cell", "activation")
     if index % 4 == 1 and allow_clone_mutation:
         return ("specialize_cell", "clone_cell")
     if index % 4 == 2 and motif_bias:
@@ -801,6 +854,48 @@ def _hierarchy_selection_policy(architecture_mode: str) -> str:
 
 def _search_profile_policy() -> str:
     return "task_dimension_aware_initial_hierarchy_profiles"
+
+
+def _benchmark_profile_key(
+    *,
+    benchmark_name: str,
+    task: str,
+    input_dim: int,
+    output_dim: int,
+) -> str:
+    if task == "regression":
+        return "regression"
+    name = benchmark_name.lower()
+    if "mnist" in name or "digits" in name or "image" in name:
+        return "image"
+    if task == "classification":
+        return "tabular" if input_dim >= 8 or output_dim >= 3 else "synthetic"
+    return task or "unknown"
+
+
+def _profile_survival_bonus(genome: HierarchicalGenome | None, profile_key: str) -> float:
+    if genome is None:
+        return 0.0
+    if profile_key == "image":
+        return min(0.045, genome.macro_depth * 0.002 + genome.reuse_ratio * 0.015 + len(genome.cell_library) * 0.001)
+    if profile_key == "regression":
+        return min(0.04, genome.reuse_ratio * 0.018 + genome.macro_depth * 0.001 + _primitive_share(genome, {"linear", "norm", "residual"}) * 0.025)
+    if profile_key == "tabular":
+        return min(0.04, genome.reuse_ratio * 0.02 + _primitive_share(genome, {"gate", "norm", "mix", "residual"}) * 0.02)
+    if profile_key == "synthetic":
+        return min(0.03, _primitive_share(genome, {"gate", "mix", "residual"}) * 0.025)
+    return 0.0
+
+
+def _primitive_share(genome: HierarchicalGenome, primitives: set[str]) -> float:
+    total = 0
+    matches = 0
+    for cell in genome.cell_library.values():
+        for node in cell.nodes:
+            total += 1
+            if str(node.kind.value if hasattr(node.kind, "value") else node.kind).lower() in primitives:
+                matches += 1
+    return 0.0 if total == 0 else matches / total
 
 
 def _artifact_compatible(genome: HierarchicalGenome, artifact: TrainingArtifact | None) -> bool:

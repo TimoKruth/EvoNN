@@ -49,6 +49,11 @@ class SearchConfig(BaseModel):
     seed_hidden_layers: int = 2
     max_hidden_width: int = 256
     max_hidden_layers: int = 6
+    runtime_control_enabled: bool = True
+    expensive_profile_slot_threshold: int = 6
+    weak_parent_mutation_rounds: int = 1
+    high_slot_epoch_cap: int = 2
+    expensive_profile_epoch_cap: int = 1
 
 
 class EvolutionConfig(BaseModel):

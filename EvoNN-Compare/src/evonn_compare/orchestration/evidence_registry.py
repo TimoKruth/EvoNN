@@ -106,6 +106,7 @@ def build_evidence_report(*, registry: Path, min_seeds: int = 2) -> dict[str, An
         "before_after_comparisons": _before_after_comparisons(groups),
         "engine_roles": _engine_roles(groups, trend_rows),
         "lm_flatline_diagnostics": _lm_flatline_diagnostics(trend_rows),
+        "runtime_performance": _runtime_performance_evidence(trend_rows),
         "transfer_evidence": _transfer_evidence(summary_payloads, trend_rows, transfer_cases),
         "quality_diversity_evidence": _quality_diversity_evidence(summary_payloads, trend_rows),
         "artifact_validation": validate_registry(registry=registry_path),
@@ -469,6 +470,33 @@ def _score_systems(rows: list[dict[str, Any]], systems: tuple[str, ...]) -> dict
         for system in winners:
             scores[system] += increment
     return {system: round(score, 6) for system, score in scores.items()}
+
+
+def _score_system_case_rows(rows: list[dict[str, Any]]) -> float:
+    by_benchmark: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_benchmark[str(row.get("benchmark_id") or "unknown")].append(row)
+    score = 0.0
+    for benchmark_rows in by_benchmark.values():
+        ok_rows = [
+            row
+            for row in benchmark_rows
+            if row.get("outcome_status") == "ok" and row.get("metric_value") is not None
+        ]
+        if not ok_rows:
+            continue
+        direction = str(ok_rows[0].get("metric_direction") or "max")
+        values = [float(row["metric_value"]) for row in ok_rows]
+        best = min(values) if direction == "min" else max(values)
+        winners = [row for row in ok_rows if abs(float(row["metric_value"]) - best) <= 1e-12]
+        score += 1.0 if len(winners) == 1 else 0.5
+    return score
+
+
+def _safe_div(numerator: float | int, denominator: float | int) -> float | None:
+    if denominator in (0, 0.0):
+        return None
+    return float(numerator) / float(denominator)
 
 
 def _engine_roles(groups: list[dict[str, Any]], trend_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -841,6 +869,85 @@ def _load_index(registry: Path) -> dict[str, dict[str, Any]]:
     return rows
 
 
+def _runtime_performance_evidence(trend_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    grouped: dict[tuple[str, int, str], dict[str, Any]] = {}
+    for row in trend_rows:
+        key = (str(row.get("pack_name") or "unknown"), int(row.get("budget") or 0), str(row.get("system") or "unknown"))
+        group = grouped.setdefault(
+            key,
+            {
+                "pack_name": key[0],
+                "budget": key[1],
+                "system": key[2],
+                "case_ids": set(),
+                "wall_clock_seconds": 0.0,
+                "evaluation_count": 0,
+                "train_seconds": 0.0,
+                "score": 0.0,
+                "rows_by_case": defaultdict(list),
+            },
+        )
+        case_id = str((row.get("fairness_metadata") or {}).get("comparison_case_id") or f"{key[0]}:{key[1]}:{row.get('seed')}")
+        group["rows_by_case"][case_id].append(row)
+
+    output_rows: list[dict[str, Any]] = []
+    for group in grouped.values():
+        for case_id, rows in group["rows_by_case"].items():
+            if case_id not in group["case_ids"]:
+                first = rows[0]
+                group["case_ids"].add(case_id)
+                group["wall_clock_seconds"] += float(first.get("wall_clock_seconds") or 0.0)
+                group["evaluation_count"] += int(first.get("evaluation_count") or 0)
+            group["train_seconds"] += sum(float(row.get("train_seconds") or 0.0) for row in rows)
+            group["score"] += _score_system_case_rows(rows)
+        wall = float(group["wall_clock_seconds"])
+        evals = int(group["evaluation_count"])
+        score = float(group["score"])
+        output_rows.append(
+            {
+                "pack_name": group["pack_name"],
+                "budget": group["budget"],
+                "system": group["system"],
+                "run_count": len(group["case_ids"]),
+                "wall_clock_seconds": wall,
+                "evaluation_count": evals,
+                "evals_per_second": _safe_div(evals, wall),
+                "seconds_per_evaluation": _safe_div(wall, evals),
+                "score": score,
+                "score_per_second": _safe_div(score, wall),
+                "train_seconds": float(group["train_seconds"]),
+            }
+        )
+    output_rows.sort(key=lambda row: (row["pack_name"], row["budget"], row["system"]))
+    by_system: dict[str, dict[str, Any]] = {}
+    for row in output_rows:
+        total = by_system.setdefault(
+            str(row["system"]),
+            {"system": row["system"], "run_count": 0, "wall_clock_seconds": 0.0, "evaluation_count": 0, "score": 0.0},
+        )
+        total["run_count"] += int(row["run_count"])
+        total["wall_clock_seconds"] += float(row["wall_clock_seconds"])
+        total["evaluation_count"] += int(row["evaluation_count"])
+        total["score"] += float(row["score"])
+    system_rows = []
+    for total in by_system.values():
+        wall = float(total["wall_clock_seconds"])
+        evals = int(total["evaluation_count"])
+        score = float(total["score"])
+        system_rows.append(
+            {
+                "system": total["system"],
+                "run_count": int(total["run_count"]),
+                "wall_clock_seconds": wall,
+                "evals_per_second": _safe_div(evals, wall),
+                "seconds_per_evaluation": _safe_div(wall, evals),
+                "score_per_second": _safe_div(score, wall),
+            }
+        )
+    system_rows.sort(key=lambda row: (-float(row.get("score_per_second") or 0.0), str(row["system"])))
+    return {"groups": output_rows, "systems": system_rows}
+
+
 def _write_index(registry: Path, records: list[dict[str, Any]]) -> None:
     (registry / "index.jsonl").write_text(
         "".join(json.dumps(record, sort_keys=True) + "\n" for record in records),
@@ -956,6 +1063,17 @@ def _render_report_markdown(payload: dict[str, Any]) -> str:
         f"| {row['system']} | {row['lm_row_count']} | {row['unique_metric_value_count']} | {row['flatline_suspected']} |"
         for row in payload["lm_flatline_diagnostics"]
     )
+    runtime_rows = "\n".join(
+        "| {system} | {runs} | {wall} | {evals} | {sec_eval} | {score_sec} |".format(
+            system=row["system"],
+            runs=row["run_count"],
+            wall=_md_float(row.get("wall_clock_seconds")),
+            evals=_md_float(row.get("evals_per_second")),
+            sec_eval=_md_float(row.get("seconds_per_evaluation")),
+            score_sec=_md_float(row.get("score_per_second")),
+        )
+        for row in payload["runtime_performance"]["systems"]
+    )
     comparison_rows = "\n".join(
         "| {before} -> {after} | {pack} | {budget} | {delta} | {decision} |".format(
             before=row["before_label"],
@@ -992,6 +1110,10 @@ def _render_report_markdown(payload: dict[str, Any]) -> str:
         "| System | LM Rows | Unique Metric Values | Flatline Suspected |\n"
         "| --- | ---: | ---: | --- |\n"
         f"{lm_rows or '| n/a | 0 | 0 | false |'}\n\n"
+        "## Runtime Performance\n\n"
+        "| System | Runs | Wall Seconds | Evals/sec | Sec/eval | Score/sec |\n"
+        "| --- | ---: | ---: | ---: | ---: | ---: |\n"
+        f"{runtime_rows or '| n/a | 0 | 0 | 0 | 0 | 0 |'}\n\n"
         "## Transfer Evidence\n\n"
         f"- Seeded Trend Rows: `{payload['transfer_evidence']['seeded_trend_row_count']}`\n"
         f"- Seed Sources: `{', '.join(payload['transfer_evidence']['seed_sources']) or 'none'}`\n"
@@ -1013,3 +1135,9 @@ def _render_report_markdown(payload: dict[str, Any]) -> str:
         f"- Issues: `{validation_issues}`\n"
         f"- Warnings: `{validation_warnings}`\n"
     )
+
+
+def _md_float(value: Any) -> str:
+    if value is None:
+        return "---"
+    return f"{float(value):.6f}"
