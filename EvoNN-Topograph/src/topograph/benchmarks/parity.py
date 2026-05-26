@@ -6,83 +6,29 @@ import os
 from pathlib import Path
 
 import yaml
+from evonn_shared.benchmarks import (
+    CANONICAL_BENCHMARK_IDS as CANONICAL_BENCHMARK_IDS,
+    canonical_benchmark_id,
+    load_parity_pack_payload,
+    native_benchmark_id,
+    native_id_from_entry,
+    shared_benchmarks_root,
+)
 
 from topograph.benchmarks.spec import BenchmarkSpec
 
 
-# Maps native Topograph benchmark names to canonical symbiosis IDs.
-# Kept in sync with EvoNN-2's CANONICAL_BENCHMARK_IDS.
-CANONICAL_BENCHMARK_IDS: dict[str, str] = {
-    # Tier 1
-    "iris": "iris_classification",
-    "wine": "wine_classification",
-    "moons": "moons_classification",
-    "digits": "digits_image",
-    "diabetes": "diabetes_regression",
-    "friedman1": "friedman1_regression",
-    "credit_g": "credit_g_classification",
-    # Tier 2
-    "mnist": "mnist_image",
-    "fashion_mnist": "fashionmnist_image",
-    "vehicle": "vehicle_classification",
-    # Tier 3
-    "circles": "circles_classification",
-    "blobs_f2_c2": "blobs_classification",
-    "circles_n02_f3": "xor_tabular",
-    # OpenML / shared tabular
-    "adult": "openml_adult",
-    "bank_marketing": "openml_bank_marketing",
-    "blood_transfusion": "openml_blood_transfusion",
-    "electricity": "openml_electricity",
-    "ilpd": "openml_ilpd",
-    "jungle_chess": "openml_jungle_chess",
-    "kc1": "openml_kc1",
-    "letter": "openml_letter",
-    "mfeat_factors": "openml_mfeat_factors",
-    "nomao": "openml_nomao",
-    "phoneme": "openml_phoneme",
-    "ozone_level": "openml_ozone_level",
-    "qsar_biodeg": "openml_qsar_biodeg",
-    "segment": "openml_segment",
-    "speed_dating": "openml_speed_dating",
-    "steel_plates_fault": "openml_steel_plates_fault",
-    "wall_robot": "openml_wall_robot",
-    "wilt": "openml_wilt",
-    # Bridge benchmarks
-    "abalone": "openml_abalone",
-    "airfoil": "openml_airfoil",
-    "concrete": "openml_concrete",
-    "cpu_performance": "openml_cpu_activity",
-    "energy_efficiency": "openml_energy_efficiency",
-    "gas_sensor": "openml_gas_sensor",
-    "gesture_phase": "openml_gesture_phase",
-    "heart_disease": "openml_heart_disease",
-    "wine_quality": "openml_wine_quality",
-    # Language modeling
-    "tiny_lm_synthetic": "tiny_lm_synthetic",
-    "tinystories_lm": "tinystories_lm",
-    "wikitext2_lm": "wikitext2_lm",
-}
-
-# Reverse lookup: canonical -> native
-_REVERSE_IDS = {v: k for k, v in CANONICAL_BENCHMARK_IDS.items()}
-
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _PACKAGE_DIR.parent.parent.parent
-_SUPERPROJECT_ROOT = _PROJECT_ROOT.parent
 _LOCAL_CATALOG_DIR = _PROJECT_ROOT / "benchmarks" / "catalog"
 _LOCAL_SUITES_DIR = _PROJECT_ROOT / "benchmarks" / "suites"
-_DEFAULT_SHARED_ROOT = _SUPERPROJECT_ROOT / "shared-benchmarks"
 _CATALOG_ENV_VAR = "TOPOGRAPH_CATALOG_DIR"
 _SUITES_ENV_VAR = "TOPOGRAPH_SUITES_DIR"
 _SHARED_ROOT_ENV_VAR = "EVONN_SHARED_BENCHMARKS_DIR"
 
 
 def _shared_root_dir() -> Path:
-    shared_root = os.environ.get(_SHARED_ROOT_ENV_VAR)
-    if shared_root:
-        return Path(shared_root).expanduser()
-    return _DEFAULT_SHARED_ROOT
+    return shared_benchmarks_root(env_var=_SHARED_ROOT_ENV_VAR)
 
 
 def _has_local_catalog() -> bool:
@@ -142,7 +88,7 @@ def get_canonical_id(native_name: str) -> str:
 
     Returns the native name unchanged if no mapping exists.
     """
-    return CANONICAL_BENCHMARK_IDS.get(native_name, native_name)
+    return canonical_benchmark_id(native_name)
 
 
 def load_parity_pack(pack_path: str | Path) -> list[BenchmarkSpec]:
@@ -166,26 +112,13 @@ def load_parity_pack(pack_path: str | Path) -> list[BenchmarkSpec]:
               topograph: iris
               prism: iris
     """
-    with open(pack_path) as f:
-        data = yaml.safe_load(f)
-
+    data = load_parity_pack_payload(pack_path)
     entries = data.get("benchmarks", [])
     specs: list[BenchmarkSpec] = []
 
     for entry in entries:
-        if isinstance(entry, str):
-            name = entry
-        elif isinstance(entry, dict):
-            native_ids = entry.get("native_ids", {})
-            name = (
-                native_ids.get("topograph")
-                or native_ids.get("evonn2")
-                or native_ids.get("hybrid")
-                or entry.get("benchmark_id", "")
-            )
-            if name in _REVERSE_IDS:
-                name = _REVERSE_IDS[name]
-        else:
+        name = native_id_from_entry(entry, system="topograph")
+        if not name:
             continue
         specs.append(get_benchmark(name))
 
@@ -202,25 +135,11 @@ def load_benchmark_suite_names(suite: str | Path) -> list[str]:
     4. local `benchmarks/suites/...` fallback if shared root absent
     """
     path = _resolve_suite_path(suite)
-    with open(path) as f:
-        data = yaml.safe_load(f) or {}
+    data = load_parity_pack_payload(path)
 
     names: list[str] = []
     for entry in data.get("benchmarks", []):
-        if isinstance(entry, str):
-            names.append(entry)
-            continue
-        if not isinstance(entry, dict):
-            continue
-        native_ids = entry.get("native_ids", {})
-        name = (
-            native_ids.get("topograph")
-            or native_ids.get("evonn2")
-            or native_ids.get("hybrid")
-            or entry.get("benchmark_id", "")
-        )
-        if name in _REVERSE_IDS:
-            name = _REVERSE_IDS[name]
+        name = native_id_from_entry(entry, system="topograph")
         if name:
             names.append(name)
     return names
@@ -276,7 +195,7 @@ def get_benchmark(name: str) -> BenchmarkSpec:
         return BenchmarkSpec.from_yaml(catalog_path)
 
     # Try reverse canonical lookup
-    native = _REVERSE_IDS.get(name)
+    native = native_benchmark_id(name)
     if native:
         alt_path = catalog_dir / f"{native}.yaml"
         if alt_path.exists():

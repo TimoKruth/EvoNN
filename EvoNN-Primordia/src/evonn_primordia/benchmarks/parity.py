@@ -1,70 +1,34 @@
 """Canonical benchmark mapping and parity-pack loading."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-import yaml
+from evonn_shared.benchmarks import (
+    CANONICAL_BENCHMARK_IDS as CANONICAL_BENCHMARK_IDS,
+    canonical_benchmark_id,
+    load_parity_pack_payload,
+    native_benchmark_id,
+    native_id_from_entry,
+    parity_pack_search_dirs,
+    resolve_parity_pack_path,
+)
 from pydantic import BaseModel, ConfigDict
 
 from evonn_primordia.benchmarks.datasets import get_benchmark
 from evonn_primordia.benchmarks.spec import BenchmarkSpec, MetricDirection, TaskKind
 
 
-CANONICAL_BENCHMARK_IDS: dict[str, str] = {
-    "blobs_f2_c2": "blobs_classification",
-    "breast_cancer": "breast_cancer",
-    "circles": "circles_classification",
-    "credit_g": "credit_g_classification",
-    "diabetes": "diabetes_regression",
-    "digits": "digits_image",
-    "fashion_mnist": "fashionmnist_image",
-    "friedman1": "friedman1_regression",
-    "friedman_regression": "friedman1_regression",
-    "iris": "iris_classification",
-    "mnist": "mnist_image",
-    "moons": "moons_classification",
-    "adult": "openml_adult",
-    "bank_marketing": "openml_bank_marketing",
-    "blood_transfusion": "openml_blood_transfusion",
-    "electricity": "openml_electricity",
-    "gas_sensor": "openml_gas_sensor",
-    "gesture_phase": "openml_gesture_phase",
-    "heart_disease": "openml_heart_disease",
-    "ilpd": "openml_ilpd",
-    "jungle_chess": "openml_jungle_chess",
-    "kc1": "openml_kc1",
-    "letter": "openml_letter",
-    "mfeat_factors": "openml_mfeat_factors",
-    "nomao": "openml_nomao",
-    "ozone_level": "openml_ozone_level",
-    "speed_dating": "openml_speed_dating",
-    "wall_robot": "openml_wall_robot",
-    "wilt": "openml_wilt",
-    "phoneme": "phoneme_classification",
-    "qsar_biodeg": "qsar_biodeg_classification",
-    "segment": "segment_classification",
-    "steel_plates_fault": "steel_plates_fault_classification",
-    "tiny_lm_synthetic": "tiny_lm_synthetic",
-    "tinystories_lm": "tinystories_lm",
-    "tinystories_lm_smoke": "tinystories_lm_smoke",
-    "vehicle": "vehicle_classification",
-    "wikitext2_lm": "wikitext2_lm",
-    "wikitext2_lm_smoke": "wikitext2_lm_smoke",
-    "wine": "wine_classification",
-    "circles_n02_f3": "xor_tabular",
-}
-
-_REVERSE_IDS = {canonical: native for native, canonical in CANONICAL_BENCHMARK_IDS.items()}
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _PACKAGE_DIR.parent.parent.parent
-_SUPERPROJECT_ROOT = _PROJECT_ROOT.parent
 _PACK_ENV_VAR = "PRIMORDIA_PARITY_PACK_DIRS"
-_SHARED_ROOT_ENV_VAR = "EVONN_SHARED_BENCHMARKS_DIR"
 _DEFAULT_PACK_SEARCH_DIRS = [
     _PROJECT_ROOT / "parity_packs",
     _PROJECT_ROOT / "parity_packs" / "generated",
 ]
+_PRIMORDIA_NATIVE_PREFERRED = {
+    "diabetes_regression": "diabetes",
+    "friedman1_regression": "friedman1",
+}
 
 
 class BudgetPolicy(BaseModel):
@@ -97,82 +61,38 @@ class ParityPack(BaseModel):
     seed_policy: SeedPolicy | None = None
 
 
-def _shared_pack_dirs() -> list[Path]:
-    shared_root = os.environ.get(_SHARED_ROOT_ENV_VAR)
-    root = Path(shared_root).expanduser() if shared_root else _SUPERPROJECT_ROOT / "shared-benchmarks"
-    return [
-        root / "suites" / "parity",
-        root / "suites",
-    ]
-
-
 def _pack_search_dirs() -> list[Path]:
-    search_dirs = list(_DEFAULT_PACK_SEARCH_DIRS) + _shared_pack_dirs()
-    env_value = os.environ.get(_PACK_ENV_VAR, "")
-    if env_value:
-        for raw_path in env_value.split(os.pathsep):
-            if raw_path:
-                search_dirs.append(Path(raw_path).expanduser())
-    unique: list[Path] = []
-    seen: set[Path] = set()
-    for path in search_dirs:
-        if path in seen:
-            continue
-        seen.add(path)
-        unique.append(path)
-    return unique
+    return parity_pack_search_dirs(default_dirs=_DEFAULT_PACK_SEARCH_DIRS, env_var=_PACK_ENV_VAR)
 
 
 def get_canonical_id(native_name: str) -> str:
-    return CANONICAL_BENCHMARK_IDS.get(native_name, native_name)
+    return canonical_benchmark_id(native_name)
 
 
 def get_native_id(canonical_id: str) -> str:
-    preferred = {
-        "diabetes_regression": "diabetes",
-        "friedman1_regression": "friedman1",
-    }
-    return preferred.get(canonical_id, _REVERSE_IDS.get(canonical_id, canonical_id))
+    return native_benchmark_id(canonical_id, preferred=_PRIMORDIA_NATIVE_PREFERRED)
 
 
 def resolve_pack_path(pack_ref: str | Path) -> Path:
-    path = Path(pack_ref)
-    if path.exists():
-        return path
-    candidates = [path]
-    if path.suffix not in {".yaml", ".yml"}:
-        candidates.extend([Path(f"{path}.yaml"), Path(f"{path}.yml")])
-    search_dirs = _pack_search_dirs()
-    for root in search_dirs:
-        for candidate in candidates:
-            resolved = root / candidate
-            if resolved.exists():
-                return resolved
-    searched = ", ".join(str(directory) for directory in search_dirs)
-    raise FileNotFoundError(
-        f"Parity pack not found: {pack_ref}. Checked: {searched}. "
-        f"Set {_PACK_ENV_VAR} to add external pack directories."
+    return resolve_parity_pack_path(
+        pack_ref,
+        search_dirs=_pack_search_dirs(),
+        env_var=_PACK_ENV_VAR,
     )
 
 
 def fallback_native_id(entry: ParityBenchmark, system: str = "primordia") -> str:
-    native_ids = entry.native_ids or {}
-    direct = native_ids.get(system)
-    if direct:
-        return direct
-    for other_system in ("stratograph", "prism", "topograph", "evonn2", "evonn"):
-        candidate = native_ids.get(other_system)
-        if candidate:
-            return get_native_id(get_canonical_id(candidate))
-    return get_native_id(entry.benchmark_id)
+    return native_id_from_entry(
+        entry,
+        system=system,
+        fallback_systems=("stratograph", "prism", "topograph", "evonn2", "evonn"),
+        preferred=_PRIMORDIA_NATIVE_PREFERRED,
+    )
 
 
 def load_parity_pack(pack_path: str | Path) -> ParityPack:
     resolved = resolve_pack_path(pack_path)
-    payload = yaml.safe_load(resolved.read_text(encoding="utf-8"))
-    if "benchmarks" not in payload and "benchmark_pack" in payload:
-        pack = payload["benchmark_pack"] or {}
-        payload = {"name": pack.get("pack_name", resolved.stem), "benchmarks": pack.get("benchmark_ids", [])}
+    payload = load_parity_pack_payload(resolved)
     entries = payload.get("benchmarks", [])
     if entries and isinstance(entries[0], str):
         benchmarks = []

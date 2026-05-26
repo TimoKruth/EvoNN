@@ -262,7 +262,7 @@ def get_benchmark(name: str, catalog_dir: Path | None = None) -> BenchmarkSpec:
 
     Also checks reverse canonical ID mapping as a fallback.
     """
-    from prism.benchmarks.parity import _REVERSE_IDS
+    from prism.benchmarks.parity import get_native_id
 
     cat_dir = catalog_dir or _resolve_catalog_dir()
     if not cat_dir.exists():
@@ -274,7 +274,7 @@ def get_benchmark(name: str, catalog_dir: Path | None = None) -> BenchmarkSpec:
         return BenchmarkSpec.from_yaml(path)
 
     # Reverse canonical lookup
-    native = _REVERSE_IDS.get(name)
+    native = get_native_id(name)
     if native:
         alt_path = cat_dir / f"{native}.yaml"
         if alt_path.exists():

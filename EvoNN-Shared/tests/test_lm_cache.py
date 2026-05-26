@@ -4,7 +4,14 @@ from pathlib import Path
 
 import numpy as np
 
-from evonn_shared.lm_cache import LMCacheSpec, generate_lm_cache, make_byte_lm_windows, validate_lm_cache
+from evonn_shared.lm_cache import (
+    LMCacheSpec,
+    generate_lm_cache,
+    load_cached_lm_dataset,
+    make_byte_lm_windows,
+    resolve_lm_cache_path,
+    validate_lm_cache,
+)
 
 
 def test_byte_lm_windows_are_next_token_aligned() -> None:
@@ -64,3 +71,27 @@ def test_generate_lm_cache_from_local_text_passes_validation(tmp_path: Path) -> 
 
     assert report["ok"] is True
     assert Path(str(report["path"])).exists()
+
+
+def test_cached_lm_loader_resolves_smoke_alias_from_search_roots(tmp_path: Path) -> None:
+    x = np.arange(24, dtype=np.int32).reshape(3, 8)
+    y = x.astype(np.int64)
+    cache_path = tmp_path / "tinystories_lm.npz"
+    np.savez_compressed(cache_path, x_train=x, y_train=y, x_val=x[:1], y_val=y[:1])
+
+    assert resolve_lm_cache_path(
+        "tinystories_lm_smoke",
+        env_var="EVONN_TEST_LM_CACHE_DIR",
+        search_roots=[tmp_path],
+    ) == cache_path
+
+    x_train, y_train, x_val, y_val = load_cached_lm_dataset(
+        "tinystories_lm_smoke",
+        env_var="EVONN_TEST_LM_CACHE_DIR",
+        search_roots=[tmp_path],
+        max_train_samples=2,
+    )
+    assert x_train.shape == (2, 8)
+    assert y_train.dtype == np.int64
+    assert x_val.shape == (1, 8)
+    assert y_val.shape == (1, 8)

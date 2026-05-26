@@ -242,9 +242,9 @@ def get_benchmark(name: str) -> BenchmarkSpec:
         return catalog_specs[name]
 
     try:
-        from stratograph.benchmarks.parity import _REVERSE_IDS
+        from stratograph.benchmarks.parity import get_native_id
 
-        native = _REVERSE_IDS.get(name)
+        native = get_native_id(name)
         if native and native in catalog_specs:
             return catalog_specs[native]
     except Exception:
