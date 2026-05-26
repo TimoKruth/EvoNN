@@ -402,6 +402,22 @@ class RunStore:
         self.close()
 
 
+def resolve_run_id(store: RunStore, *, prefer_current: bool = True, default: str = "current") -> str:
+    """Resolve a run id from a Topograph metrics database."""
+    if prefer_current:
+        try:
+            store.load_run("current")
+            return "current"
+        except ValueError:
+            pass
+    row = store.conn.execute(
+        "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    if row:
+        return str(row[0])
+    return default
+
+
 def _is_better(candidate: dict, current: dict) -> bool:
     """Compare two benchmark records by status then metric value."""
     if current["status"] != "ok" and candidate["status"] == "ok":

@@ -9,7 +9,7 @@ from typing import Any
 from topograph.genome.codec import dict_to_genome
 from topograph.genome.genome import INPUT_INNOVATION, OUTPUT_INNOVATION, Genome
 from topograph.pipeline.archive import BenchmarkEliteArchive
-from topograph.storage import RunStore
+from topograph.storage import RunStore, resolve_run_id as _storage_resolve_run_id
 
 
 # ===========================================================================
@@ -767,17 +767,7 @@ def _compatibility_distance(g1: Genome, g2: Genome) -> float:
 
 def _resolve_run_id(store: RunStore) -> str:
     """Resolve run_id from the store."""
-    try:
-        store.load_run("current")
-        return "current"
-    except ValueError:
-        pass
-    row = store.conn.execute(
-        "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
-    ).fetchone()
-    if row:
-        return row[0]
-    return "current"
+    return _storage_resolve_run_id(store)
 
 
 def _summarize_benchmark_timings(rows: list[dict[str, Any]]) -> dict[str, Any]:

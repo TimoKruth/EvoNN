@@ -14,7 +14,7 @@ from prism.export.report import (
     _compute_operator_mix,
 )
 from prism.genome import ModelGenome
-from prism.storage import RunStore
+from prism.storage import RunStore, resolve_run_id
 
 
 def discover_matrix_artifacts(matrix_root: str | Path) -> tuple[list[Path], list[Path]]:
@@ -81,7 +81,7 @@ def _aggregate_prism_runs(run_dirs: list[Path]) -> dict[int, dict]:
             continue
         store = RunStore(db_path)
         try:
-            run_id = _resolve_run_id(store)
+            run_id = resolve_run_id(store)
             evaluations = store.load_evaluations(run_id)
             genomes = _load_genomes(store, run_id)
             lineage = store.load_lineage(run_id)
@@ -146,12 +146,3 @@ def _archive_turnover_count(archives: list[dict]) -> float | None:
     if not turnover_rows:
         return None
     return sum(float(row["new_members"]) for row in turnover_rows) / len(turnover_rows)
-
-
-def _resolve_run_id(store: RunStore) -> str:
-    row = store.conn.execute(
-        "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
-    ).fetchone()
-    if row:
-        return row[0]
-    return "default"

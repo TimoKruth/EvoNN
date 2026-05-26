@@ -10,7 +10,7 @@ from typing import Any
 
 from prism.config import RunConfig, load_config
 from prism.genome import ModelGenome
-from prism.storage import RunStore
+from prism.storage import RunStore, resolve_run_id as _storage_resolve_run_id
 
 
 def generate_report(run_dir: str | Path, output_path: str | Path | None = None) -> str:
@@ -24,13 +24,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
     run_id = _resolve_run_id(store)
 
     # Load data
-    genome_rows = store.load_genomes(run_id)
-    genomes: list[ModelGenome] = []
-    for row in genome_rows:
-        try:
-            genomes.append(ModelGenome.model_validate(row))
-        except Exception:
-            pass
+    genomes = _validated_genomes(store.load_genomes(run_id))
 
     evaluations = store.load_evaluations(run_id)
     best_per_benchmark = store.load_best_per_benchmark(run_id)
@@ -361,12 +355,18 @@ def _load_config(run_dir: Path) -> RunConfig:
 
 
 def _resolve_run_id(store: RunStore) -> str:
-    row = store.conn.execute(
-        "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
-    ).fetchone()
-    if row:
-        return row[0]
-    return "default"
+    return _storage_resolve_run_id(store)
+
+
+def _validated_genomes(rows: list[dict[str, Any]]) -> list[ModelGenome]:
+    """Parse stored genomes while tolerating older incompatible rows."""
+    genomes: list[ModelGenome] = []
+    for row in rows:
+        try:
+            genomes.append(ModelGenome.model_validate(row))
+        except Exception:
+            continue
+    return genomes
 
 
 def _load_runtime_metadata(run_dir: Path) -> dict[str, Any]:

@@ -162,8 +162,13 @@ def inspect(
     run_dir: str = typer.Argument(..., help="Path to run directory"),
 ) -> None:
     """Inspect run metrics."""
-    from prism.export.report import _compute_failure_patterns, _failure_label, _load_runtime_metadata, _resolve_run_id
-    from prism.genome import ModelGenome
+    from prism.export.report import (
+        _compute_failure_patterns,
+        _failure_label,
+        _load_runtime_metadata,
+        _resolve_run_id,
+        _validated_genomes,
+    )
     from prism.storage import RunStore
 
     run_path = Path(run_dir)
@@ -179,16 +184,9 @@ def inspect(
 
     latest_gen = store.latest_generation(run_id)
     evaluations = store.load_evaluations(run_id)
-    genome_rows = store.load_genomes(run_id)
+    genomes = _validated_genomes(store.load_genomes(run_id))
     best_per_benchmark = store.load_best_per_benchmark(run_id)
     store.close()
-
-    genomes: list[ModelGenome] = []
-    for row in genome_rows:
-        try:
-            genomes.append(ModelGenome.model_validate(row))
-        except Exception:
-            pass
 
     failed_evaluations = [row for row in evaluations if _failure_label(row) is not None]
     failure_patterns = _compute_failure_patterns(evaluations)
@@ -421,18 +419,3 @@ def suite_info(
         table.add_row("Samples", str(spec.n_samples))
 
     console.print(table)
-
-
-# ===========================================================================
-# Helpers
-# ===========================================================================
-
-
-def _resolve_run_id(store) -> str:
-    """Resolve run_id from the store."""
-    row = store.conn.execute(
-        "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
-    ).fetchone()
-    if row:
-        return row[0]
-    return "default"

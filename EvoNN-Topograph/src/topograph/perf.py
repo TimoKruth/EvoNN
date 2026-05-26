@@ -5,8 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from topograph.export.report import _resolve_run_id
-from topograph.storage import RunStore
+from topograph.storage import RunStore, resolve_run_id
 
 
 class PerformanceRegressionError(AssertionError):
@@ -17,7 +16,7 @@ def performance_summary(run_dir: str | Path) -> dict[str, Any]:
     run_path = Path(run_dir)
     store = RunStore(run_path / "metrics.duckdb")
     try:
-        run_id = _resolve_run_id(store)
+        run_id = resolve_run_id(store)
         budget = store.load_budget_metadata(run_id) or {}
         timings = store.load_benchmark_timings(run_id)
     finally:

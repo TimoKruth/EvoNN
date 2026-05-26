@@ -31,7 +31,7 @@ from evonn_shared.manifests import benchmark_signature, fairness_manifest, summa
 from prism.benchmarks.parity import get_canonical_id, load_parity_pack
 from prism.config import RunConfig, load_config
 from prism.genome import ModelGenome
-from prism.storage import RunStore
+from prism.storage import RunStore, resolve_run_id as _storage_resolve_run_id
 
 
 # ---------------------------------------------------------------------------
@@ -442,12 +442,7 @@ def _load_run_config(run_dir: Path) -> RunConfig:
 
 def _resolve_run_id(store: RunStore) -> str:
     """Resolve the run_id from the store (most recent)."""
-    row = store.conn.execute(
-        "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
-    ).fetchone()
-    if row:
-        return row[0]
-    return "default"
+    return _storage_resolve_run_id(store)
 
 
 def _compute_dataset_hash(benchmark_names: list[str]) -> str:

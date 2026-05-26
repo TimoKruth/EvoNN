@@ -46,7 +46,7 @@ from topograph.benchmarks.spec import BenchmarkSpec
 from topograph.config import RunConfig, load_config
 from topograph.genome.codec import dict_to_genome
 from topograph.genome.genome import Genome
-from topograph.storage import RunStore
+from topograph.storage import RunStore, resolve_run_id as _storage_resolve_run_id
 
 
 # ---------------------------------------------------------------------------
@@ -565,17 +565,7 @@ def _load_run_config(run_dir: Path, store: RunStore) -> RunConfig:
 
 def _resolve_run_id(store: RunStore) -> str:
     """Resolve the run_id from the store. Tries 'current', then first available."""
-    try:
-        store.load_run("current")
-        return "current"
-    except ValueError:
-        pass
-    row = store.conn.execute(
-        "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
-    ).fetchone()
-    if row:
-        return row[0]
-    return "current"
+    return _storage_resolve_run_id(store)
 
 
 def _compute_dataset_hash(benchmark_names: list[str]) -> str:

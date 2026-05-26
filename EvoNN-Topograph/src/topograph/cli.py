@@ -314,11 +314,11 @@ def export_cmd(
 ) -> None:
     """Export run results as JSON."""
     from topograph.genome.codec import dict_to_genome
-    from topograph.storage import RunStore
+    from topograph.storage import RunStore, resolve_run_id
 
     run_path = Path(run_dir)
     store = RunStore(run_path / "metrics.duckdb")
-    run_id = _resolve_run_id(store)
+    run_id = resolve_run_id(store)
 
     latest_gen = store.load_latest_generation(run_id)
     if latest_gen is None:
@@ -450,21 +450,6 @@ def suite_baselines(
 # ===========================================================================
 # Helpers
 # ===========================================================================
-
-
-def _resolve_run_id(store) -> str:
-    """Resolve run_id from the store."""
-    try:
-        store.load_run("current")
-        return "current"
-    except ValueError:
-        pass
-    row = store.conn.execute(
-        "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
-    ).fetchone()
-    if row:
-        return row[0]
-    return "current"
 
 
 def _apply_evolve_overrides(

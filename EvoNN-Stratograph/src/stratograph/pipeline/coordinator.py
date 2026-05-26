@@ -615,6 +615,12 @@ def _next_population(
     motif_bias: bool,
     trained_states: dict[str, TrainingArtifact | None],
 ) -> tuple[list[HierarchicalGenome], dict[str, TrainingArtifact | None]]:
+    profile_key = _benchmark_profile_key(
+        benchmark_name=benchmark_name,
+        task=task,
+        input_dim=input_dim,
+        output_dim=output_dim,
+    )
     scored = sorted(
         evaluated,
         key=lambda item: _selection_key(
@@ -622,20 +628,9 @@ def _next_population(
             item[2],
             item[0],
             architecture_mode,
-            profile_key=_benchmark_profile_key(
-                benchmark_name=benchmark_name,
-                task=task,
-                input_dim=input_dim,
-                output_dim=output_dim,
-            ),
+            profile_key=profile_key,
         ),
         reverse=True,
-    )
-    profile_key = _benchmark_profile_key(
-        benchmark_name=benchmark_name,
-        task=task,
-        input_dim=input_dim,
-        output_dim=output_dim,
     )
     elites = _select_parent_pool(
         scored,
@@ -801,30 +796,33 @@ def _offspring_mutation_modes(
 ) -> tuple[str, ...] | None:
     if not architecture_mode.startswith("two_level_shared"):
         return None
-    if profile_key == "regression" or task == "regression":
-        if index % 4 == 0 and motif_bias:
-            return ("motif_rewrite", "activation")
-        if index % 4 == 1:
-            return ("width", "specialize_cell")
-        if index % 4 == 2:
-            return ("add_skip_edge", "rewire_macro")
-        return ("add_macro", "add_skip_edge")
-    if profile_key == "image":
-        if index % 4 == 0 and motif_bias:
-            return ("motif_rewrite", "specialize_cell")
-        if index % 4 == 1:
-            return ("width", "activation")
-        if index % 4 == 2:
-            return ("add_skip_edge", "rewire_macro")
-        return ("specialize_cell", "add_skip_edge")
-    if profile_key == "tabular":
-        if index % 4 == 0 and motif_bias:
-            return ("motif_rewrite", "activation")
-        if index % 4 == 1:
-            return ("width", "specialize_cell")
-        if index % 4 == 2:
-            return ("add_skip_edge", "rewire_macro")
-        return ("specialize_cell", "clone_cell") if allow_clone_mutation else ("specialize_cell", "activation")
+    normalized_profile = "regression" if task == "regression" else profile_key
+    profile_schedule: dict[str, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...]]] = {
+        "regression": (
+            ("motif_rewrite", "activation"),
+            ("width", "specialize_cell"),
+            ("add_skip_edge", "rewire_macro"),
+            ("add_macro", "add_skip_edge"),
+        ),
+        "image": (
+            ("motif_rewrite", "specialize_cell"),
+            ("width", "activation"),
+            ("add_skip_edge", "rewire_macro"),
+            ("specialize_cell", "add_skip_edge"),
+        ),
+        "tabular": (
+            ("motif_rewrite", "activation"),
+            ("width", "specialize_cell"),
+            ("add_skip_edge", "rewire_macro"),
+            ("specialize_cell", "clone_cell") if allow_clone_mutation else ("specialize_cell", "activation"),
+        ),
+    }
+    if normalized_profile in profile_schedule:
+        schedule = profile_schedule[normalized_profile]
+        mode = schedule[index % 4]
+        if mode[0] == "motif_rewrite" and not motif_bias:
+            return schedule[3]
+        return mode
     if index % 4 == 1 and allow_clone_mutation:
         return ("specialize_cell", "clone_cell")
     if index % 4 == 2 and motif_bias:

@@ -618,12 +618,15 @@ def _search_profile_for_group(benchmark_group: str, config: RunConfig) -> dict[s
     base_layers = int(config.search.seed_hidden_layers)
     max_width = int(config.search.max_hidden_width)
     max_layers = int(config.search.max_hidden_layers)
-    if benchmark_group == "image":
-        return {"seed_width": min(max_width, max(base_width, 96)), "seed_layers": min(max_layers, max(base_layers, 3))}
-    if benchmark_group == "language_modeling":
-        return {"seed_width": min(max_width, max(base_width, 128)), "seed_layers": min(max_layers, max(base_layers, 3))}
-    if benchmark_group in {"tabular", "synthetic"}:
-        return {"seed_width": min(max_width, max(base_width, 96)), "seed_layers": min(max_layers, max(base_layers, 3))}
+    profile_targets = {
+        "image": (96, 3),
+        "language_modeling": (128, 3),
+        "tabular": (96, 3),
+        "synthetic": (96, 3),
+    }
+    if benchmark_group in profile_targets:
+        width, layers = profile_targets[benchmark_group]
+        return {"seed_width": min(max_width, max(base_width, width)), "seed_layers": min(max_layers, max(base_layers, layers))}
     return {"seed_width": base_width, "seed_layers": base_layers}
 
 
@@ -688,12 +691,9 @@ def _bounded_runtime_genome(genome: Any, *, benchmark_group: str) -> Any:
     if not isinstance(genome, ModelGenome):
         return genome
     if benchmark_group == "language_modeling" and genome.family in {"attention", "sparse_attention", "embedding"}:
-        layers = [max(32, min(160, int(width))) for width in genome.hidden_layers[:4]]
-        if not layers:
-            layers = [128]
         return genome.model_copy(
             update={
-                "hidden_layers": layers,
+                "hidden_layers": _bounded_layers(genome.hidden_layers, max_width=160, max_layers=4, fallback_width=128, min_width=32),
                 "embedding_dim": min(160, int(genome.embedding_dim)),
                 "num_heads": min(4, int(genome.num_heads)),
                 "activation_sparsity": min(0.5, float(genome.activation_sparsity)),
@@ -702,13 +702,9 @@ def _bounded_runtime_genome(genome: Any, *, benchmark_group: str) -> Any:
     if benchmark_group != "image" or genome.family not in {"conv2d", "lite_conv2d"}:
         if benchmark_group in {"tabular", "synthetic"}:
             max_width = 160 if genome.family in {"sparse_mlp", "moe_mlp"} else 192
-            max_layers = 4
-            layers = [max(16, min(max_width, int(width))) for width in genome.hidden_layers[:max_layers]]
-            if not layers:
-                layers = [min(max_width, 96)]
             return genome.model_copy(
                 update={
-                    "hidden_layers": layers,
+                    "hidden_layers": _bounded_layers(genome.hidden_layers, max_width=max_width, max_layers=4, fallback_width=96),
                     "num_experts": min(4, int(genome.num_experts)),
                     "moe_top_k": min(2, int(genome.moe_top_k)),
                     "activation_sparsity": min(0.5, float(genome.activation_sparsity)),
@@ -717,12 +713,27 @@ def _bounded_runtime_genome(genome: Any, *, benchmark_group: str) -> Any:
         return genome
 
     max_width = 128 if genome.family == "conv2d" else 96
-    max_layers = 4
-    layers = [max(16, min(max_width, int(width))) for width in genome.hidden_layers[:max_layers]]
-    if not layers:
-        layers = [min(max_width, 64)]
     kernel_size = 3 if int(genome.kernel_size) > 3 else int(genome.kernel_size)
-    return genome.model_copy(update={"hidden_layers": layers, "kernel_size": kernel_size})
+    return genome.model_copy(
+        update={
+            "hidden_layers": _bounded_layers(genome.hidden_layers, max_width=max_width, max_layers=4, fallback_width=64),
+            "kernel_size": kernel_size,
+        }
+    )
+
+
+def _bounded_layers(
+    hidden_layers: list[int],
+    *,
+    max_width: int,
+    max_layers: int,
+    fallback_width: int,
+    min_width: int = 16,
+) -> list[int]:
+    layers = [max(min_width, min(max_width, int(width))) for width in hidden_layers[:max_layers]]
+    if layers:
+        return layers
+    return [min(max_width, fallback_width)]
 
 
 def _load_runtime_bindings(config: RunConfig | None = None) -> RuntimeBindings:

@@ -305,3 +305,13 @@ class RunStore:
 
     def __exit__(self, *exc) -> None:
         self.close()
+
+
+def resolve_run_id(store: RunStore, *, default: str = "default") -> str:
+    """Return the most recent run id stored in a Prism metrics database."""
+    row = store.conn.execute(
+        "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    if row:
+        return str(row[0])
+    return default
