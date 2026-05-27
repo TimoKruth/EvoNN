@@ -9,6 +9,7 @@ from random import Random
 
 import numpy as np
 
+from evonn_shared.metrics import compute_task_metric, metric_name_for_task
 from prism.genome import ModelGenome
 from prism.runtime.benchmark_data_cache import BenchmarkData, BenchmarkDataCache
 from prism.storage import RunStore
@@ -384,22 +385,13 @@ def _compute_fallback_metric(
     y_true: np.ndarray,
     predictions: np.ndarray,
 ) -> tuple[str, float, float]:
-    if task == "classification":
-        labels = y_true.ravel().astype(int)
-        pred_labels = np.argmax(predictions, axis=1)
-        accuracy = float(np.mean(pred_labels == labels))
-        return "accuracy", accuracy, accuracy
-    if task == "language_modeling":
-        probs = np.clip(predictions.reshape(-1, predictions.shape[-1]), 1e-8, 1.0)
-        targets = y_true.reshape(-1).astype(int)
-        targets = np.clip(targets, 0, probs.shape[-1] - 1)
-        cross_entropy = float(-np.mean(np.log(probs[np.arange(targets.shape[0]), targets])))
-        perplexity = float(np.exp(np.clip(cross_entropy, -20.0, 20.0)))
-        return "perplexity", perplexity, -perplexity
-    predicted = predictions.reshape(-1)
-    actual = y_true.reshape(-1)
-    mse = float(np.mean((predicted - actual) ** 2))
-    return "mse", mse, -mse
+    metric = compute_task_metric(
+        task,
+        y_true,
+        predictions,
+        language_prediction_kind="probabilities",
+    )
+    return metric.metric_name, metric.metric_value, metric.quality
 
 
 def _resolve_output_dim(spec, X_train: np.ndarray, y_train: np.ndarray) -> int:
@@ -472,11 +464,7 @@ def _load_data_if_available(
 
 
 def _default_metric_name(task: str) -> str:
-    if task == "classification":
-        return "accuracy"
-    if task == "language_modeling":
-        return "perplexity"
-    return "mse"
+    return metric_name_for_task(task)
 
 
 def _record_benchmark_result(

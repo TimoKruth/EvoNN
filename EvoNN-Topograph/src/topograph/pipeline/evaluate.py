@@ -10,6 +10,7 @@ from typing import Callable
 
 import numpy as np
 
+from evonn_shared.metrics import compute_task_metric, metric_direction_for_task, metric_name_for_task
 from topograph.benchmarks.preprocess import Preprocessor
 from topograph.benchmarks.spec import BenchmarkSpec
 from topograph.cache import WeightCache, structural_hash
@@ -676,18 +677,14 @@ def _compute_fallback_metric(
     y_true: np.ndarray,
     y_pred: np.ndarray,
 ) -> tuple[str, str, float, float]:
-    if task == "classification":
-        accuracy = float(np.mean(y_pred.ravel().astype(int) == y_true.ravel().astype(int)))
-        return "accuracy", "max", accuracy, accuracy
-    if task == "language_modeling":
-        probs = np.clip(y_pred, 1e-8, 1.0)
-        targets = y_true.reshape(-1).astype(int)
-        flat = probs.reshape(-1, probs.shape[-1])
-        cross_entropy = float(-np.mean(np.log(flat[np.arange(len(targets)), targets])))
-        perplexity = float(np.exp(np.clip(cross_entropy, -20.0, 20.0)))
-        return "perplexity", "min", perplexity, -perplexity
-    mse = float(np.mean((y_pred.ravel() - y_true.ravel()) ** 2))
-    return "mse", "min", mse, -mse
+    metric = compute_task_metric(
+        task,
+        y_true,
+        y_pred,
+        classification_predictions_are_labels=task == "classification",
+        language_prediction_kind="probabilities",
+    )
+    return metric.metric_name, metric.metric_direction, metric.metric_value, metric.quality
 
 
 def evaluate_pool(
@@ -1297,11 +1294,9 @@ def _median_value(values: list[float]) -> float:
 
 
 def _failure_result(task: str, reason: str) -> EvaluationResult:
-    metric_name = "perplexity" if task == "language_modeling" else ("mse" if task == "regression" else "accuracy")
-    metric_direction = "min" if task in {"regression", "language_modeling"} else "max"
     return EvaluationResult(
-        metric_name=metric_name,
-        metric_direction=metric_direction,
+        metric_name=metric_name_for_task(task),
+        metric_direction=metric_direction_for_task(task),
         metric_value=float("nan"),
         quality=float("-inf"),
         native_fitness=float("inf"),

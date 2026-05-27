@@ -10,10 +10,10 @@ import numpy as np
 from sklearn import __version__ as sklearn_version
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression, Ridge
-from sklearn.metrics import mean_squared_error
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.preprocessing import StandardScaler
 
+from evonn_shared.metrics import compute_task_metric, metric_name_for_task
 from evonn_primordia.config import EvolutionConfig, RunConfig
 from evonn_primordia.runtime.training import EvaluationResult, _compute_metric
 
@@ -234,11 +234,11 @@ def _train_and_evaluate_numpy_fallback(
             estimator = _build_regression_estimator(family, genome, epochs, lr, weight_decay)
             estimator.fit(x_train, y_train)
             y_pred = estimator.predict(x_val)
-            metric_value = float(mean_squared_error(y_val, y_pred))
+            metric = compute_task_metric("regression", np.asarray(y_val), np.asarray(y_pred))
             return EvaluationResult(
-                metric_name="mse",
-                metric_value=metric_value,
-                quality=-metric_value,
+                metric_name=metric.metric_name,
+                metric_value=metric.metric_value,
+                quality=metric.quality,
                 parameter_count=parameter_count,
                 train_seconds=time.perf_counter() - start,
             )
@@ -253,7 +253,7 @@ def _train_and_evaluate_numpy_fallback(
         )
     except Exception as exc:
         return EvaluationResult(
-            metric_name="perplexity" if task == "language_modeling" else ("mse" if task == "regression" else "accuracy"),
+            metric_name=metric_name_for_task(task),
             metric_value=float("nan"),
             quality=float("-inf"),
             parameter_count=parameter_count,
@@ -315,6 +315,11 @@ def _evaluate_language_modeling_fallback(y_train: np.ndarray, y_val: np.ndarray)
     counts = np.bincount(targets, minlength=vocab).astype(np.float64)
     probs = (counts + 1.0) / (counts.sum() + vocab)
     val_targets = np.asarray(y_val).reshape(-1).astype(int)
-    cross_entropy = float(-np.mean(np.log(probs[val_targets])))
-    perplexity = float(np.exp(np.clip(cross_entropy, -20.0, 20.0)))
-    return "perplexity", perplexity, -perplexity
+    predictions = np.broadcast_to(probs, (val_targets.shape[0], vocab)).copy()
+    metric = compute_task_metric(
+        "language_modeling",
+        val_targets,
+        predictions,
+        language_prediction_kind="probabilities",
+    )
+    return metric.metric_name, metric.metric_value, metric.quality

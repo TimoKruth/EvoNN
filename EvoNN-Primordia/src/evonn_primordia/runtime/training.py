@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 
 import numpy as np
+from evonn_shared.metrics import compute_task_metric, metric_name_for_task
 from evonn_shared.training import (
     calibrate_regression_predictions,
     regression_target_stats,
@@ -79,33 +80,8 @@ def _compute_metric(task: str, y_true: np.ndarray, y_pred: np.ndarray) -> tuple[
     For language modeling: perplexity (lower = better); quality = -perplexity.
     For regression: MSE (lower = better); quality = -MSE so higher = better.
     """
-    if task == "classification":
-        if y_pred.ndim == 2 and y_pred.shape[1] > 1:
-            preds = np.argmax(y_pred, axis=1)
-        else:
-            preds = (y_pred.ravel() > 0.5).astype(int)
-        y_true_flat = y_true.ravel().astype(int)
-        accuracy = float(np.mean(preds == y_true_flat))
-        return "accuracy", accuracy, accuracy
-    if task == "language_modeling":
-        logits = y_pred
-        if logits.ndim == 2:
-            logits = logits[:, None, :]
-        shifted = logits - np.max(logits, axis=-1, keepdims=True)
-        exp_logits = np.exp(shifted)
-        probs = exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)
-        probs = np.clip(probs, 1e-8, 1.0)
-
-        probs_flat = probs.reshape(-1, probs.shape[-1])
-        targets_flat = y_true.reshape(-1).astype(int)
-        cross_entropy = float(-np.mean(np.log(probs_flat[np.arange(targets_flat.shape[0]), targets_flat])))
-        perplexity = float(np.exp(np.clip(cross_entropy, -20.0, 20.0)))
-        return "perplexity", perplexity, -perplexity
-    else:
-        y_pred_flat = y_pred.ravel()
-        y_true_flat = y_true.ravel()
-        mse = float(np.mean((y_pred_flat - y_true_flat) ** 2))
-        return "mse", mse, -mse
+    metric = compute_task_metric(task, y_true, y_pred)
+    return metric.metric_name, metric.metric_value, metric.quality
 
 
 def train_and_evaluate(
@@ -299,11 +275,7 @@ def train_and_evaluate(
 
 
 def _metric_name(task: str) -> str:
-    if task == "classification":
-        return "accuracy"
-    if task == "language_modeling":
-        return "perplexity"
-    return "mse"
+    return metric_name_for_task(task)
 
 
 def _format_failure(exc: Exception) -> str:

@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from evonn_shared.metrics import metric_direction_for_task, metric_name_for_task
+
 try:
     _MLX_VERSION = importlib.metadata.version("mlx")
 except importlib.metadata.PackageNotFoundError:
@@ -337,17 +339,11 @@ def _architecture_summary(genome: ModelGenome) -> str:
 
 
 def _benchmark_metric_name(task: str) -> str:
-    if task == "regression":
-        return "mse"
-    if task == "language_modeling":
-        return "perplexity"
-    return "accuracy"
+    return metric_name_for_task(task)
 
 
 def _benchmark_metric_direction(task: str) -> str:
-    if task in {"regression", "language_modeling"}:
-        return "min"
-    return "max"
+    return metric_direction_for_task(task)
 
 
 def _render_report_markdown(manifest: dict[str, Any], results: list[dict[str, Any]]) -> str:

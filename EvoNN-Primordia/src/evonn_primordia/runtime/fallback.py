@@ -12,10 +12,10 @@ import warnings
 import numpy as np
 from sklearn import __version__ as SKLEARN_VERSION
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.preprocessing import StandardScaler
 
+from evonn_shared.metrics import compute_task_metric
 from evonn_primordia.config import EvolutionConfig, RunConfig
 from evonn_primordia.families.compiler import FAMILY_MODALITY
 from evonn_primordia.genome import ModelGenome, apply_random_mutation
@@ -183,9 +183,12 @@ def train_and_evaluate(
             )
             estimator.fit(x_train_np, y_train_np)
             predictions = estimator.predict(x_val_np)
-            metric_name = "accuracy"
-            metric_value = float(accuracy_score(y_val_np, predictions))
-            quality = metric_value
+            metric = compute_task_metric(
+                "classification",
+                y_val_np,
+                predictions,
+                classification_predictions_are_labels=True,
+            )
         elif task == "regression":
             estimator = MLPRegressor(
                 hidden_layer_sizes=hidden_layers,
@@ -197,16 +200,14 @@ def train_and_evaluate(
             )
             estimator.fit(x_train_np, y_train_np)
             predictions = estimator.predict(x_val_np)
-            metric_name = "mse"
-            metric_value = float(mean_squared_error(y_val_np, predictions))
-            quality = -metric_value
+            metric = compute_task_metric("regression", y_val_np, predictions)
         else:
             raise RuntimeError(f"Primordia numpy fallback does not support task {task!r}.")
 
     return FallbackEvalResult(
-        metric_name=metric_name,
-        metric_value=metric_value,
-        quality=quality,
+        metric_name=metric.metric_name,
+        metric_value=metric.metric_value,
+        quality=metric.quality,
         parameter_count=_fitted_parameter_count(estimator) or parameter_count,
         train_seconds=perf_counter() - started,
     )

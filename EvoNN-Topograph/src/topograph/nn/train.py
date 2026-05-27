@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 
 import numpy as np
+from evonn_shared.metrics import compute_task_metric, metric_direction_for_task, metric_name_for_task
 from evonn_shared.training import (
     calibrate_regression_predictions,
     regression_target_stats,
@@ -113,38 +114,13 @@ def _compute_metric(
     y_pred: np.ndarray,
 ) -> tuple[str, str, float, float]:
     """Return canonical cross-system metric fields plus optimizer quality."""
-    if task == "classification":
-        if y_pred.ndim == 2 and y_pred.shape[1] > 1:
-            preds = np.argmax(y_pred, axis=1)
-        else:
-            preds = (y_pred.ravel() > 0.5).astype(int)
-        y_true_flat = y_true.ravel().astype(int)
-        accuracy = float(np.mean(preds == y_true_flat))
-        return "accuracy", "max", accuracy, accuracy
-    if task == "language_modeling":
-        probs = np.clip(y_pred, 1e-8, 1.0)
-        if probs.ndim == 3 and y_true.ndim == 2:
-            batch_size, seq_len, vocab_size = probs.shape
-            probs_flat = probs.reshape(batch_size * seq_len, vocab_size)
-            targets_flat = y_true.reshape(batch_size * seq_len).astype(int)
-            cross_entropy = float(
-                -np.mean(np.log(probs_flat[np.arange(targets_flat.shape[0]), targets_flat]))
-            )
-        else:
-            if probs.ndim == 3:
-                probs = probs[:, -1, :]
-            targets_flat = y_true.ravel().astype(int)
-            cross_entropy = float(
-                -np.mean(np.log(probs[np.arange(targets_flat.shape[0]), targets_flat]))
-            )
-
-        perplexity = float(np.exp(np.clip(cross_entropy, -20.0, 20.0)))
-        return "perplexity", "min", perplexity, -perplexity
-
-    y_pred_flat = y_pred.ravel()
-    y_true_flat = y_true.ravel()
-    mse = float(np.mean((y_pred_flat - y_true_flat) ** 2))
-    return "mse", "min", mse, -mse
+    metric = compute_task_metric(
+        task,
+        y_true,
+        y_pred,
+        language_prediction_kind="probabilities",
+    )
+    return metric.metric_name, metric.metric_direction, metric.metric_value, metric.quality
 
 
 # ---------------------------------------------------------------------------
@@ -375,15 +351,11 @@ def train_and_evaluate(
 
 
 def _metric_name_for_task(task: str) -> str:
-    if task == "language_modeling":
-        return "perplexity"
-    if task == "regression":
-        return "mse"
-    return "accuracy"
+    return metric_name_for_task(task)
 
 
 def _metric_direction_for_task(task: str) -> str:
-    return "min" if task in {"regression", "language_modeling"} else "max"
+    return metric_direction_for_task(task)
 
 
 # ---------------------------------------------------------------------------

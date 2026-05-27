@@ -11,6 +11,7 @@ import time
 from typing import Any
 
 import numpy as np
+from evonn_shared.metrics import compute_task_metric, quality_from_metric
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -213,24 +214,30 @@ def evaluate_candidate_with_state(
                     batch_size=batch_size,
                     learning_rate=learning_rate,
                 )
-                quality = -metric_value
+                quality = quality_from_metric("language_modeling", metric_value)
             elif spec.task == "regression":
                 predictions, training_artifact, head_params = _predict_regression(
                     train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
                     y_train=y_train,
                     val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
                 )
-                residuals = predictions.astype(np.float32) - y_val.astype(np.float32)
-                metric_value = float(np.mean(np.square(residuals)))
-                quality = -metric_value
+                metric = compute_task_metric("regression", y_val, predictions)
+                metric_value = metric.metric_value
+                quality = metric.quality
             elif spec.source == "image":
                 predictions, training_artifact, head_params = _predict_image_prototypes(
                     train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
                     y_train=y_train,
                     val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
                 )
-                metric_value = float(accuracy_score(y_val, predictions))
-                quality = metric_value
+                metric = compute_task_metric(
+                    "classification",
+                    y_val,
+                    predictions,
+                    classification_predictions_are_labels=True,
+                )
+                metric_value = metric.metric_value
+                quality = metric.quality
             else:
                 predictions, training_artifact, head_params = _predict_classification_mlx(
                     spec=spec,
@@ -244,8 +251,14 @@ def evaluate_candidate_with_state(
                     batch_size=batch_size,
                     learning_rate=learning_rate,
                 )
-                metric_value = float(accuracy_score(y_val, predictions))
-                quality = metric_value
+                metric = compute_task_metric(
+                    "classification",
+                    y_val,
+                    predictions,
+                    classification_predictions_are_labels=True,
+                )
+                metric_value = metric.metric_value
+                quality = metric.quality
         else:
             if spec.task == "language_modeling":
                 metric_value, training_artifact, head_params = _evaluate_language_modeling_numpy(
@@ -260,24 +273,30 @@ def evaluate_candidate_with_state(
                     batch_size=batch_size,
                     learning_rate=learning_rate,
                 )
-                quality = -metric_value
+                quality = quality_from_metric("language_modeling", metric_value)
             elif spec.task == "regression":
                 predictions, training_artifact, head_params = _predict_regression(
                     train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
                     y_train=y_train,
                     val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
                 )
-                residuals = predictions.astype(np.float32) - y_val.astype(np.float32)
-                metric_value = float(np.mean(np.square(residuals)))
-                quality = -metric_value
+                metric = compute_task_metric("regression", y_val, predictions)
+                metric_value = metric.metric_value
+                quality = metric.quality
             elif spec.source == "image":
                 predictions, training_artifact, head_params = _predict_image_prototypes(
                     train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
                     y_train=y_train,
                     val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
                 )
-                metric_value = float(accuracy_score(y_val, predictions))
-                quality = metric_value
+                metric = compute_task_metric(
+                    "classification",
+                    y_val,
+                    predictions,
+                    classification_predictions_are_labels=True,
+                )
+                metric_value = metric.metric_value
+                quality = metric.quality
             else:
                 predictions, training_artifact, head_params = _predict_classification_numpy(
                     spec=spec,
@@ -291,8 +310,14 @@ def evaluate_candidate_with_state(
                     batch_size=batch_size,
                     learning_rate=learning_rate,
                 )
-                metric_value = float(accuracy_score(y_val, predictions))
-                quality = metric_value
+                metric = compute_task_metric(
+                    "classification",
+                    y_val,
+                    predictions,
+                    classification_predictions_are_labels=True,
+                )
+                metric_value = metric.metric_value
+                quality = metric.quality
         parameter_count += head_params
         status = "ok"
         failure_reason = None
