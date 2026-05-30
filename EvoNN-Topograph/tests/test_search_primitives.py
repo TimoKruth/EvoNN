@@ -4,10 +4,13 @@ import random
 
 import numpy as np
 
+from topograph.benchmarks.spec import BenchmarkSpec
+from topograph.config import RunConfig
 from topograph.genome import ConnectionGene, Genome, InnovationCounter, WeightBits
-from topograph.genome.genes import ExpertGene
+from topograph.genome.genes import Activation, ExpertGene, OperatorType
 from topograph.nn import train as train_mod
 from topograph.operators import mutate as mutate_mod
+from topograph.pipeline import coordinator as coordinator_mod
 from topograph.pipeline import archive as archive_mod
 from topograph.pipeline import select as select_mod
 
@@ -163,6 +166,77 @@ def test_mutation_ops_preserve_copy_and_expected_structure():
 
     extra_conn = mutate_mod.mutate_add_connection(genome, InnovationCounter(300), rng)
     assert len(extra_conn.enabled_connections) == len(genome.enabled_connections) + 1
+
+
+def test_benchmark_seed_profiles_cover_mixed_tier_c_families():
+    cfg = RunConfig.model_validate({"evolution": {"population_size": 7}})
+    population = coordinator_mod._create_seed_population(
+        cfg,
+        InnovationCounter(),
+        random.Random(11),
+        benchmark_specs=[
+            BenchmarkSpec(
+                name="iris",
+                task="classification",
+                source="sklearn",
+                dataset="load_iris",
+                input_dim=4,
+                num_classes=3,
+            ),
+            BenchmarkSpec(
+                name="letter",
+                task="classification",
+                source="openml",
+                dataset="letter",
+                input_dim=16,
+                num_classes=26,
+            ),
+            BenchmarkSpec(
+                name="digits",
+                task="classification",
+                source="image",
+                dataset="digits",
+                input_dim=64,
+                num_classes=10,
+            ),
+            BenchmarkSpec(
+                name="diabetes",
+                task="regression",
+                source="sklearn",
+                dataset="load_diabetes",
+                input_dim=10,
+                num_classes=1,
+            ),
+            BenchmarkSpec(
+                name="tiny_lm",
+                task="language_modeling",
+                source="lm_synthetic",
+                input_dim=16,
+                num_classes=64,
+            ),
+        ],
+    )
+
+    first_ops = [genome.enabled_layers[0].operator for genome in population[1:6]]
+    first_activations = [genome.enabled_layers[0].activation for genome in population[1:6]]
+
+    assert first_ops == [
+        OperatorType.RESIDUAL,
+        OperatorType.SPATIAL,
+        OperatorType.RESIDUAL,
+        OperatorType.SPARSE_DENSE,
+        OperatorType.ATTENTION_LITE,
+    ]
+    assert first_activations == [
+        Activation.GELU,
+        Activation.RELU,
+        Activation.GELU,
+        Activation.SILU,
+        Activation.GELU,
+    ]
+    assert population[1].enabled_layers[0].width >= 160
+    assert population[2].enabled_layers[0].width >= 128
+    assert population[4].enabled_layers[0].sparsity >= 0.15
 
 
 def test_mutate_weight_bits_and_learning_rate_are_bounded():

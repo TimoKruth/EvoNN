@@ -572,42 +572,116 @@ def _apply_benchmark_seed_profiles(
     benchmark_specs: list[BenchmarkSpec] | None,
 ) -> None:
     specs = benchmark_specs or ([benchmark_spec] if benchmark_spec is not None else [])
-    families = {benchmark_family_name(spec) for spec in specs}
-    if not population or not families:
+    profile_keys = _benchmark_seed_profile_keys(specs)
+    if not population or not profile_keys:
         return
-    if "tabular-regression" in families:
+
+    profile_order = [
+        "openml-classification",
+        "image-classification",
+        "tabular-regression",
+        "tabular-classification",
+        "language-modeling",
+    ]
+    profiles = [profile for profile in profile_order if profile in profile_keys]
+    profile_count = len(profiles)
+    if profile_count == 0:
+        return
+
+    # Tiny fair-matrix lanes can have fewer than ten candidates. Allocate one
+    # non-overlapping seed slot per active profile before giving any profile a
+    # second slot, so mixed benchmark packs are not initialized as all-tabular.
+    start_offset = min(1, len(population) - 1)
+    usable_slots = max(1, len(population) - start_offset)
+    slot_count = min(usable_slots, profile_count)
+    for index, profile in enumerate(profiles[:slot_count]):
+        start = start_offset + index
+        stop = start + 1
+        _apply_seed_profile(population, profile=profile, start=start, stop=stop)
+
+    extra_slots = usable_slots - slot_count
+    if extra_slots <= 0:
+        return
+    chunk = max(1, extra_slots // profile_count)
+    cursor = start_offset + slot_count
+    for profile in profiles:
+        if cursor >= len(population):
+            break
+        stop = min(len(population), cursor + chunk)
+        _apply_seed_profile(population, profile=profile, start=cursor, stop=stop)
+        cursor = stop
+
+
+def _benchmark_seed_profile_keys(specs: list[BenchmarkSpec]) -> set[str]:
+    keys: set[str] = set()
+    for spec in specs:
+        family = benchmark_family_name(spec)
+        task = str(getattr(spec, "task", ""))
+        source = str(getattr(spec, "source", ""))
+        if task == "language_modeling":
+            keys.add("language-modeling")
+            continue
+        if source == "image" or family == "image":
+            keys.add("image-classification")
+            continue
+        if task == "regression":
+            keys.add("tabular-regression")
+        elif task == "classification":
+            keys.add("tabular-classification")
+            if source == "openml":
+                keys.add("openml-classification")
+    return keys
+
+
+def _apply_seed_profile(
+    population: list[Genome],
+    *,
+    profile: str,
+    start: int,
+    stop: int,
+) -> None:
+    if profile == "openml-classification":
         _specialize_population_slice(
             population,
-            start=0,
-            stop=max(1, len(population) // 4),
+            start=start,
+            stop=stop,
+            width_floor=160,
+            operator=OperatorType.RESIDUAL,
+            activation=Activation.GELU,
+        )
+    elif profile == "image-classification":
+        _specialize_population_slice(
+            population,
+            start=start,
+            stop=stop,
+            width_floor=128,
+            operator=OperatorType.SPATIAL,
+            activation=Activation.RELU,
+        )
+    elif profile == "tabular-regression":
+        _specialize_population_slice(
+            population,
+            start=start,
+            stop=stop,
             width_floor=128,
             operator=OperatorType.RESIDUAL,
             activation=Activation.GELU,
         )
-    if "tabular" in families or "synthetic" in families:
+    elif profile == "tabular-classification":
         _specialize_population_slice(
             population,
-            start=max(1, len(population) // 4),
-            stop=max(2, len(population) // 2),
+            start=start,
+            stop=stop,
             width_floor=96,
             operator=OperatorType.SPARSE_DENSE,
             activation=Activation.SILU,
             sparsity=0.15,
         )
-    if "image-classification" in families:
+    elif profile == "language-modeling":
         _specialize_population_slice(
             population,
-            start=max(2, len(population) // 2),
-            stop=max(3, (3 * len(population)) // 4),
-            width_floor=96,
-            operator=OperatorType.SPATIAL,
-            activation=Activation.RELU,
-        )
-    if "language-modeling" in families:
-        _specialize_population_slice(
-            population,
-            start=max(3, (3 * len(population)) // 4),
-            stop=len(population),
+            start=start,
+            stop=stop,
             width_floor=128,
             operator=OperatorType.ATTENTION_LITE,
             activation=Activation.GELU,
