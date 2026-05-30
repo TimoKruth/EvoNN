@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import yaml
 from typer.testing import CliRunner
 
@@ -17,7 +18,7 @@ from stratograph.runtime.backends import (
     resolve_runtime_backend_with_policy,
 )
 from stratograph.storage import RunStore
-from stratograph.pipeline.evaluator import _lm_train_steps
+from stratograph.pipeline.evaluator import _lm_train_steps, _predict_image_prototypes
 
 
 def test_lm_train_steps_are_capped_for_promotion_lanes() -> None:
@@ -25,6 +26,29 @@ def test_lm_train_steps_are_capped_for_promotion_lanes() -> None:
     assert _lm_train_steps(1) == 1
     assert _lm_train_steps(20) == policy.lm_step_floor
     assert _lm_train_steps(1000) == policy.lm_step_floor
+
+
+def test_image_prototype_selector_can_use_raw_view_when_encoded_view_is_weak() -> None:
+    y_train = np.asarray([0] * 20 + [1] * 20, dtype=np.int64)
+    raw_train = np.vstack(
+        [
+            np.tile(np.asarray([0.0, 0.0], dtype=np.float32), (20, 1)),
+            np.tile(np.asarray([4.0, 4.0], dtype=np.float32), (20, 1)),
+        ]
+    )
+    encoded_train = np.zeros((40, 2), dtype=np.float32)
+    raw_val = np.asarray([[0.1, 0.0], [3.8, 4.2], [0.0, 0.2], [4.1, 3.9]], dtype=np.float32)
+    encoded_val = np.zeros((4, 2), dtype=np.float32)
+
+    predictions, _, _ = _predict_image_prototypes(
+        train_features=encoded_train,
+        y_train=y_train,
+        val_features=encoded_val,
+        raw_train_features=raw_train,
+        raw_val_features=raw_val,
+    )
+
+    assert predictions.tolist() == [0, 1, 0, 1]
 
 
 def test_resolve_runtime_backend_rejects_missing_mlx(monkeypatch) -> None:

@@ -126,11 +126,21 @@ def test_benchmark_search_profile_expands_regression_and_high_dimensional_seeds(
         input_dim=118,
         output_dim=2,
     )
+    image_profile = _benchmark_search_profile(
+        benchmark_name="mnist_image",
+        task="classification",
+        input_dim=784,
+        output_dim=10,
+    )
 
     assert regression_profile["primitive_bias"] == "regression"
     assert regression_profile["depth_bonus"] == 1
     assert max(regression_profile["width_choices"]) > 128
     assert tabular_profile["width_floor"] == 32
+    assert image_profile["primitive_bias"] == "image"
+    assert image_profile["depth_bonus"] == 1
+    assert image_profile["cell_depth_bonus"] == 1
+    assert image_profile["width_floor"] >= 64
 
 
 def test_task_aware_seed_candidate_keeps_valid_hierarchy() -> None:
@@ -147,3 +157,26 @@ def test_task_aware_seed_candidate_keeps_valid_hierarchy() -> None:
     assert candidate.macro_depth >= 4
     assert candidate.average_cell_depth >= 3.0
     assert min(node.output_width for node in candidate.macro_nodes) >= 32
+
+
+def test_image_seed_candidate_uses_image_profile_capacity_and_motifs() -> None:
+    candidate = _make_candidate(
+        benchmark_name="mnist_image",
+        task="classification",
+        input_dim=784,
+        output_dim=10,
+        seed=42,
+        candidate_index=0,
+        architecture_mode="two_level_shared",
+    )
+
+    primitive_kinds = {
+        str(node.kind.value)
+        for cell in candidate.cell_library.values()
+        for node in cell.nodes
+    }
+
+    assert candidate.macro_depth >= 5
+    assert candidate.average_cell_depth >= 4.0
+    assert min(node.output_width for node in candidate.macro_nodes) >= 64
+    assert primitive_kinds <= {"norm", "mix", "residual"}

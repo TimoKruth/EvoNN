@@ -30,7 +30,7 @@ from stratograph.pipeline.evaluator import (
 )
 from stratograph.runtime.backends import resolve_runtime_backend_with_policy, runtime_execution_policy
 from stratograph.search import crossover_genomes, descriptor, mutate_genome, niche_key, novelty_score
-from stratograph.search.operators import MOTIF_LIBRARY
+from stratograph.search.operators import MOTIF_LIBRARY, TASK_MOTIFS
 from stratograph.storage import RunStore
 
 
@@ -460,7 +460,8 @@ def _make_candidate(
                     for node_id in node_ids
                 ]
             elif motif_bias and base_mode == "two_level_shared":
-                motif = MOTIF_LIBRARY[(candidate_index + macro_index + len(benchmark_name)) % len(MOTIF_LIBRARY)]
+                motifs = _profile_motifs(str(search_profile["primitive_bias"]))
+                motif = motifs[(candidate_index + macro_index + len(benchmark_name)) % len(motifs)]
                 nodes = [
                     CellNodeGene(
                         node_id=node_id,
@@ -563,11 +564,11 @@ def _benchmark_search_profile(
         }
     if is_image:
         return {
-            "width_choices": (64, 96, 128, 160, 192),
-            "width_floor": 48,
-            "depth_bonus": 0,
-            "cell_depth_bonus": 0,
-            "primitive_bias": "none",
+            "width_choices": (96, 128, 160, 192, 224, 256),
+            "width_floor": 64,
+            "depth_bonus": 1,
+            "cell_depth_bonus": 1,
+            "primitive_bias": "image",
         }
     if is_high_dimensional:
         return {
@@ -875,7 +876,15 @@ def _profile_survival_bonus(genome: HierarchicalGenome | None, profile_key: str)
     if genome is None:
         return 0.0
     if profile_key == "image":
-        return min(0.045, genome.macro_depth * 0.002 + genome.reuse_ratio * 0.015 + len(genome.cell_library) * 0.001)
+        image_primitives = _primitive_share(genome, {"norm", "mix", "residual"})
+        return min(
+            0.055,
+            genome.macro_depth * 0.002
+            + genome.average_cell_depth * 0.0015
+            + genome.reuse_ratio * 0.012
+            + len(genome.cell_library) * 0.001
+            + image_primitives * 0.022,
+        )
     if profile_key == "regression":
         return min(0.04, genome.reuse_ratio * 0.018 + genome.macro_depth * 0.001 + _primitive_share(genome, {"linear", "norm", "residual"}) * 0.025)
     if profile_key == "tabular":
@@ -894,6 +903,10 @@ def _primitive_share(genome: HierarchicalGenome, primitives: set[str]) -> float:
             if str(node.kind.value if hasattr(node.kind, "value") else node.kind).lower() in primitives:
                 matches += 1
     return 0.0 if total == 0 else matches / total
+
+
+def _profile_motifs(profile: str) -> tuple[tuple[tuple[PrimitiveKind, ActivationKind], ...], ...]:
+    return TASK_MOTIFS.get(profile, MOTIF_LIBRARY)
 
 
 def _artifact_compatible(genome: HierarchicalGenome, artifact: TrainingArtifact | None) -> bool:

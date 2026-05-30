@@ -229,6 +229,8 @@ def evaluate_candidate_with_state(
                     train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
                     y_train=y_train,
                     val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
+                    raw_train_features=x_train.reshape(x_train.shape[0], -1),
+                    raw_val_features=x_val.reshape(x_val.shape[0], -1),
                 )
                 metric = compute_task_metric(
                     "classification",
@@ -288,6 +290,8 @@ def evaluate_candidate_with_state(
                     train_features=np.asarray(compiled.encode(x_train), dtype=np.float32).reshape(x_train.shape[0], -1),
                     y_train=y_train,
                     val_features=np.asarray(compiled.encode(x_val), dtype=np.float32).reshape(x_val.shape[0], -1),
+                    raw_train_features=x_train.reshape(x_train.shape[0], -1),
+                    raw_val_features=x_val.reshape(x_val.shape[0], -1),
                 )
                 metric = compute_task_metric(
                     "classification",
@@ -536,21 +540,70 @@ def _predict_image_prototypes(
     train_features: np.ndarray,
     y_train: np.ndarray,
     val_features: np.ndarray,
+    raw_train_features: np.ndarray | None = None,
+    raw_val_features: np.ndarray | None = None,
 ) -> tuple[np.ndarray, TrainingArtifact | None, int]:
+    views: list[tuple[str, np.ndarray, np.ndarray]] = [("encoded", train_features, val_features)]
+    if raw_train_features is not None and raw_val_features is not None:
+        views.append(("raw", raw_train_features, raw_val_features))
+
+    fit_index, holdout_index = train_test_split(
+        np.arange(len(y_train)),
+        test_size=0.2 if len(y_train) >= 40 else 0.25,
+        random_state=42,
+        stratify=_safe_stratify_labels(y_train),
+    )
+    candidates: list[tuple[float, str, str, np.ndarray, np.ndarray, int]] = []
+    for view_name, view_train, view_val in views:
+        for distance in ("cosine", "euclidean"):
+            holdout_predictions, centroid_size = _prototype_predict(
+                train_features=view_train[fit_index],
+                y_train=y_train[fit_index],
+                val_features=view_train[holdout_index],
+                distance=distance,
+            )
+            holdout_score = float(accuracy_score(y_train[holdout_index], holdout_predictions))
+            candidates.append((holdout_score, view_name, distance, view_train, view_val, centroid_size))
+
+    _, _, best_distance, best_train, best_val, _ = max(
+        candidates,
+        key=lambda item: (item[0], item[1] == "encoded", item[2] == "cosine"),
+    )
+    predictions, centroid_size = _prototype_predict(
+        train_features=best_train,
+        y_train=y_train,
+        val_features=best_val,
+        distance=best_distance,
+    )
+    return predictions.astype(np.int64, copy=False), None, centroid_size
+
+
+def _prototype_predict(
+    *,
+    train_features: np.ndarray,
+    y_train: np.ndarray,
+    val_features: np.ndarray,
+    distance: str,
+) -> tuple[np.ndarray, int]:
     scaler = StandardScaler(with_mean=True, with_std=True)
     fit_x = scaler.fit_transform(train_features).astype(np.float32)
     val_x = scaler.transform(val_features).astype(np.float32)
     classes = np.unique(y_train.astype(np.int64, copy=False))
+    if distance == "cosine":
+        fit_x = _l2_normalize(fit_x)
+        val_x = _l2_normalize(val_x)
     centroids = []
     for label in classes:
         mask = y_train == label
         centroids.append(fit_x[mask].mean(axis=0) if np.any(mask) else np.zeros(fit_x.shape[1], dtype=np.float32))
     centroid_matrix = np.asarray(centroids, dtype=np.float32)
-    # Nearest centroid is much cheaper than iterative head training and is
-    # sufficient for the low-cost image lanes used in contract validation.
-    distances = np.sum((val_x[:, None, :] - centroid_matrix[None, :, :]) ** 2, axis=2)
-    predictions = classes[np.argmin(distances, axis=1)]
-    return predictions.astype(np.int64, copy=False), None, int(centroid_matrix.size)
+    if distance == "cosine":
+        centroid_matrix = _l2_normalize(centroid_matrix)
+        predictions = classes[np.argmax(val_x @ centroid_matrix.T, axis=1)]
+    else:
+        distances = np.sum((val_x[:, None, :] - centroid_matrix[None, :, :]) ** 2, axis=2)
+        predictions = classes[np.argmin(distances, axis=1)]
+    return predictions, int(centroid_matrix.size)
 
 
 def _predict_classification_numpy(
@@ -838,6 +891,10 @@ def _softmax_numpy(logits: np.ndarray) -> np.ndarray:
     shifted = logits - logits.max(axis=1, keepdims=True)
     exp = np.exp(shifted).astype(np.float32)
     return exp / (exp.sum(axis=1, keepdims=True) + 1e-12)
+
+
+def _l2_normalize(x: np.ndarray) -> np.ndarray:
+    return x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-12)
 
 
 def _gelu_numpy(x: np.ndarray) -> np.ndarray:
