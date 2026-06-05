@@ -3,7 +3,13 @@ import random
 from stratograph.benchmarks import get_benchmark
 from stratograph.genome import HierarchicalGenome
 from stratograph.genome.models import MacroNodeGene
-from stratograph.pipeline.coordinator import _benchmark_profile_key, _next_population, _offspring_mutation_modes, _select_parent_pool
+from stratograph.pipeline.coordinator import (
+    _benchmark_profile_key,
+    _next_population,
+    _offspring_mutation_modes,
+    _profile_survival_bonus,
+    _select_parent_pool,
+)
 from stratograph.pipeline.evaluator import EvaluationRecord
 from stratograph.search import crossover_genomes, descriptor, mutate_genome, novelty_score
 from stratograph.search.operators import MAX_MACRO_NODES, TASK_MOTIFS
@@ -245,3 +251,46 @@ def test_profile_key_and_mutation_modes_prioritize_image_specific_search() -> No
         allow_clone_mutation=True,
         motif_bias=True,
     ) == ("motif_rewrite", "specialize_cell")
+
+
+def test_tabular_profile_uses_motif_rewrite_and_survival_bonus() -> None:
+    genome = _seed("openml_gas_sensor")
+    profile = _benchmark_profile_key(
+        benchmark_name="openml_gas_sensor",
+        task=genome.task,
+        input_dim=genome.input_dim,
+        output_dim=genome.output_dim,
+    )
+
+    assert "tabular" in TASK_MOTIFS
+    assert profile == "tabular"
+    assert _offspring_mutation_modes(
+        0,
+        task=genome.task,
+        profile_key=profile,
+        architecture_mode="two_level_shared",
+        allow_clone_mutation=True,
+        motif_bias=True,
+    ) == ("motif_rewrite", "activation")
+    assert _profile_survival_bonus(genome, profile) > 0.0
+
+
+def test_lm_profile_key_mutation_modes_and_survival_bonus_are_sequence_aware() -> None:
+    genome = _seed("tiny_lm_synthetic")
+    profile = _benchmark_profile_key(
+        benchmark_name="tiny_lm_synthetic",
+        task="language_modeling",
+        input_dim=genome.input_dim,
+        output_dim=genome.output_dim,
+    )
+
+    assert profile == "language_modeling"
+    assert _offspring_mutation_modes(
+        1,
+        task="language_modeling",
+        profile_key=profile,
+        architecture_mode="two_level_shared",
+        allow_clone_mutation=True,
+        motif_bias=True,
+    ) == ("add_skip_edge", "rewire_macro")
+    assert _profile_survival_bonus(genome, profile) > 0.0

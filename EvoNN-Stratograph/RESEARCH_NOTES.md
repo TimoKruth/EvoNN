@@ -129,3 +129,91 @@ Direct read:
 2. real LM head instead of count-based surrogate
 3. stronger clone-specialize scheduling
 4. motif library learned from winning runs instead of fixed priors
+
+## 2026-06-03 LM-Aware Hierarchy Search Profile
+
+Work completed:
+
+- language-modeling seeds now use their own hierarchy profile instead of the
+  generic low-capacity fallback
+- LM seeds start wider/deeper and use sequence-oriented motifs from the existing
+  motif library
+- offspring scheduling now has an LM-specific rotation across motif rewrite,
+  macro rewiring, width/specialization, and macro expansion
+- parent survival pressure now gives bounded credit to LM-relevant sequence
+  primitives, reuse, macro depth, and cell depth
+
+Commands run:
+
+```bash
+uv run --package stratograph ruff check EvoNN-Stratograph/src/stratograph/pipeline/coordinator.py EvoNN-Stratograph/tests/test_config_genome_compile.py EvoNN-Stratograph/tests/test_search_ops.py
+uv run --package stratograph pytest EvoNN-Stratograph/tests/test_config_genome_compile.py EvoNN-Stratograph/tests/test_search_ops.py -q
+uv run --package stratograph pytest EvoNN-Stratograph/tests -q
+bash scripts/ci/stratograph-checks.sh all
+uv run --package stratograph stratograph evolve --config EvoNN-Stratograph/configs/ablation_lm_smoke_runtime.yaml --run-dir .tmp/stratograph-lm-profile-smoke
+```
+
+Smoke result:
+
+- LM smoke completed `3/3` benchmarks with `24/24` configured slots, `0`
+  failed evaluations, `0` invalid evaluations, and true slot integrity
+- stored budget metadata reports
+  `search_profile_policy=task_dimension_lm_aware_initial_hierarchy_profiles`
+
+Current read:
+
+- this removes a clear search-policy gap behind the LM flatline diagnostic:
+  LM now receives task-specific hierarchy capacity and selection pressure
+- it is not decision-grade evidence of an LM score improvement; that still
+  requires the repeated comparison run against the fixed Tier C pressure surface
+
+## 2026-06-04 Tabular Near-Miss Profile Correction
+
+First comparison read supplied after the full fair-matrix rerun:
+
+- `12/12` full cases completed across seeds `42,43,44` and budgets
+  `154,264,374,484`
+- all lanes were `trusted-extended`, repeatability-ready, decision-grade, and
+  had zero blockers
+- full-system non-tie wins were Contenders `182`, Prism `28`, Stratograph `16`,
+  Topograph `6`, Primordia `2`
+- Stratograph improved with budget: `3`, `3`, `4`, then `6` wins at budget
+  `484`
+
+Initial implementation response:
+
+- tried a broad benchmark-leader exploitation slot for the first shared-mode
+  offspring in each reproduction step
+
+Newest comparison read:
+
+- `12/12` cases completed, all `trusted-extended`, decision-grade, repeatability
+  ready, and zero blockers
+- full-system non-tie wins were Contenders `174`, Prism `21`, Stratograph `13`,
+  Topograph `12`, Primordia `4`, with `40` ties
+- Stratograph wins were concentrated in tabular-regression and tabular
+  classification: `diabetes_regression`, `openml_wilt`, and
+  `credit_g_classification`
+- Stratograph was repeatedly rank 2 on high-dimensional tabular benchmarks,
+  especially `openml_gas_sensor`, `openml_mfeat_factors`,
+  `openml_segment`, `openml_qsar_biodeg`, and `credit_g_classification`
+- image and synthetic tasks remained weak; broad exploitation did not improve
+  the aggregate signal
+
+Implementation response:
+
+- removed the broad benchmark-leader exploitation slot and restored
+  crossover-first diversity pressure
+- added explicit `tabular` motifs for high-dimensional tabular classification
+- high-dimensional tabular seeds now start wider/deeper with motif-backed cell
+  internals instead of random primitive bias
+- tabular parent survival pressure now gives bounded credit to tabular motif
+  share and cell depth
+
+Current read:
+
+- this is a bounded tabular-specialization change, not a compare-contract or
+  budget-accounting change
+- further tuning should wait for another comparison, because the next unknown is
+  whether the tabular near misses become repeated wins without hurting the
+  existing `diabetes_regression` signal

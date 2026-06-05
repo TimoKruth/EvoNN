@@ -10,6 +10,7 @@ from typing import Any
 
 from prism.config import RunConfig, load_config
 from prism.genome import ModelGenome
+from prism.pipeline.archive import IndividualSummary, build_pareto_archive
 from prism.storage import RunStore, resolve_run_id as _storage_resolve_run_id
 
 
@@ -88,6 +89,7 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
         sections.append(f"| Residual | {representative.residual} |")
         sections.append(f"| Norm Type | {representative.norm_type} |")
         sections.append(f"| Parameter Estimate | {representative.parameter_estimate:,} |")
+        sections.append(f"| Architecture Complexity | {representative.architecture_complexity:.3f} |")
         if representative.num_experts > 0:
             sections.append(f"| MoE Experts | {representative.num_experts} (top-{representative.moe_top_k}) |")
         sections.append("")
@@ -202,6 +204,22 @@ def generate_report(run_dir: str | Path, output_path: str | Path | None = None) 
         sections.append("")
     else:
         sections.append("No efficiency data available.")
+        sections.append("")
+
+    sections.append("## Pareto Frontier")
+    sections.append("")
+    pareto_rows = _compute_pareto_front(evaluations, genomes)
+    if pareto_rows:
+        sections.append("| Genome | Family | Avg Quality | Time (s) | Params | Complexity |")
+        sections.append("|--------|--------|-------------|----------|--------|------------|")
+        for row in pareto_rows:
+            sections.append(
+                f"| {row['genome_id']} | {row['family']} | {row['avg_quality']:.6f} | "
+                f"{row['train_seconds']:.4f} | {row['parameter_count']} | {row['complexity']:.3f} |"
+            )
+        sections.append("")
+    else:
+        sections.append("No Pareto frontier data available.")
         sections.append("")
 
     sections.append("## Family Efficiency")
@@ -564,6 +582,56 @@ def _compute_efficiency_summary(evaluations: list[dict[str, Any]]) -> dict[str, 
         "quality_per_second": avg_quality / max(1e-9, avg_time),
         "quality_per_kparam": avg_quality / max(1.0, avg_params / 1000.0),
     }
+
+
+def _compute_pareto_front(
+    evaluations: list[dict[str, Any]],
+    genomes: list[ModelGenome],
+    *,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    genome_by_id = {genome.genome_id: genome for genome in genomes}
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in evaluations:
+        genome_id = row.get("genome_id")
+        if genome_id not in genome_by_id or not _is_successful_evaluation(row):
+            continue
+        grouped.setdefault(str(genome_id), []).append(row)
+
+    summaries: list[IndividualSummary] = []
+    for genome_id, rows in grouped.items():
+        genome = genome_by_id[genome_id]
+        qualities = {
+            str(row["benchmark_id"]): float(row["quality"])
+            for row in rows
+            if row.get("benchmark_id") is not None and row.get("quality") is not None
+        }
+        if not qualities:
+            continue
+        summaries.append(
+            IndividualSummary(
+                genome_id=genome_id,
+                family=genome.family,
+                generation=max(int(row.get("generation") or 0) for row in rows),
+                qualities=qualities,
+                parameter_count=max(int(row.get("parameter_count") or 0) for row in rows),
+                train_seconds=sum(float(row.get("train_seconds") or 0.0) for row in rows),
+                complexity_score=genome.architecture_complexity,
+            )
+        )
+
+    front = build_pareto_archive(summaries)[:limit]
+    return [
+        {
+            "genome_id": summary.genome_id,
+            "family": summary.family,
+            "avg_quality": summary.aggregate_quality,
+            "train_seconds": summary.train_seconds,
+            "parameter_count": summary.parameter_count,
+            "complexity": summary.complexity_score,
+        }
+        for summary in front
+    ]
 
 
 def _compute_family_efficiency(

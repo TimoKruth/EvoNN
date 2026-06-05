@@ -48,6 +48,7 @@ from topograph.benchmarks.spec import BenchmarkSpec
 from topograph.config import RunConfig, load_config
 from topograph.genome.codec import dict_to_genome
 from topograph.genome.genome import Genome
+from topograph.pipeline.archive import motif_tags
 from topograph.storage import RunStore, resolve_run_id as _storage_resolve_run_id
 
 
@@ -251,6 +252,7 @@ def _genome_summary(genome: Genome) -> dict[str, Any]:
         "activation_bits": [lg.activation_bits.value for lg in layers],
         "dag_depth": _dag_depth(genome),
         "skip_connections": _skip_connection_count(genome),
+        "motif_tags": motif_tags(genome),
         "precision_distribution": _precision_distribution(genome),
         "has_experts": len(genome.experts) > 0,
         "num_experts": len([e for e in genome.experts if e.enabled]) if genome.experts else 0,

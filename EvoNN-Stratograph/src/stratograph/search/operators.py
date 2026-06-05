@@ -62,6 +62,24 @@ TASK_MOTIFS: dict[str, tuple[tuple[tuple[PrimitiveKind, ActivationKind], ...], .
             (PrimitiveKind.LINEAR, ActivationKind.IDENTITY),
         ),
     ),
+    "tabular": (
+        (
+            (PrimitiveKind.GATE, ActivationKind.TANH),
+            (PrimitiveKind.NORM, ActivationKind.IDENTITY),
+            (PrimitiveKind.MIX, ActivationKind.GELU),
+        ),
+        (
+            (PrimitiveKind.NORM, ActivationKind.IDENTITY),
+            (PrimitiveKind.RESIDUAL, ActivationKind.RELU),
+            (PrimitiveKind.GATE, ActivationKind.IDENTITY),
+        ),
+        (
+            (PrimitiveKind.LINEAR, ActivationKind.IDENTITY),
+            (PrimitiveKind.NORM, ActivationKind.GELU),
+            (PrimitiveKind.MIX, ActivationKind.RELU),
+            (PrimitiveKind.RESIDUAL, ActivationKind.IDENTITY),
+        ),
+    ),
     "image": (
         (
             (PrimitiveKind.NORM, ActivationKind.RELU),

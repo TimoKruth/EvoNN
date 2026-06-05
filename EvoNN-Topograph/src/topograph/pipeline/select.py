@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 
 from topograph.genome import Genome
@@ -85,6 +86,66 @@ def non_dominated_sort(
     return [f for f in fronts if f]
 
 
+def crowding_distances(
+    front_indices: list[int],
+    fitnesses: list[float],
+    model_bytes: list[int],
+) -> dict[int, float]:
+    """Return NSGA-II crowding distances for a Pareto front.
+
+    Boundary candidates are assigned infinite distance so fronts keep both
+    quality-leading and byte-leading topology extremes.
+    """
+    if not front_indices:
+        return {}
+    distances = {idx: 0.0 for idx in front_indices}
+    if len(front_indices) <= 2:
+        return {idx: float("inf") for idx in front_indices}
+
+    objectives = (
+        [float(fitnesses[idx]) for idx in front_indices],
+        [float(model_bytes[idx]) for idx in front_indices],
+    )
+    for values in objectives:
+        ordered = sorted(zip(front_indices, values), key=lambda item: (item[1], item[0]))
+        distances[ordered[0][0]] = float("inf")
+        distances[ordered[-1][0]] = float("inf")
+
+        min_value = ordered[0][1]
+        max_value = ordered[-1][1]
+        span = max_value - min_value
+        if span <= 0.0 or not math.isfinite(span):
+            continue
+
+        for pos in range(1, len(ordered) - 1):
+            idx = ordered[pos][0]
+            if math.isinf(distances[idx]):
+                continue
+            prev_value = ordered[pos - 1][1]
+            next_value = ordered[pos + 1][1]
+            distances[idx] += (next_value - prev_value) / span
+
+    return distances
+
+
+def sort_front_by_crowding(
+    front_indices: list[int],
+    fitnesses: list[float],
+    model_bytes: list[int],
+) -> list[int]:
+    """Sort a Pareto front by crowding distance, then deterministic tie-breaks."""
+    distances = crowding_distances(front_indices, fitnesses, model_bytes)
+    return sorted(
+        front_indices,
+        key=lambda idx: (
+            -distances.get(idx, 0.0),
+            fitnesses[idx],
+            model_bytes[idx],
+            idx,
+        ),
+    )
+
+
 def nsga2_select(
     population: list[Genome],
     fitnesses: list[float],
@@ -94,9 +155,10 @@ def nsga2_select(
 ) -> list[Genome]:
     """Select genomes using NSGA-II non-dominated sorting.
 
-    Fills greedily from successive fronts. Shuffles the last incomplete front
-    and takes the remainder needed.
+    Fills greedily from successive fronts. Orders the last incomplete front by
+    crowding distance so the frontier keeps quality and size extremes.
     """
+    _ = rng
     fronts = non_dominated_sort(fitnesses, model_bytes)
     selected: list[Genome] = []
     for front_indices in fronts:
@@ -104,8 +166,7 @@ def nsga2_select(
             selected.extend(population[i] for i in front_indices)
         else:
             remaining = count - len(selected)
-            if rng is not None:
-                rng.shuffle(front_indices)
-            selected.extend(population[i] for i in front_indices[:remaining])
+            ordered_front = sort_front_by_crowding(front_indices, fitnesses, model_bytes)
+            selected.extend(population[i] for i in ordered_front[:remaining])
             break
     return selected

@@ -6,6 +6,7 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
+from evonn_primordia.export.descriptors import build_descriptor_coverage
 from evonn_primordia.export.report import build_primitive_bank_summary, enrich_best_results, load_best_results
 
 
@@ -23,6 +24,14 @@ def build_seed_candidates(
         best_results=best_results,
         trial_records=trial_records,
     )
+    descriptor_coverage = primitive_bank.get("descriptor_coverage")
+    if not isinstance(descriptor_coverage, dict):
+        descriptor_coverage = build_descriptor_coverage(
+            summary=summary,
+            best_results=best_results,
+            trial_records=trial_records,
+        )
+    family_descriptor_coverage = descriptor_coverage.get("family_descriptor_coverage") or {}
 
     family_groups: dict[str, set[str]] = {}
     family_trials: dict[str, list[dict[str, Any]]] = {}
@@ -80,6 +89,7 @@ def build_seed_candidates(
         benchmark_wins = int(row.get("benchmark_wins", 0))
         if benchmark_wins <= 0:
             continue
+        family_descriptor = family_descriptor_coverage.get(family, {})
         ranked_families.append(
             {
                 "seed_rank": index,
@@ -94,6 +104,34 @@ def build_seed_candidates(
                 "median_quality_by_group": median_by_group,
                 "representative_genome_id": row.get("representative_genome_id"),
                 "representative_architecture_summary": row.get("representative_architecture_summary"),
+                "representative_descriptor": row.get("representative_descriptor")
+                or family_descriptor.get("representative_descriptor"),
+                "descriptor_count": int(
+                    row.get("descriptor_count")
+                    or family_descriptor.get("descriptor_cell_count")
+                    or 0
+                ),
+                "winning_descriptor_count": int(
+                    row.get("winning_descriptor_count")
+                    or family_descriptor.get("winning_descriptor_cell_count")
+                    or 0
+                ),
+                "descriptor_coverage_ratio": row.get("descriptor_coverage_ratio")
+                if row.get("descriptor_coverage_ratio") is not None
+                else family_descriptor.get("descriptor_coverage_ratio"),
+                "descriptor_keys": list(
+                    row.get("descriptor_keys")
+                    or family_descriptor.get("descriptor_keys")
+                    or []
+                ),
+                "transfer_scope": row.get("transfer_scope")
+                or family_descriptor.get("transfer_scope")
+                or "unknown",
+                "transfer_safety": {
+                    "selection_surface": "validation_metric",
+                    "test_metric_included": False,
+                    "requires_downstream_revalidation": True,
+                },
                 "best_metric_name": row.get("best_metric_name"),
                 "best_metric_value": row.get("best_metric_value"),
             }
@@ -117,6 +155,13 @@ def build_seed_candidates(
         "run_name": summary.get("run_name"),
         "runtime": summary.get("runtime"),
         "runtime_version": summary.get("runtime_version"),
+        "descriptor_coverage": descriptor_coverage,
+        "transfer_safety": {
+            "selection_surface": "validation_metric",
+            "test_metric_included": False,
+            "requires_downstream_revalidation": True,
+            "note": "Seed candidates identify motifs only; downstream systems must re-evaluate them.",
+        },
         "seed_candidates": ranked_families,
         "benchmark_seeds": best_rows,
     }

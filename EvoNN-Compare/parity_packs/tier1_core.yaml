@@ -55,6 +55,11 @@ benchmarks:
     metric_direction: min
   - benchmark_id: friedman1_regression
     native_ids:
+      prism: friedman1
+      topograph: friedman1
+      stratograph: friedman1
+      primordia: friedman1
+      contenders: friedman1
       evonn: friedman_regression
       evonn2: friedman1
       hybrid: friedman1

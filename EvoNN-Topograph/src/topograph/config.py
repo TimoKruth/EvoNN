@@ -136,7 +136,15 @@ class BenchmarkPoolConfig(BaseModel):
     benchmark_cost_penalty_alpha: float = 0.2
     cost_priority_strength: float = 1.0
     family_sequence: list[str] = Field(
-        default_factory=lambda: ["tabular", "image", "language_modeling"]
+        default_factory=lambda: [
+            "classic-tabular",
+            "tabular",
+            "synthetic",
+            "tabular-regression",
+            "synthetic-regression",
+            "image",
+            "language_modeling",
+        ]
     )
 
     @field_validator("rotation_interval")

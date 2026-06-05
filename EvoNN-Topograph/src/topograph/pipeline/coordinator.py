@@ -17,7 +17,7 @@ from topograph.benchmarks.spec import BenchmarkSpec
 from topograph.cache import WeightCache
 from topograph.config import RunConfig
 from topograph.genome.codec import dict_to_genome, genome_to_dict
-from topograph.genome.genes import Activation, OperatorType
+from topograph.genome.genes import Activation, ConnectionGene, OperatorType
 from topograph.genome.genome import Genome, InnovationCounter
 from topograph.monitor import TerminalMonitor
 from topograph.parallel import ParallelEvaluator, ParallelRuntimeLimits
@@ -25,7 +25,7 @@ from topograph.pipeline.archive import (
     BenchmarkEliteArchive,
     MAPElitesArchive,
     NoveltyArchive,
-    compute_behavior,
+    motif_tags,
 )
 from topograph.pipeline.evaluate import (
     BenchmarkDataCache,
@@ -557,7 +557,12 @@ def _create_seed_population(
     )
     if primordia_seeding is not None:
         _apply_primordia_seed_bias(population, primordia_seeding)
-    _apply_benchmark_seed_profiles(population, benchmark_spec=benchmark_spec, benchmark_specs=benchmark_specs)
+    _apply_benchmark_seed_profiles(
+        population,
+        innovation_counter=innovation_counter,
+        benchmark_spec=benchmark_spec,
+        benchmark_specs=benchmark_specs,
+    )
 
     for genome in population:
         genome.learning_rate = _sample_learning_rate(config, rng)
@@ -568,6 +573,7 @@ def _create_seed_population(
 def _apply_benchmark_seed_profiles(
     population: list[Genome],
     *,
+    innovation_counter: InnovationCounter,
     benchmark_spec: BenchmarkSpec | None,
     benchmark_specs: list[BenchmarkSpec] | None,
 ) -> None:
@@ -578,9 +584,12 @@ def _apply_benchmark_seed_profiles(
 
     profile_order = [
         "openml-classification",
-        "image-classification",
-        "tabular-regression",
+        "classic-tabular-classification",
         "tabular-classification",
+        "synthetic-classification",
+        "synthetic-regression",
+        "tabular-regression",
+        "image-classification",
         "language-modeling",
     ]
     profiles = [profile for profile in profile_order if profile in profile_keys]
@@ -597,7 +606,13 @@ def _apply_benchmark_seed_profiles(
     for index, profile in enumerate(profiles[:slot_count]):
         start = start_offset + index
         stop = start + 1
-        _apply_seed_profile(population, profile=profile, start=start, stop=stop)
+        _apply_seed_profile(
+            population,
+            innovation_counter=innovation_counter,
+            profile=profile,
+            start=start,
+            stop=stop,
+        )
 
     extra_slots = usable_slots - slot_count
     if extra_slots <= 0:
@@ -608,7 +623,13 @@ def _apply_benchmark_seed_profiles(
         if cursor >= len(population):
             break
         stop = min(len(population), cursor + chunk)
-        _apply_seed_profile(population, profile=profile, start=cursor, stop=stop)
+        _apply_seed_profile(
+            population,
+            innovation_counter=innovation_counter,
+            profile=profile,
+            start=cursor,
+            stop=stop,
+        )
         cursor = stop
 
 
@@ -624,6 +645,15 @@ def _benchmark_seed_profile_keys(specs: list[BenchmarkSpec]) -> set[str]:
         if source == "image" or family == "image":
             keys.add("image-classification")
             continue
+        if family == "synthetic":
+            keys.add("synthetic-classification")
+            continue
+        if family == "synthetic-regression":
+            keys.add("synthetic-regression")
+            continue
+        if family == "classic-tabular":
+            keys.add("classic-tabular-classification")
+            continue
         if task == "regression":
             keys.add("tabular-regression")
         elif task == "classification":
@@ -636,6 +666,7 @@ def _benchmark_seed_profile_keys(specs: list[BenchmarkSpec]) -> set[str]:
 def _apply_seed_profile(
     population: list[Genome],
     *,
+    innovation_counter: InnovationCounter,
     profile: str,
     start: int,
     stop: int,
@@ -643,6 +674,7 @@ def _apply_seed_profile(
     if profile == "openml-classification":
         _specialize_population_slice(
             population,
+            innovation_counter=innovation_counter,
             start=start,
             stop=stop,
             width_floor=160,
@@ -652,6 +684,7 @@ def _apply_seed_profile(
     elif profile == "image-classification":
         _specialize_population_slice(
             population,
+            innovation_counter=innovation_counter,
             start=start,
             stop=stop,
             width_floor=128,
@@ -661,15 +694,49 @@ def _apply_seed_profile(
     elif profile == "tabular-regression":
         _specialize_population_slice(
             population,
+            innovation_counter=innovation_counter,
             start=start,
             stop=stop,
             width_floor=128,
             operator=OperatorType.RESIDUAL,
             activation=Activation.GELU,
         )
+    elif profile == "synthetic-classification":
+        _specialize_population_slice(
+            population,
+            innovation_counter=innovation_counter,
+            start=start,
+            stop=stop,
+            width_floor=96,
+            operator=OperatorType.RESIDUAL,
+            activation=Activation.TANH,
+            residual_skip_floor=1,
+        )
+    elif profile == "synthetic-regression":
+        _specialize_population_slice(
+            population,
+            innovation_counter=innovation_counter,
+            start=start,
+            stop=stop,
+            width_floor=160,
+            operator=OperatorType.RESIDUAL,
+            activation=Activation.SILU,
+            residual_skip_floor=1,
+        )
+    elif profile == "classic-tabular-classification":
+        _specialize_population_slice(
+            population,
+            innovation_counter=innovation_counter,
+            start=start,
+            stop=stop,
+            width_floor=64,
+            operator=OperatorType.DENSE,
+            activation=Activation.SILU,
+        )
     elif profile == "tabular-classification":
         _specialize_population_slice(
             population,
+            innovation_counter=innovation_counter,
             start=start,
             stop=stop,
             width_floor=96,
@@ -680,6 +747,7 @@ def _apply_seed_profile(
     elif profile == "language-modeling":
         _specialize_population_slice(
             population,
+            innovation_counter=innovation_counter,
             start=start,
             stop=stop,
             width_floor=128,
@@ -691,12 +759,14 @@ def _apply_seed_profile(
 def _specialize_population_slice(
     population: list[Genome],
     *,
+    innovation_counter: InnovationCounter,
     start: int,
     stop: int,
     width_floor: int,
     operator: OperatorType,
     activation: Activation,
     sparsity: float = 0.0,
+    residual_skip_floor: int = 0,
 ) -> None:
     for genome in population[start:stop]:
         for index, layer in enumerate(genome.layers):
@@ -716,6 +786,42 @@ def _specialize_population_slice(
                     heads -= 1
                 update["num_heads"] = heads
             genome.layers[index] = layer.model_copy(update=update)
+        if residual_skip_floor > 0:
+            _ensure_seed_skip_connections(genome, innovation_counter, residual_skip_floor)
+
+
+def _ensure_seed_skip_connections(
+    genome: Genome,
+    innovation_counter: InnovationCounter,
+    count: int,
+) -> None:
+    if count <= 0:
+        return
+    ordered = sorted(genome.enabled_layers, key=lambda layer: layer.order)
+    if len(ordered) < 2:
+        return
+    existing = {(conn.source, conn.target) for conn in genome.enabled_connections}
+    added = 0
+    candidates: list[tuple[int, int]] = [
+        (ordered[0].innovation, ordered[-1].innovation),
+        (0, ordered[-1].innovation),
+    ]
+    if len(ordered) >= 3:
+        candidates.append((ordered[0].innovation, ordered[-2].innovation))
+    for source, target in candidates:
+        if added >= count:
+            break
+        if (source, target) in existing:
+            continue
+        genome.connections.append(
+            ConnectionGene(
+                innovation=innovation_counter.next(),
+                source=source,
+                target=target,
+            )
+        )
+        existing.add((source, target))
+        added += 1
 
 
 def _resolve_primordia_seeding(
@@ -936,6 +1042,11 @@ def _active_benchmark_family(
     if not ordered:
         ordered = sorted(present_families)
     if not ordered:
+        return None
+    if (
+        pool_cfg.sample_k >= len(benchmark_specs)
+        and config.evolution.num_generations <= len(ordered) * pool_cfg.family_stage_generations
+    ):
         return None
     stage_idx = generation // pool_cfg.family_stage_generations
     return ordered[stage_idx % len(ordered)]
@@ -1458,24 +1569,7 @@ def _topology_atlas_motif_counts(
 
 
 def _motif_tags(genome: Genome) -> list[str]:
-    behavior = compute_behavior(genome)
-    tags: list[str] = []
-    if behavior[0] >= 4:
-        tags.append("deep")
-    if behavior[2] >= 2:
-        tags.append("skip_heavy")
-    if behavior[3] >= 1:
-        tags.append("bottlenecked")
-    if behavior[6] < 0.4:
-        tags.append("sparse_connectivity")
-    operators = {layer.operator.value for layer in genome.enabled_layers}
-    if {"attention_lite", "transformer_lite"} & operators:
-        tags.append("attention")
-    if len(genome.experts) > 0:
-        tags.append("expert_routed")
-    if not tags:
-        tags.append("dense_baseline")
-    return tags
+    return motif_tags(genome)
 
 
 def _write_archive_artifacts(

@@ -142,19 +142,42 @@ def inspect(run_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_
         bank_table = Table(title="Primitive Bank")
         bank_table.add_column("Family", style="cyan")
         bank_table.add_column("Evaluations", style="green")
-        bank_table.add_column("Benchmark Wins", style="green")
+        bank_table.add_column("Benchmark Wins", style="green", no_wrap=True)
+        bank_table.add_column("Descriptors", style="green", no_wrap=True)
+        bank_table.add_column("Scope", style="white")
         bank_table.add_column("Won Benchmarks", style="white")
-        bank_table.add_column("Representative Architecture", style="white")
+        bank_table.add_column("Representative", style="white")
         for row in bank_rows[:8]:
             won = row.get("benchmarks_won") or row.get("won_benchmarks") or []
             bank_table.add_row(
                 str(row.get("family", "unknown")),
                 str(row.get("evaluation_count", 0)),
                 str(row.get("benchmark_wins", 0)),
+                str(row.get("descriptor_count", 0)),
+                str(row.get("transfer_scope") or "unknown"),
                 ", ".join(map(str, won)) if won else "—",
                 str(row.get("representative_architecture_summary") or "—"),
             )
         console.print(bank_table)
+
+    descriptor_coverage = primitive_bank.get("descriptor_coverage") or summary.get("descriptor_coverage") or {}
+    if descriptor_coverage:
+        descriptor_table = Table(title="Motif Descriptor Coverage")
+        descriptor_table.add_column("Metric", style="cyan")
+        descriptor_table.add_column("Value", style="green")
+        descriptor_table.add_row(
+            "Descriptor Cells",
+            str(descriptor_coverage.get("descriptor_cell_count", 0)),
+        )
+        descriptor_table.add_row(
+            "Winning Descriptor Cells",
+            str(descriptor_coverage.get("winning_descriptor_cell_count", 0)),
+        )
+        descriptor_table.add_row(
+            "Descriptor Entropy",
+            f"{float(descriptor_coverage.get('descriptor_entropy', 0.0)):.6f}",
+        )
+        console.print(descriptor_table)
 
     benchmark_leaders = summary.get("benchmark_leaders") or []
     if benchmark_leaders:

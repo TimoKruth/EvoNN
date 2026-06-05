@@ -156,6 +156,7 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
     rep = sym._select_representative([genome_a, genome_b], evaluations)
     assert rep == genome_b
     assert sym._architecture_summary(rep) == "conv2d [32x16] relu"
+    assert sym._genome_summary(rep)["architecture_complexity"] == pytest.approx(rep.architecture_complexity)
     assert sym._compute_dataset_hash(["b", "a"]) == sym._compute_dataset_hash(["a", "b"])
 
     monkeypatch.setattr(sym.platform, "system", lambda: "Darwin")
@@ -173,7 +174,15 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
         fallback=0,
     ) == 1000
 
-    manifest = {"run_id": "demo", "budget": {"evaluation_count": 3, "wall_clock_seconds": 12.5}}
+    manifest = {
+        "run_id": "demo",
+        "budget": {
+            "evaluation_count": 3,
+            "wall_clock_seconds": 12.5,
+            "seed_allocation_policy": "family_coverage_then_mlp_like_variant_priority_v1",
+            "benchmark_specialist_policy": "repair_plus_high_quality_exploit_v1",
+        },
+    }
     results = [
         {"benchmark_id": "moons", "metric_value": 0.91, "quality": 9.1, "status": "ok"},
         {"benchmark_id": "iris", "metric_value": 0.95, "quality": 9.5, "status": "ok"},
@@ -209,10 +218,16 @@ def test_export_helpers_cover_config_resolution_and_summary(tmp_path: Path, monk
     assert summary["runtime_backend"] == "mlx"
     assert summary["precision_mode"] == "fp32"
     assert summary["operator_mix"]["mutation:width"] == 1
+    assert summary["seed_allocation_policy"] == "family_coverage_then_mlp_like_variant_priority_v1"
+    assert summary["benchmark_specialist_policy"] == "repair_plus_high_quality_exploit_v1"
     assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
+    assert summary["complexity_summary"]["max"] >= summary["complexity_summary"]["min"]
     assert summary["failure_patterns"]["failed"] == 1
     assert summary["engine_evidence"]["operator_mix"]["mutation:width"] == 1
     assert summary["engine_evidence"]["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
+    assert summary["engine_evidence"]["complexity_summary"]["avg"] == pytest.approx(
+        summary["complexity_summary"]["avg"]
+    )
 
 
 def test_resolve_run_id_prefers_latest_entry(tmp_path: Path):
@@ -304,6 +319,32 @@ def test_create_seed_population_keeps_unique_genome_ids():
     assert len({g.genome_id for g in population}) == 8
     assert any(g.residual for g in population)
     assert any(g.norm_type in {"layer", "rms"} for g in population)
+
+
+def test_create_seed_population_prioritizes_mlp_like_variants_after_coverage():
+    coordinator = _import_coordinator_or_skip()
+    families = ["mlp", "sparse_mlp", "moe_mlp", "conv2d", "lite_conv2d"]
+    evolution = RunConfig.model_validate(
+        {
+            "evolution": {
+                "population_size": 11,
+                "allowed_families": families,
+            }
+        }
+    ).evolution
+
+    population = coordinator._create_seed_population(evolution, random.Random(42))
+
+    assert [genome.family for genome in population[: len(families)]] == families
+    assert {genome.family for genome in population} == set(families)
+    assert [genome.family for genome in population[5:]] == [
+        "mlp",
+        "sparse_mlp",
+        "moe_mlp",
+        "mlp",
+        "sparse_mlp",
+        "moe_mlp",
+    ]
 
 
 def test_prior_elapsed_seconds_prefers_persisted_resume_runtime(tmp_path: Path):
@@ -528,6 +569,7 @@ def test_coordinator_summary_persists_failure_patterns(monkeypatch, tmp_path: Pa
     assert summary["benchmarks_evaluated"] == 1
     assert summary["failure_count"] == 1
     assert summary["failure_patterns"] == {"compile_timeout": 1}
+    assert summary["search_score_policy"] == "per_benchmark_normalized_quality_efficiency_complexity_v1"
 
 
 def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
@@ -552,6 +594,7 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
                 "runtime_version": "0.0-test",
                 "precision_mode": "fp32",
                 "total_evaluations": 2,
+                "search_score_policy": "per_benchmark_normalized_quality_efficiency_complexity_v1",
             },
             indent=2,
         ),
@@ -622,11 +665,13 @@ def test_export_symbiosis_contract_end_to_end(monkeypatch, tmp_path: Path):
     assert manifest["budget"]["invalid_evaluations"] == 0
     assert manifest["budget"]["partial_run"] is False
     assert "scheduled evaluation slot" in manifest["budget"]["evaluation_semantics"]
+    assert manifest["budget"]["search_score_policy"] == "per_benchmark_normalized_quality_efficiency_complexity_v1"
     assert len(results) == 2
     assert summary["runtime_backend"] == manifest["device"]["framework"]
     assert summary["precision_mode"] == manifest["device"]["precision_mode"]
     assert summary["wall_clock_seconds"] == manifest["budget"]["wall_clock_seconds"]
     assert summary["operator_mix"]["crossover"] == 1
+    assert summary["search_score_policy"] == manifest["budget"]["search_score_policy"]
     assert summary["family_benchmark_wins"] == {"conv2d": 1, "mlp": 1}
     assert summary["failure_patterns"] == {}
 

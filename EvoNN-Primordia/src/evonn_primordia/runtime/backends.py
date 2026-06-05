@@ -14,6 +14,12 @@ from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.preprocessing import StandardScaler
 
 from evonn_shared.metrics import compute_task_metric, metric_name_for_task
+from evonn_shared.training import (
+    calibrate_regression_predictions,
+    regression_target_stats,
+    restore_regression_predictions,
+    standardize_regression_targets,
+)
 from evonn_primordia.config import EvolutionConfig, RunConfig
 from evonn_primordia.runtime.training import EvaluationResult, _compute_metric
 
@@ -49,7 +55,7 @@ class RuntimeExecutionPolicy:
     fallback_classifier: str = "sklearn_family_estimator"
     fallback_regressor: str = "sklearn_family_estimator"
     fallback_language_model: str = "smoothed_unigram_perplexity"
-    primitive_search_policy: str = "family_diverse_elite_archive_with_weighted_parent_sampling"
+    primitive_search_policy: str = "family_diverse_elite_archive_with_rank_weighted_parent_sampling"
     seed_selection_policy: str = "benchmark_winners_plus_family_representatives"
 
     def as_metadata(self, *, resolved_backend: str) -> dict[str, str]:
@@ -232,9 +238,24 @@ def _train_and_evaluate_numpy_fallback(
                 y_pred = np.eye(class_count, dtype=np.float32)[preds.astype(int)]
         else:
             estimator = _build_regression_estimator(family, genome, epochs, lr, weight_decay)
-            estimator.fit(x_train, y_train)
+            y_train_np = np.asarray(y_train)
+            y_val_np = np.asarray(y_val)
+            target_mean, target_std = regression_target_stats(y_train_np)
+            y_train_scaled = standardize_regression_targets(y_train_np, target_mean, target_std)
+            estimator.fit(x_train, y_train_scaled)
+            train_pred = restore_regression_predictions(
+                np.asarray(estimator.predict(x_train)),
+                target_mean,
+                target_std,
+            )
             y_pred = estimator.predict(x_val)
-            metric = compute_task_metric("regression", np.asarray(y_val), np.asarray(y_pred))
+            y_pred = restore_regression_predictions(np.asarray(y_pred), target_mean, target_std)
+            y_pred = calibrate_regression_predictions(
+                train_pred=train_pred,
+                y_train=y_train_np,
+                val_pred=y_pred,
+            )
+            metric = compute_task_metric("regression", y_val_np, np.asarray(y_pred))
             return EvaluationResult(
                 metric_name=metric.metric_name,
                 metric_value=metric.metric_value,

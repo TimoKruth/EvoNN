@@ -12,6 +12,8 @@ from topograph.nn import train as train_mod
 from topograph.operators import mutate as mutate_mod
 from topograph.pipeline import coordinator as coordinator_mod
 from topograph.pipeline import archive as archive_mod
+from topograph.pipeline.evaluate import GenerationState, benchmark_family_name
+from topograph.pipeline import reproduce as reproduce_mod
 from topograph.pipeline import select as select_mod
 
 
@@ -73,16 +75,40 @@ def test_non_dominated_sort_and_nsga2_select_respect_fronts():
     assert population[1] in selected
     assert population[2] in selected
 
+    frontier_population = [_seed_genome(seed=i) for i in range(5)]
+    selected_frontier = select_mod.nsga2_select(
+        frontier_population,
+        fitnesses=[0.1, 0.2, 0.3, 0.4, 0.5],
+        model_bytes=[50, 40, 30, 20, 10],
+        count=3,
+        rng=random.Random(5),
+    )
+
+    assert frontier_population[0] in selected_frontier
+    assert frontier_population[-1] in selected_frontier
+
 
 def test_compute_behavior_and_novelty_archive_roundtrip():
     genome = _seed_genome(num_layers=3)
     genome.experts = [
         ExpertGene(expert_id=0, innovation=999, width=16, activation="relu", order=1.0)
     ]
+    genome.layers[0] = genome.layers[0].model_copy(
+        update={
+            "operator": OperatorType.SPARSE_DENSE,
+            "weight_bits": WeightBits.INT4,
+            "sparsity": 0.2,
+        }
+    )
     behavior = archive_mod.compute_behavior(genome)
+    motifs = archive_mod.motif_tags(genome)
 
     assert behavior.shape == (8,)
     assert behavior[-1] == 1.0
+    assert "sparse_operator" in motifs
+    assert "compact_quantized_weights" in motifs
+    assert "sparse_weights" in motifs
+    assert "expert_routed" in motifs
 
     archive = archive_mod.NoveltyArchive(max_size=2, k=2)
     archive.add(np.zeros(8, dtype=np.float32))
@@ -95,6 +121,21 @@ def test_compute_behavior_and_novelty_archive_roundtrip():
     restored = archive_mod.NoveltyArchive.from_dict(archive.to_dict())
     assert len(restored) == 2
     assert np.allclose(restored.behaviors[-1], np.full(8, 2.0, dtype=np.float32))
+
+
+def test_device_target_enables_pareto_crowding_ranking_without_objectives():
+    population = [_seed_genome(seed=i) for i in range(5)]
+    state = GenerationState(
+        generation=0,
+        population=population,
+        fitnesses=[0.1, 0.2, 0.3, 0.4, 0.5],
+        model_bytes=[50, 40, 30, 20, 10],
+    )
+    cfg = RunConfig.model_validate({"target_device": {"max_model_bytes": 32}})
+
+    ranked = reproduce_mod._ranked_indices(state, cfg)
+
+    assert ranked[:2] == [0, 4]
 
 
 def test_map_elites_and_benchmark_elite_archives_roundtrip():
@@ -169,7 +210,7 @@ def test_mutation_ops_preserve_copy_and_expected_structure():
 
 
 def test_benchmark_seed_profiles_cover_mixed_tier_c_families():
-    cfg = RunConfig.model_validate({"evolution": {"population_size": 7}})
+    cfg = RunConfig.model_validate({"evolution": {"population_size": 9}})
     population = coordinator_mod._create_seed_population(
         cfg,
         InnovationCounter(),
@@ -208,6 +249,22 @@ def test_benchmark_seed_profiles_cover_mixed_tier_c_families():
                 num_classes=1,
             ),
             BenchmarkSpec(
+                name="moons",
+                task="classification",
+                source="sklearn",
+                dataset="make_moons",
+                input_dim=2,
+                num_classes=2,
+            ),
+            BenchmarkSpec(
+                name="friedman1",
+                task="regression",
+                source="sklearn",
+                dataset="make_friedman1",
+                input_dim=10,
+                num_classes=1,
+            ),
+            BenchmarkSpec(
                 name="tiny_lm",
                 task="language_modeling",
                 source="lm_synthetic",
@@ -217,26 +274,40 @@ def test_benchmark_seed_profiles_cover_mixed_tier_c_families():
         ],
     )
 
-    first_ops = [genome.enabled_layers[0].operator for genome in population[1:6]]
-    first_activations = [genome.enabled_layers[0].activation for genome in population[1:6]]
+    first_ops = [genome.enabled_layers[0].operator for genome in population[1:9]]
+    first_activations = [genome.enabled_layers[0].activation for genome in population[1:9]]
 
     assert first_ops == [
         OperatorType.RESIDUAL,
-        OperatorType.SPATIAL,
-        OperatorType.RESIDUAL,
+        OperatorType.DENSE,
         OperatorType.SPARSE_DENSE,
+        OperatorType.RESIDUAL,
+        OperatorType.RESIDUAL,
+        OperatorType.RESIDUAL,
+        OperatorType.SPATIAL,
         OperatorType.ATTENTION_LITE,
     ]
     assert first_activations == [
         Activation.GELU,
-        Activation.RELU,
-        Activation.GELU,
         Activation.SILU,
+        Activation.SILU,
+        Activation.TANH,
+        Activation.SILU,
+        Activation.GELU,
+        Activation.RELU,
         Activation.GELU,
     ]
     assert population[1].enabled_layers[0].width >= 160
-    assert population[2].enabled_layers[0].width >= 128
-    assert population[4].enabled_layers[0].sparsity >= 0.15
+    assert population[2].enabled_layers[0].width >= 64
+    assert population[3].enabled_layers[0].sparsity >= 0.15
+    assert population[5].enabled_layers[0].width >= 160
+    assert len(population[4].enabled_connections) > len(population[4].enabled_layers) + 1
+    assert len(population[5].enabled_connections) > len(population[5].enabled_layers) + 1
+    assert population[7].enabled_layers[0].width >= 128
+    assert benchmark_family_name(BenchmarkSpec(name="iris", task="classification", source="sklearn", dataset="load_iris")) == "classic-tabular"
+    assert benchmark_family_name(BenchmarkSpec(name="moons", task="classification", source="sklearn", dataset="make_moons")) == "synthetic"
+    assert benchmark_family_name(BenchmarkSpec(name="friedman1", task="regression", source="sklearn", dataset="make_friedman1")) == "synthetic-regression"
+    assert benchmark_family_name(BenchmarkSpec(name="diabetes", task="regression", source="sklearn", dataset="load_diabetes")) == "tabular-regression"
 
 
 def test_mutate_weight_bits_and_learning_rate_are_bounded():

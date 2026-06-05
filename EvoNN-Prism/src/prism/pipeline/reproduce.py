@@ -57,6 +57,9 @@ def reproduce(
     specialist_targets = _benchmark_specialist_targets(
         state,
         evolution.benchmark_specialist_offspring,
+        repair_fraction=evolution.benchmark_specialist_repair_fraction,
+        exploit_min_quality=evolution.benchmark_specialist_exploit_min_quality,
+        exploit_saturation=evolution.benchmark_specialist_exploit_saturation,
     )
 
     for slot in range(evolution.offspring_per_generation):
@@ -251,25 +254,25 @@ def _build_parent_pool(
     # Pareto front
     pareto: list[IndividualSummary] = archives.get("pareto", [])
     for summary in pareto:
-        _add(summary.genome_id, summary.aggregate_quality)
+        _add(summary.genome_id, summary.search_quality)
 
     # Per-benchmark elites
     elite_archive: dict[str, list[IndividualSummary]] = archives.get("elite", {})
     for elites in elite_archive.values():
         for summary in elites:
-            _add(summary.genome_id, summary.aggregate_quality)
+            _add(summary.genome_id, summary.search_quality)
 
     # Niche representatives
     niche_archive: dict[str, IndividualSummary] = archives.get("niche", {})
     for summary in niche_archive.values():
-        _add(summary.genome_id, summary.aggregate_quality)
+        _add(summary.genome_id, summary.search_quality)
 
     efficient_archive = archives.get("efficient", {})
     for summary in efficient_archive.get("family", {}).values():
-        _add(summary.genome_id, summary.aggregate_quality)
+        _add(summary.genome_id, summary.search_quality)
     for summaries in efficient_archive.get("benchmark", {}).values():
         for summary in summaries:
-            _add(summary.genome_id, summary.aggregate_quality)
+            _add(summary.genome_id, summary.search_quality)
 
     # Current population (ensures pool is never empty)
     for genome in state.population:
@@ -281,17 +284,23 @@ def _build_parent_pool(
 def _quality_map_from_results(state, evolution) -> dict[str, float]:
     """Extract efficiency-adjusted parent score per genome from state.results."""
     profiles: dict[str, dict[str, float]] = {}
+    genomes_by_id = {genome.genome_id: genome for genome in getattr(state, "population", [])}
+    normalized_quality = _normalized_genome_quality_scores(state.results)
     for genome_id, benchmark_results in state.results.items():
         valid = [result for result in benchmark_results.values() if result.failure_reason is None]
         if not valid:
             continue
-        avg_quality = sum(result.quality for result in valid) / len(valid)
+        genome = genomes_by_id.get(genome_id)
+        avg_quality = normalized_quality.get(genome_id)
+        if avg_quality is None:
+            avg_quality = sum(result.quality for result in valid) / len(valid)
         avg_time = sum(result.train_seconds for result in valid) / len(valid)
         avg_params = sum(result.parameter_count for result in valid) / len(valid)
         profiles[genome_id] = {
             "quality": avg_quality,
             "time": avg_time,
             "params": avg_params,
+            "complexity": float(getattr(genome, "architecture_complexity", 0.0)),
         }
 
     if not profiles:
@@ -306,17 +315,53 @@ def _quality_map_from_results(state, evolution) -> dict[str, float]:
     )
     time_logs = [log1p(profile["time"]) for profile in profiles.values()]
     param_logs = [log1p(profile["params"]) for profile in profiles.values()]
+    complexity_values = [profile["complexity"] for profile in profiles.values()]
     time_weight = evolution.time_penalty_weight
     param_weight = evolution.param_penalty_weight
-    total_weight = max(1e-9, time_weight + param_weight)
+    complexity_weight = evolution.complexity_penalty_weight
+    total_weight = max(1e-9, time_weight + param_weight + complexity_weight)
 
     quality_map: dict[str, float] = {}
     for genome_id, profile in profiles.items():
         time_penalty = _normalized_range(log1p(profile["time"]), time_logs)
         param_penalty = _normalized_range(log1p(profile["params"]), param_logs)
-        efficiency_penalty = ((time_weight * time_penalty) + (param_weight * param_penalty)) / total_weight
+        complexity_penalty = _normalized_range(profile["complexity"], complexity_values)
+        efficiency_penalty = (
+            (time_weight * time_penalty)
+            + (param_weight * param_penalty)
+            + (complexity_weight * complexity_penalty)
+        ) / total_weight
         quality_map[genome_id] = profile["quality"] - (bias * efficiency_penalty)
     return quality_map
+
+
+def _normalized_genome_quality_scores(results: dict) -> dict[str, float]:
+    by_benchmark: dict[str, list[tuple[str, float]]] = {}
+    for genome_id, benchmark_results in results.items():
+        for benchmark_id, result in benchmark_results.items():
+            if result.failure_reason is None:
+                by_benchmark.setdefault(benchmark_id, []).append((genome_id, float(result.quality)))
+
+    per_genome: dict[str, list[float]] = {}
+    for values in by_benchmark.values():
+        qualities = [quality for _, quality in values]
+        lo = min(qualities)
+        hi = max(qualities)
+        for genome_id, quality in values:
+            score = _quality_score(quality, lo, hi)
+            per_genome.setdefault(genome_id, []).append(score)
+
+    return {
+        genome_id: sum(scores) / len(scores)
+        for genome_id, scores in per_genome.items()
+        if scores
+    }
+
+
+def _quality_score(quality: float, lo: float, hi: float) -> float:
+    if 0.0 <= lo <= hi <= 1.0:
+        return quality
+    return 1.0 if hi <= lo + 1e-12 else (quality - lo) / (hi - lo)
 
 
 def _apply_selection_pressure(
@@ -424,26 +469,30 @@ def _family_floor_targets(
 def _benchmark_specialist_targets(
     state,
     specialist_slots: int,
+    *,
+    repair_fraction: float = 0.5,
+    exploit_min_quality: float = 0.75,
+    exploit_saturation: float = 0.995,
 ) -> list[dict]:
     if specialist_slots <= 0:
         return []
 
     specialist_archive: dict[str, dict[str, IndividualSummary]] = getattr(state, "archives", {}).get("specialist", {})
     if specialist_archive:
-        ranked = sorted(
-            specialist_archive,
-            key=lambda benchmark_id: max(
-                (summary.qualities.get(benchmark_id, float("-inf")) for summary in specialist_archive[benchmark_id].values()),
-                default=float("-inf"),
-            ),
+        benchmark_scores = {
+            benchmark_id: [
+                (summary.genome_id, summary.qualities.get(benchmark_id, float("-inf")))
+                for summary in summaries.values()
+            ]
+            for benchmark_id, summaries in specialist_archive.items()
+        }
+        return _rank_benchmark_specialist_targets(
+            benchmark_scores,
+            specialist_slots,
+            repair_fraction=repair_fraction,
+            exploit_min_quality=exploit_min_quality,
+            exploit_saturation=exploit_saturation,
         )
-        return [
-            {
-                "benchmark_id": benchmark_id,
-                "genome_ids": [summary.genome_id for summary in specialist_archive[benchmark_id].values()],
-            }
-            for benchmark_id in ranked[:specialist_slots]
-        ]
 
     benchmark_scores: dict[str, list[tuple[str, float]]] = {}
     for genome_id, benchmark_results in state.results.items():
@@ -454,23 +503,105 @@ def _benchmark_specialist_targets(
     if not benchmark_scores:
         return []
 
-    ranked_benchmarks = sorted(
+    return _rank_benchmark_specialist_targets(
         benchmark_scores,
-        key=lambda benchmark_id: sum(score for _, score in benchmark_scores[benchmark_id]) / len(benchmark_scores[benchmark_id]),
+        specialist_slots,
+        repair_fraction=repair_fraction,
+        exploit_min_quality=exploit_min_quality,
+        exploit_saturation=exploit_saturation,
+    )
+
+
+def _rank_benchmark_specialist_targets(
+    benchmark_scores: dict[str, list[tuple[str, float]]],
+    specialist_slots: int,
+    *,
+    repair_fraction: float,
+    exploit_min_quality: float,
+    exploit_saturation: float,
+) -> list[dict]:
+    if not benchmark_scores or specialist_slots <= 0:
+        return []
+
+    repair_slots = min(
+        specialist_slots,
+        max(1, int(round(specialist_slots * max(0.0, min(1.0, repair_fraction))))),
+    )
+    exploit_slots = max(0, specialist_slots - repair_slots)
+
+    repair_ranked = sorted(
+        benchmark_scores,
+        key=lambda benchmark_id: _average_score(benchmark_scores[benchmark_id]),
     )
 
     targets: list[dict] = []
-    for benchmark_id in ranked_benchmarks[:specialist_slots]:
-        specialists = sorted(
-            benchmark_scores[benchmark_id],
+    selected: set[str] = set()
+
+    for benchmark_id in repair_ranked[:repair_slots]:
+        targets.append(_specialist_target_payload(benchmark_id, benchmark_scores[benchmark_id]))
+        selected.add(benchmark_id)
+
+    if exploit_slots:
+        exploit_ranked = sorted(
+            (
+                (benchmark_id, _exploitability_score(scores, exploit_min_quality, exploit_saturation))
+                for benchmark_id, scores in benchmark_scores.items()
+                if benchmark_id not in selected
+            ),
             key=lambda item: item[1],
             reverse=True,
         )
-        targets.append({
-            "benchmark_id": benchmark_id,
-            "genome_ids": [genome_id for genome_id, _ in specialists[:2]],
-        })
+        for benchmark_id, score in exploit_ranked:
+            if score <= float("-inf"):
+                continue
+            targets.append(_specialist_target_payload(benchmark_id, benchmark_scores[benchmark_id]))
+            selected.add(benchmark_id)
+            if len(targets) >= specialist_slots:
+                break
+
+    if len(targets) < specialist_slots:
+        for benchmark_id in repair_ranked:
+            if benchmark_id in selected:
+                continue
+            targets.append(_specialist_target_payload(benchmark_id, benchmark_scores[benchmark_id]))
+            if len(targets) >= specialist_slots:
+                break
     return targets
+
+
+def _specialist_target_payload(benchmark_id: str, scores: list[tuple[str, float]]) -> dict:
+    specialists = sorted(scores, key=lambda item: item[1], reverse=True)
+    return {
+        "benchmark_id": benchmark_id,
+        "genome_ids": [genome_id for genome_id, _ in specialists[:2]],
+    }
+
+
+def _average_score(scores: list[tuple[str, float]]) -> float:
+    if not scores:
+        return float("-inf")
+    return sum(score for _, score in scores) / len(scores)
+
+
+def _exploitability_score(
+    scores: list[tuple[str, float]],
+    exploit_min_quality: float,
+    exploit_saturation: float,
+) -> float:
+    values = [score for _, score in scores]
+    if not values:
+        return float("-inf")
+
+    best = max(values)
+    if not 0.0 <= min(values) <= best <= 1.0:
+        return float("-inf")
+    if best < exploit_min_quality or best >= exploit_saturation:
+        return float("-inf")
+
+    avg = sum(values) / len(values)
+    spread = best - min(values)
+    headroom = max(0.0, exploit_saturation - best)
+    return best + (0.25 * spread) + (0.1 * headroom) - (0.15 * avg)
 
 
 def _operator_weights_for_parent(state, parent: ModelGenome) -> dict[str, float]:

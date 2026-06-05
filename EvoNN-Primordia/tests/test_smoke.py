@@ -18,6 +18,7 @@ from evonn_primordia.pipeline import (
     _apply_group_seed_profile,
     _bounded_runtime_genome,
     _effective_epochs_for_group,
+    _effective_family_exploration_floor,
     _mutation_rounds_for_parent,
     _search_profile_for_group,
     run_search,
@@ -363,15 +364,33 @@ def test_runtime_genome_bounds_do_not_touch_tabular_candidates() -> None:
 def test_group_search_profiles_strengthen_seed_candidates() -> None:
     config = load_config(REPO_ROOT / "EvoNN-Primordia" / "configs" / "tier1_core_eval64.yaml")
     image_profile = _search_profile_for_group("image", config)
+    regression_profile = _search_profile_for_group("tabular", config, benchmark_task="regression")
     tabular_genome = ModelGenome(family="sparse_mlp", hidden_layers=[64, 64])
+    synthetic_genome = ModelGenome(family="mlp", hidden_layers=[64, 64])
+    image_genome = ModelGenome(family="mlp", hidden_layers=[64, 64])
 
     profiled = _apply_group_seed_profile(tabular_genome, benchmark_group="tabular", index=0)
+    synthetic_profiled = _apply_group_seed_profile(synthetic_genome, benchmark_group="synthetic", index=0)
+    image_profiled = _apply_group_seed_profile(image_genome, benchmark_group="image", index=0)
+    regression_profiled = _apply_group_seed_profile(
+        tabular_genome,
+        benchmark_group="tabular",
+        benchmark_task="regression",
+        index=0,
+    )
 
-    assert image_profile["seed_width"] >= 96
+    assert image_profile["seed_width"] >= 128
     assert image_profile["seed_layers"] >= 3
+    assert regression_profile["seed_width"] >= 128
     assert profiled.residual is True
     assert profiled.norm_type == "layer"
     assert profiled.activation_sparsity >= 0.25
+    assert synthetic_profiled.activation == "tanh"
+    assert image_profiled.hidden_layers == [128, 128, 128]
+    assert regression_profiled.learning_rate <= tabular_genome.learning_rate
+    assert regression_profiled.hidden_layers == [128, 128, 128]
+    assert _effective_family_exploration_floor(config, "image") == 0
+    assert _effective_family_exploration_floor(config, "tabular") == config.search.family_exploration_floor
     assert _effective_epochs_for_group(config, "tabular") >= config.training.epochs_per_candidate
 
 
@@ -380,6 +399,7 @@ def test_runtime_control_caps_expensive_profile_epochs_and_mutation_rounds() -> 
     parent = {"train_seconds": 3.0, "search_score": 0.1}
 
     assert _effective_epochs_for_group(config, "tabular", benchmark_slots=32) == 2
+    assert _effective_epochs_for_group(config, "tabular", benchmark_task="regression", benchmark_slots=32) == 6
     assert _effective_epochs_for_group(config, "image", benchmark_slots=32) == 1
     assert _mutation_rounds_for_parent(
         config=config,
@@ -1369,7 +1389,7 @@ def test_report_escapes_runtime_markdown_cells_across_tables(tmp_path: Path) -> 
     report = write_report(run_dir).read_text(encoding="utf-8")
 
     assert "| mlp\\|family<br>v2 | 1 |" in report
-    assert "| mlp\\|family<br>v2 | 1 | 1 | iris\\|variant<br>v2 | acc<br>rate | 0.780000 | gen\\|1 | mlp\\|deep<br>64x64 |" in report
+    assert "| mlp\\|family<br>v2 | 1 | 1 | 0 | — | iris\\|variant<br>v2 | acc<br>rate | 0.780000 | gen\\|1 | mlp\\|deep<br>64x64 |" in report
     assert "| 1 | attention\\|seed | group\\|1, group<br>2 | 2 | seed\\|gen | seed<br>arch\\|v1 |" in report
     assert "| tab\\|ular<br>set | 1 |" in report
     assert "| iris\\|variant<br>v2 | mlp\\|wide | acc<br>rate | 0.780000 | ok\\|seed |" in report
@@ -1500,30 +1520,31 @@ primitive_pool:
     regenerated = regenerated_path.read_text(encoding="utf-8")
 
     assert primitive_bank_summary["runtime"] == "mlx"
-    assert primitive_bank_summary["primitive_families"] == [
-        {
-            "family": "mlp",
-            "evaluation_count": 1,
-            "benchmark_wins": 1,
-            "benchmarks_won": ["iris"],
-            "supporting_benchmarks": ["iris"],
-            "benchmark_groups": ["tabular"],
-            "best_metric_name": "accuracy",
-            "best_metric_value": 0.78,
-            "best_search_score": primitive_bank_summary["primitive_families"][0]["best_search_score"],
-            "best_generation": 0,
-            "representative_genome_id": "mlp-96x96x96",
-            "representative_architecture_summary": "mlp[96x96x96]",
-        }
-    ]
+    assert primitive_bank_summary["descriptor_coverage"]["descriptor_cell_count"] == 1
+    assert len(primitive_bank_summary["primitive_families"]) == 1
+    mlp_family = primitive_bank_summary["primitive_families"][0]
+    assert mlp_family["family"] == "mlp"
+    assert mlp_family["evaluation_count"] == 1
+    assert mlp_family["benchmark_wins"] == 1
+    assert mlp_family["benchmarks_won"] == ["iris"]
+    assert mlp_family["supporting_benchmarks"] == ["iris"]
+    assert mlp_family["benchmark_groups"] == ["tabular"]
+    assert mlp_family["best_metric_name"] == "accuracy"
+    assert mlp_family["best_metric_value"] == 0.78
+    assert mlp_family["best_generation"] == 0
+    assert mlp_family["representative_genome_id"] == "mlp-96x96x96"
+    assert mlp_family["representative_architecture_summary"] == "mlp[96x96x96]"
+    assert mlp_family["descriptor_count"] == 1
+    assert mlp_family["winning_descriptor_count"] == 1
+    assert mlp_family["transfer_scope"] == "single_group"
     assert regenerated_path == report_path
     assert "- Runtime: `mlx`" in regenerated
     assert "- Wall Clock Seconds: `" in regenerated
     assert "## Primitive Usage" in regenerated
     assert "| mlp | 1 |" in regenerated
     assert "## Primitive Bank Summary" in regenerated
-    assert "| Family | Evaluations | Benchmark Wins | Won Benchmarks | Best Metric | Best Value | Representative Genome | Representative Architecture |" in regenerated
-    assert "| mlp | 1 | 1 | iris | accuracy | 0.780000 | mlp-96x96x96 | mlp[96x96x96] |" in regenerated
+    assert "## Motif Descriptor Coverage" in regenerated
+    assert "| mlp | 1 | 1 | 1 | single_group | iris | accuracy | 0.780000 | mlp-96x96x96 | mlp[96x96x96] |" in regenerated
     assert "## Benchmark Leaders" in regenerated
     assert "## Family Leaders" in regenerated
     assert "## Benchmark Group Coverage" in regenerated

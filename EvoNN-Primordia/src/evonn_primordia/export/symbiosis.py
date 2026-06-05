@@ -16,6 +16,7 @@ from evonn_primordia.benchmarks.parity import fallback_native_id, load_parity_pa
 from evonn_primordia import __version__ as PRIMORDIA_VERSION
 
 from evonn_primordia.config import load_config
+from evonn_primordia.export.descriptors import build_descriptor_coverage
 from evonn_primordia.export.report import build_primitive_bank_summary, load_runtime_metadata, write_report
 from evonn_primordia.export.seeding import build_seed_candidates
 
@@ -103,6 +104,15 @@ def export_symbiosis_contract(
         trial_records=trial_records,
     )
     _write_summary_json(output_dir / "primitive_bank_summary.json", primitive_bank_summary)
+    descriptor_coverage = primitive_bank_summary.get("descriptor_coverage")
+    if not isinstance(descriptor_coverage, dict):
+        descriptor_coverage = build_descriptor_coverage(
+            summary=summary,
+            best_results=best_results,
+            trial_records=trial_records,
+        )
+    summary_with_descriptors = {**summary, "descriptor_coverage": descriptor_coverage}
+    _write_summary_json(output_dir / "descriptor_coverage.json", descriptor_coverage)
     seed_candidates = build_seed_candidates(
         summary=summary,
         best_results=best_results,
@@ -114,7 +124,11 @@ def export_symbiosis_contract(
     evaluation_count = int(summary.get("evaluation_count", len(trial_records)))
     declared_evaluation_count = int(summary.get("target_evaluation_count", evaluation_count))
     partial_run = _is_partial_run(summary=summary, declared_evaluation_count=declared_evaluation_count)
-    compare_summary = _build_compare_summary(summary=summary, results=result_records, evaluation_count=evaluation_count)
+    compare_summary = _build_compare_summary(
+        summary=summary_with_descriptors,
+        results=result_records,
+        evaluation_count=evaluation_count,
+    )
     _write_summary_json(output_dir / "compare_summary.json", compare_summary)
     _write_summary_json(output_dir / "summary.json", compare_summary)
 
@@ -166,6 +180,7 @@ def export_symbiosis_contract(
             "genome_summary_json": "primitive_trials.json",
             "dataset_manifest_json": "dataset_manifest.json",
             "primitive_bank_summary_json": "primitive_bank_summary.json",
+            "descriptor_coverage_json": "descriptor_coverage.json",
             "seed_candidates_json": "seed_candidates.json",
         },
         "search_telemetry": {
@@ -183,6 +198,7 @@ def export_symbiosis_contract(
             "primitive_search_policy": summary.get("primitive_search_policy"),
             "seed_selection_policy": summary.get("seed_selection_policy"),
             "benchmark_slot_integrity": summary.get("benchmark_slot_integrity"),
+            "descriptor_coverage": descriptor_coverage,
         },
         "fairness": fairness_manifest(
             pack_name=pack.name,
@@ -286,6 +302,18 @@ def _build_compare_summary(
             "primitive_usage": summary.get("primitive_usage", {}),
             "group_counts": summary.get("group_counts", {}),
             "runtime_limitations": summary.get("runtime_backend_limitations") or "",
+            "descriptor_cell_count": int(
+                (summary.get("descriptor_coverage") or {}).get("descriptor_cell_count", 0)
+            ),
+            "winning_descriptor_cell_count": int(
+                (summary.get("descriptor_coverage") or {}).get(
+                    "winning_descriptor_cell_count",
+                    0,
+                )
+            ),
+            "descriptor_entropy": (
+                (summary.get("descriptor_coverage") or {}).get("descriptor_entropy")
+            ),
         },
     }
 

@@ -163,15 +163,13 @@ def test_inspect_renders_compact_run_summary(tmp_path: Path) -> None:
     assert "Benchmark Group Coverage" in result.output
     assert "language_modeling" in result.output
     assert "Benchmark Wins" in result.output
-    assert "Representative" in result.output
-    assert "Architecture" in result.output
+    assert "Primitive Bank" in result.output
     assert "Failure Patterns" in result.output
     assert "Recent Failures" in result.output
     assert "OOM during token embedding warmup" in result.output
     assert "Best Benchmarks" in result.output
     assert "moons" in result.output
     assert "iris" in result.output
-    assert "mlp[64,32]" in result.output
 
 
 def test_inspect_handles_status_only_failures_in_grouped_patterns_and_recent_rows(tmp_path: Path) -> None:

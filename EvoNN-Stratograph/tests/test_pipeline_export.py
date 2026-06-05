@@ -586,7 +586,7 @@ def test_failed_candidate_evaluations_are_counted_in_budget_metadata(repo_root, 
     assert budget_meta["parent_selection_strategy"] == "benchmark_leader_plus_reuse_and_niche_elites"
     assert (
         budget_meta["mutation_pressure"]
-        == "contrasting_elite_crossover_with_scheduled_reuse_motif_and_topology_mutation"
+        == "contrasting_elite_crossover_with_profile_scheduled_tabular_motif_pressure"
     )
     assert budget_meta["hierarchy_selection_policy"] == "shared_variants_preserve_reuse_and_niche_diversity"
     assert status["state"] == "completed"
@@ -594,7 +594,7 @@ def test_failed_candidate_evaluations_are_counted_in_budget_metadata(repo_root, 
     assert status["remaining_count"] == 0
     assert "- Parent Selection: `benchmark_leader_plus_reuse_and_niche_elites`" in report
     assert (
-        "- Mutation Pressure: `contrasting_elite_crossover_with_scheduled_reuse_motif_and_topology_mutation`"
+        "- Mutation Pressure: `contrasting_elite_crossover_with_profile_scheduled_tabular_motif_pressure`"
         in report
     )
     assert "- Hierarchy Policy: `shared_variants_preserve_reuse_and_niche_diversity`" in report

@@ -40,7 +40,7 @@ class RuntimeExecutionPolicy:
     fallback_classifier: str = "standardized_nearest_centroid"
     fallback_regressor: str = "ridge_least_squares"
     fallback_language_model: str = "smoothed_unigram_perplexity"
-    topology_selection_policy: str = "fitness_plus_topology_diversity_elites"
+    topology_selection_policy: str = "pareto_crowding_plus_topology_diversity_elites"
     mutation_pressure_policy: str = "scheduled_topology_mutation_when_rates_do_not_fire"
 
     def as_metadata(self, *, resolved_backend: str) -> dict[str, str]:

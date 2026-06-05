@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 import json
+from math import log1p
 import os
 import time
 from pathlib import Path
@@ -92,7 +93,7 @@ def run_evolution(
 
     # Create seed population
     if state is None:
-        prior_memory = _load_prior_run_memory(config.prior_run_dirs)
+        prior_memory = _load_prior_run_memory(config.prior_run_dirs, evolution)
         population = _create_seed_population(evolution, rng, prior_genomes=prior_memory["genomes"])
         state = GenerationState(
             generation=0,
@@ -230,16 +231,27 @@ def _create_seed_population(
         if len(population) >= evolution.population_size:
             return population[: evolution.population_size]
 
-    # One seed per family
-    for family in allowed:
-        genome = create_seed_genome(family, evolution, rng)
-        for candidate in _seed_variants(genome, evolution):
-            if candidate.genome_id in seen_ids:
-                continue
-            population.append(candidate)
-            seen_ids.add(candidate.genome_id)
-            if len(population) >= evolution.population_size:
-                return population[: evolution.population_size]
+    ranked_variants: list[tuple[int, int, int, ModelGenome]] = []
+    for family_order, family in enumerate(allowed):
+        for variant_index, candidate in enumerate(
+            _seed_variants(create_seed_genome(family, evolution, rng), evolution)
+        ):
+            ranked_variants.append(
+                (
+                    _seed_variant_tier(family, variant_index),
+                    variant_index,
+                    family_order,
+                    candidate,
+                )
+            )
+
+    for _, _, _, candidate in sorted(ranked_variants, key=lambda item: item[:3]):
+        if candidate.genome_id in seen_ids:
+            continue
+        population.append(candidate)
+        seen_ids.add(candidate.genome_id)
+        if len(population) >= evolution.population_size:
+            return population[: evolution.population_size]
 
     # Fill remaining slots via mutation from diverse seeds
     while len(population) < evolution.population_size:
@@ -257,6 +269,16 @@ def _create_seed_population(
         seen_ids.add(child.genome_id)
 
     return population[: evolution.population_size]
+
+
+def _seed_variant_tier(family: str, variant_index: int) -> int:
+    if variant_index == 0:
+        return 0
+    if family in {"mlp", "sparse_mlp", "moe_mlp"}:
+        return variant_index
+    if family in {"attention", "sparse_attention", "embedding"}:
+        return variant_index + 2
+    return variant_index + 4
 
 
 def _seed_variants(genome: ModelGenome, evolution) -> list[ModelGenome]:
@@ -473,6 +495,8 @@ def _write_summary(run_dir: str, state: GenerationState, elapsed: float) -> None
         "best_family": best.family if best else None,
         "best_quality": best.aggregate_quality if best else None,
         "best_parameter_count": best.parameter_count if best else None,
+        "best_complexity_score": best.complexity_score if best else None,
+        "pareto_front_size": len(state.archives.get("pareto", [])) if state.archives else 0,
         "families_active": sorted({g.family for g in state.population}),
         "failure_count": sum(1 for result in evaluation_rows if result.failure_reason),
         "failure_patterns": dict(failure_patterns.most_common()),
@@ -482,6 +506,10 @@ def _write_summary(run_dir: str, state: GenerationState, elapsed: float) -> None
         ),
         "candidate_selection_policy": runtime_execution_policy().candidate_selection_policy,
         "operator_adaptation_policy": runtime_execution_policy().operator_adaptation_policy,
+        "search_score_policy": "per_benchmark_normalized_quality_efficiency_complexity_v1",
+        "seed_allocation_policy": "family_coverage_then_mlp_like_variant_priority_v1",
+        "benchmark_specialist_policy": "repair_plus_high_quality_exploit_v1",
+        "complexity_summary": _complexity_summary(state.population),
         "benchmark_slot_integrity": _benchmark_slot_integrity(state),
     }
 
@@ -501,6 +529,17 @@ def _runtime_metadata(config: RunConfig) -> dict[str, str | None]:
         "runtime_version": runtime_selection.runtime_version,
         "runtime_backend_limitations": runtime_selection.backend_limitations,
         "precision_mode": "fp32",
+    }
+
+
+def _complexity_summary(genomes: list[ModelGenome]) -> dict[str, float]:
+    values = [float(genome.architecture_complexity) for genome in genomes]
+    if not values:
+        return {}
+    return {
+        "min": min(values),
+        "max": max(values),
+        "avg": sum(values) / len(values),
     }
 
 
@@ -637,7 +676,7 @@ def _persist_archives(store: RunStore, run_id: str, generation: int, archives: d
             )
 
 
-def _load_prior_run_memory(prior_run_dirs: list[str]) -> dict:
+def _load_prior_run_memory(prior_run_dirs: list[str], evolution=None) -> dict:
     genomes: list[ModelGenome] = []
     operator_stats: dict[str, dict[str, float]] = {}
     family_stats: dict[str, dict[str, float]] = {}
@@ -685,10 +724,19 @@ def _load_prior_run_memory(prior_run_dirs: list[str]) -> dict:
             )
             family_bucket["count"] += 1.0
             if quality is not None and failure is None:
+                train_seconds = float(row.get("train_seconds") or 0.0)
+                parameter_count = float(row.get("parameter_count") or 0.0)
+                complexity = float(getattr(genome, "architecture_complexity", 0.0))
                 family_bucket["quality_sum"] += float(quality)
-                family_bucket["time_sum"] += float(row.get("train_seconds") or 0.0)
-                family_bucket["param_sum"] += float(row.get("parameter_count") or 0.0)
-                family_bucket["efficiency_sum"] += float(quality)
+                family_bucket["time_sum"] += train_seconds
+                family_bucket["param_sum"] += parameter_count
+                family_bucket["efficiency_sum"] += _prior_efficiency_score(
+                    float(quality),
+                    train_seconds,
+                    parameter_count,
+                    complexity,
+                    evolution,
+                )
             if failure is not None:
                 family_bucket["failures"] += 1.0
 
@@ -697,6 +745,7 @@ def _load_prior_run_memory(prior_run_dirs: list[str]) -> dict:
             operator = lineage_ops.get(row.get("genome_id", ""))
             if not operator:
                 continue
+            genome = genome_map.get(str(row.get("genome_id", "")))
             bucket = operator_stats.setdefault(
                 operator,
                 {
@@ -710,10 +759,19 @@ def _load_prior_run_memory(prior_run_dirs: list[str]) -> dict:
             )
             bucket["count"] += 1.0
             if row.get("failure_reason") is None and row.get("quality") is not None:
+                train_seconds = float(row.get("train_seconds") or 0.0)
+                parameter_count = float(row.get("parameter_count") or 0.0)
+                complexity = float(getattr(genome, "architecture_complexity", 0.0))
                 bucket["quality_sum"] += float(row["quality"])
-                bucket["time_sum"] += float(row.get("train_seconds") or 0.0)
-                bucket["param_sum"] += float(row.get("parameter_count") or 0.0)
-                bucket["efficiency_sum"] += float(row["quality"])
+                bucket["time_sum"] += train_seconds
+                bucket["param_sum"] += parameter_count
+                bucket["efficiency_sum"] += _prior_efficiency_score(
+                    float(row["quality"]),
+                    train_seconds,
+                    parameter_count,
+                    complexity,
+                    evolution,
+                )
             elif row.get("failure_reason") is not None:
                 bucket["failures"] += 1.0
 
@@ -734,3 +792,23 @@ def _resolve_store_run_id(store: RunStore) -> str:
     if row:
         return row[0]
     return "default"
+
+
+def _prior_efficiency_score(
+    quality: float,
+    train_seconds: float,
+    parameter_count: float,
+    complexity_score: float,
+    evolution,
+) -> float:
+    time_weight = getattr(evolution, "time_penalty_weight", 0.6)
+    param_weight = getattr(evolution, "param_penalty_weight", 0.4)
+    complexity_weight = getattr(evolution, "complexity_penalty_weight", 0.2)
+    total_weight = max(1e-9, time_weight + param_weight + complexity_weight)
+    penalty = (
+        (time_weight * log1p(max(0.0, train_seconds)))
+        + (param_weight * (log1p(max(1.0, parameter_count)) / 10.0))
+        + (complexity_weight * max(0.0, complexity_score))
+    ) / total_weight
+    bias = getattr(evolution, "efficiency_bias_end", 0.4)
+    return ((1.0 - bias) * quality) - (bias * penalty)

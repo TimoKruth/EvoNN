@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 
 from evonn_primordia.config import RunConfig
+from evonn_primordia.export.descriptors import build_descriptor_coverage
 from evonn_primordia.export.report import build_primitive_bank_summary, write_report
 from evonn_primordia.export.seeding import build_seed_candidates
 from evonn_primordia.genome import ModelGenome
@@ -209,6 +210,11 @@ def run_search(
     failure_count = sum(1 for record in executed_records if record.get("status") != "ok")
     success_count = sum(1 for record in executed_records if record.get("status") == "ok")
     benchmark_leaders, family_leaders = _build_search_leader_surfaces(best_results, executed_records)
+    descriptor_coverage = build_descriptor_coverage(
+        summary={"system": "primordia", "run_id": run_id, "run_name": run_name},
+        best_results=best_results,
+        trial_records=executed_records,
+    )
     summary = {
         "system": "primordia",
         "runtime": runtime_backend,
@@ -244,6 +250,7 @@ def run_search(
             "elite_fraction": config.search.elite_fraction,
             "mutation_rounds_per_parent": config.search.mutation_rounds_per_parent,
             "family_exploration_floor": config.search.family_exploration_floor,
+            "image_family_exploration_floor": config.search.image_family_exploration_floor,
             "novelty_weight": config.search.novelty_weight,
             "complexity_penalty_weight": config.search.complexity_penalty_weight,
             "max_candidates_per_benchmark": config.search.max_candidates_per_benchmark,
@@ -255,6 +262,7 @@ def run_search(
             target_evaluation_count=target_evals,
             failed_evaluations=failure_count,
         ),
+        "descriptor_coverage": descriptor_coverage,
         "benchmark_leaders": benchmark_leaders,
         "family_leaders": family_leaders,
         "primitive_usage": dict(sorted(primitive_usage.items(), key=lambda item: (-item[1], item[0]))),
@@ -344,6 +352,7 @@ def _run_benchmark_search(
         config=config,
         allowed_families=allowed_families,
         benchmark_group=benchmark_group,
+        benchmark_task=str(spec.task),
         count=population_size,
     )
 
@@ -388,17 +397,20 @@ def _run_benchmark_search(
         remaining = slots - len(benchmark_records)
         if remaining <= 0:
             break
+        family_exploration_floor = _effective_family_exploration_floor(config, benchmark_group)
         parents = archive.sample_parent_records(
             count=max(1, min(population_size, remaining)),
             total_budget=slots,
             rng=rng,
-            family_exploration_floor=config.search.family_exploration_floor,
+            family_exploration_floor=family_exploration_floor,
+            allow_duplicate_parent_sampling=benchmark_group == "image" and family_exploration_floor == 0,
         )
         pending = _spawn_offspring(
             runtime=runtime,
             config=config,
             allowed_families=allowed_families,
             benchmark_group=benchmark_group,
+            benchmark_task=str(spec.task),
             parents=parents,
             generation=generation,
             count=max(1, min(population_size, remaining)),
@@ -413,10 +425,11 @@ def _spawn_initial_candidates(
     config: RunConfig,
     allowed_families: list[str],
     benchmark_group: str,
+    benchmark_task: str,
     count: int,
 ) -> list[CandidateSeed]:
     seeds: list[CandidateSeed] = []
-    profile = _search_profile_for_group(benchmark_group, config)
+    profile = _search_profile_for_group(benchmark_group, config, benchmark_task=benchmark_task)
     for index in range(count):
         family = allowed_families[index % len(allowed_families)]
         genome = runtime.create_seed_genome(
@@ -424,7 +437,12 @@ def _spawn_initial_candidates(
             profile["seed_width"],
             profile["seed_layers"],
         )
-        genome = _apply_group_seed_profile(genome, benchmark_group=benchmark_group, index=index)
+        genome = _apply_group_seed_profile(
+            genome,
+            benchmark_group=benchmark_group,
+            benchmark_task=benchmark_task,
+            index=index,
+        )
         seeds.append(CandidateSeed(genome=genome, generation=0, parent_genome_id=None, mutation_operator=None))
     return seeds
 
@@ -435,6 +453,7 @@ def _spawn_offspring(
     config: RunConfig,
     allowed_families: list[str],
     benchmark_group: str,
+    benchmark_task: str,
     parents: list[dict[str, Any]],
     generation: int,
     count: int,
@@ -463,6 +482,12 @@ def _spawn_offspring(
             else:
                 genome = mutated
                 mutation_label = None
+            genome = _apply_group_seed_profile(
+                genome,
+                benchmark_group=benchmark_group,
+                benchmark_task=benchmark_task,
+                index=generation + index + mutation_round,
+            )
         offspring.append(
             CandidateSeed(
                 genome=genome,
@@ -528,7 +553,12 @@ def _evaluate_candidate(
                 x_val_np,
                 y_val_np,
                 task=spec.task,
-                epochs=_effective_epochs_for_group(config, benchmark_group, benchmark_slots=benchmark_slots),
+                epochs=_effective_epochs_for_group(
+                    config,
+                    benchmark_group,
+                    benchmark_task=str(spec.task),
+                    benchmark_slots=benchmark_slots,
+                ),
                 lr=getattr(genome, "learning_rate", config.training.learning_rate),
                 batch_size=config.training.batch_size,
                 parameter_count=compiled.parameter_count,
@@ -544,7 +574,12 @@ def _evaluate_candidate(
                 x_val_np,
                 y_val_np,
                 task=spec.task,
-                epochs=_effective_epochs_for_group(config, benchmark_group, benchmark_slots=benchmark_slots),
+                epochs=_effective_epochs_for_group(
+                    config,
+                    benchmark_group,
+                    benchmark_task=str(spec.task),
+                    benchmark_slots=benchmark_slots,
+                ),
                 lr=getattr(genome, "learning_rate", config.training.learning_rate),
                 batch_size=config.training.batch_size,
                 parameter_count=compiled.parameter_count,
@@ -613,40 +648,79 @@ def _evaluate_candidate(
     return record
 
 
-def _search_profile_for_group(benchmark_group: str, config: RunConfig) -> dict[str, int]:
+def _search_profile_for_group(
+    benchmark_group: str,
+    config: RunConfig,
+    *,
+    benchmark_task: str | None = None,
+) -> dict[str, int]:
     base_width = int(config.search.seed_hidden_width)
     base_layers = int(config.search.seed_hidden_layers)
     max_width = int(config.search.max_hidden_width)
     max_layers = int(config.search.max_hidden_layers)
     profile_targets = {
-        "image": (96, 3),
+        "image": (128, 3),
         "language_modeling": (128, 3),
         "tabular": (96, 3),
         "synthetic": (96, 3),
     }
+    if benchmark_task == "regression":
+        width, layers = (128, 3)
+        return {"seed_width": min(max_width, max(base_width, width)), "seed_layers": min(max_layers, max(base_layers, layers))}
     if benchmark_group in profile_targets:
         width, layers = profile_targets[benchmark_group]
         return {"seed_width": min(max_width, max(base_width, width)), "seed_layers": min(max_layers, max(base_layers, layers))}
     return {"seed_width": base_width, "seed_layers": base_layers}
 
 
-def _apply_group_seed_profile(genome: Any, *, benchmark_group: str, index: int) -> Any:
+def _effective_family_exploration_floor(config: RunConfig, benchmark_group: str) -> int:
+    if benchmark_group == "image":
+        return max(0, int(config.search.image_family_exploration_floor))
+    return max(0, int(config.search.family_exploration_floor))
+
+
+def _apply_group_seed_profile(
+    genome: Any,
+    *,
+    benchmark_group: str,
+    index: int,
+    benchmark_task: str | None = None,
+) -> Any:
     if not isinstance(genome, ModelGenome):
         return genome
     update: dict[str, object] = {}
     if benchmark_group == "image":
-        update.update({"activation": "relu", "kernel_size": 3, "dropout": 0.05 if index % 2 else 0.0})
+        update.update({"activation": "relu", "kernel_size": 3, "dropout": 0.05 if index % 3 == 1 else 0.0})
         if genome.family in {"conv2d", "lite_conv2d"}:
-            update["hidden_layers"] = [max(64, width) for width in genome.hidden_layers]
+            update["hidden_layers"] = [max(96, width) for width in genome.hidden_layers]
+        elif genome.family in {"mlp", "sparse_mlp", "moe_mlp"}:
+            update["hidden_layers"] = _profiled_layers(genome.hidden_layers, target_width=128, target_layers=3)
     elif benchmark_group == "language_modeling":
         update.update({"activation": "gelu", "embedding_dim": 128, "num_heads": 4, "norm_type": "layer"})
     elif benchmark_group in {"tabular", "synthetic"}:
-        update.update({"activation": "gelu", "residual": True, "norm_type": "layer", "weight_decay": 1e-4})
+        activation = "tanh" if benchmark_group == "synthetic" and index % 2 == 0 else "gelu"
+        update.update({"activation": activation, "residual": True, "norm_type": "layer", "weight_decay": 1e-4})
         if genome.family == "sparse_mlp":
             update["activation_sparsity"] = 0.25
         if genome.family == "moe_mlp":
             update.update({"num_experts": 4, "moe_top_k": 2})
+        if benchmark_task == "regression":
+            update.update(
+                {
+                    "activation": "tanh" if index % 3 == 0 else "relu",
+                    "dropout": 0.0,
+                    "learning_rate": min(float(genome.learning_rate), 8e-4),
+                    "hidden_layers": _profiled_layers(genome.hidden_layers, target_width=128, target_layers=3),
+                }
+            )
     return genome.model_copy(update=update) if update else genome
+
+
+def _profiled_layers(hidden_layers: list[int], *, target_width: int, target_layers: int) -> list[int]:
+    layers = [max(target_width, int(width)) for width in hidden_layers[:target_layers]]
+    while len(layers) < target_layers:
+        layers.append(target_width)
+    return layers
 
 
 def _mutation_rounds_for_parent(
@@ -661,13 +735,19 @@ def _mutation_rounds_for_parent(
         return base_rounds
     expensive_group = benchmark_group in {"image", "language_modeling"}
     expensive_parent = float(parent.get("train_seconds") or 0.0) >= 1.0
-    lower_priority_parent = parent_rank >= max(1, int(config.search.family_exploration_floor))
+    lower_priority_parent = parent_rank >= max(1, _effective_family_exploration_floor(config, benchmark_group))
     if expensive_group and (expensive_parent or lower_priority_parent):
         return max(1, min(base_rounds, int(config.search.weak_parent_mutation_rounds)))
     return base_rounds
 
 
-def _effective_epochs_for_group(config: RunConfig, benchmark_group: str, *, benchmark_slots: int | None = None) -> int:
+def _effective_epochs_for_group(
+    config: RunConfig,
+    benchmark_group: str,
+    *,
+    benchmark_slots: int | None = None,
+    benchmark_task: str | None = None,
+) -> int:
     base = int(config.training.epochs_per_candidate)
     scale = {
         "tabular": 1.15,
@@ -681,6 +761,10 @@ def _effective_epochs_for_group(config: RunConfig, benchmark_group: str, *, benc
             scaled_epochs = max(1, int(base * scale))
             general_cap = max(1, int(config.search.high_slot_epoch_cap))
             expensive_cap = max(1, int(config.search.expensive_profile_epoch_cap))
+            if benchmark_task == "regression":
+                regression_floor = max(1, int(config.search.regression_profile_epoch_floor))
+                regression_cap = max(regression_floor, int(config.search.regression_profile_epoch_cap))
+                return min(max(scaled_epochs, regression_floor), regression_cap)
             cap = expensive_cap if benchmark_group in {"image", "language_modeling"} else general_cap
             return min(scaled_epochs, cap)
     return max(1, int(base * scale))

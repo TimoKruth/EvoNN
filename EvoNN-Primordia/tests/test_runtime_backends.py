@@ -6,8 +6,13 @@ from pathlib import Path
 import yaml
 
 from evonn_primordia.config import RunConfig
+from evonn_primordia.genome import ModelGenome
 from evonn_primordia.pipeline import run_search
-from evonn_primordia.runtime.backends import _build_classification_estimator, resolve_runtime_bindings
+from evonn_primordia.runtime.backends import (
+    _build_classification_estimator,
+    _train_and_evaluate_numpy_fallback,
+    resolve_runtime_bindings,
+)
 
 
 def test_resolve_runtime_bindings_respects_explicit_numpy_fallback() -> None:
@@ -113,3 +118,28 @@ def test_numpy_fallback_conv_estimators_avoid_removed_multi_class_kwarg() -> Non
         estimator = _build_classification_estimator(family, genome, epochs=1, lr=1e-3, weight_decay=0.0)
         params = estimator.get_params()
         assert "multi_class" not in params or params["multi_class"] != "auto"
+
+
+def test_numpy_fallback_regression_restores_target_scale() -> None:
+    x_train = [[0.0], [1.0], [2.0], [3.0], [4.0], [5.0]]
+    y_train = [100.0, 120.0, 140.0, 160.0, 180.0, 200.0]
+    x_val = [[6.0], [7.0]]
+    y_val = [220.0, 240.0]
+    genome = ModelGenome(family="moe_mlp", hidden_layers=[32, 32])
+
+    result = _train_and_evaluate_numpy_fallback(
+        {"family": "moe_mlp", "genome": genome},
+        x_train,
+        y_train,
+        x_val,
+        y_val,
+        task="regression",
+        epochs=1,
+        lr=1e-3,
+        batch_size=2,
+        parameter_count=genome.parameter_estimate,
+    )
+
+    assert result.failure_reason is None
+    assert result.metric_name == "mse"
+    assert result.metric_value < 10_000.0

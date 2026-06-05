@@ -367,6 +367,29 @@ def test_coordinator_helper_paths_cover_sampling_progress_and_budget(tmp_path: P
     assert [spec.name for spec in second] == [spec.name for spec in first]
     assert len(third) == 2
     assert any(spec.name == "b" for spec in third)
+    assert coordinator_mod._active_benchmark_family(cfg, specs, generation=0) == "tabular"
+
+    full_short_cfg = RunConfig.model_validate(
+        {
+            "benchmark_pool": {
+                "benchmarks": ["a", "b", "moons"],
+                "sample_k": 3,
+                "family_stage_generations": 2,
+            },
+            "evolution": {"num_generations": 2},
+        }
+    )
+    full_short_specs = [
+        SimpleNamespace(name="a", task="classification", source="sklearn"),
+        SimpleNamespace(name="b", task="classification", source="image"),
+        SimpleNamespace(
+            name="moons",
+            task="classification",
+            source="sklearn",
+            dataset="make_moons",
+        ),
+    ]
+    assert coordinator_mod._active_benchmark_family(full_short_cfg, full_short_specs, generation=0) is None
 
     coordinator_mod._update_pool_fitness_history(
         pool_state,

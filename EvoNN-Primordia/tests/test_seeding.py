@@ -48,4 +48,9 @@ def test_seed_candidates_include_provenance_and_repeat_support() -> None:
     assert "repeat_support_count" in top
     assert "median_quality" in top
     assert "median_quality_by_group" in top
+    assert "representative_descriptor" in top
+    assert "descriptor_count" in top
+    assert "winning_descriptor_count" in top
+    assert "transfer_safety" in top
+    assert payload["transfer_safety"]["test_metric_included"] is False
     assert top["repeat_support_count"] >= 1

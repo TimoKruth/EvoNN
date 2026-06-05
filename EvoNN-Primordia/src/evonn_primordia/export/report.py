@@ -6,6 +6,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from evonn_primordia.export.descriptors import (
+    build_descriptor_coverage,
+    descriptor_support_for_family,
+)
+
 
 def _escape_markdown_cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", "<br>")
@@ -132,6 +137,13 @@ def build_primitive_bank_summary(
     trial_records: list[dict[str, Any]],
 ) -> dict[str, Any]:
     best_results = enrich_best_results(best_results, trial_records)
+    descriptor_coverage = summary.get("descriptor_coverage")
+    if not isinstance(descriptor_coverage, dict):
+        descriptor_coverage = build_descriptor_coverage(
+            summary=summary,
+            best_results=best_results,
+            trial_records=trial_records,
+        )
     by_family: dict[str, list[dict[str, Any]]] = {}
     for record in trial_records:
         family = str(record.get("primitive_family") or "unknown")
@@ -161,7 +173,14 @@ def build_primitive_bank_summary(
     for family in families:
         representative = best_by_family.get(family, {})
         won = sorted(wins.get(family, []))
-        benchmark_groups = sorted({str(record.get("benchmark_group") or "unknown") for record in by_family.get(family, []) if record.get("benchmark_group")})
+        benchmark_groups = sorted(
+            {
+                str(record.get("benchmark_group") or "unknown")
+                for record in by_family.get(family, [])
+                if record.get("benchmark_group")
+            }
+        )
+        descriptor_support = descriptor_support_for_family(family, descriptor_coverage)
         primitive_families.append(
             {
                 "family": family,
@@ -176,6 +195,7 @@ def build_primitive_bank_summary(
                 "best_generation": representative.get("generation"),
                 "representative_genome_id": representative.get("genome_id"),
                 "representative_architecture_summary": representative.get("architecture_summary"),
+                **descriptor_support,
             }
         )
 
@@ -186,6 +206,7 @@ def build_primitive_bank_summary(
         "runtime": summary.get("runtime"),
         "runtime_version": summary.get("runtime_version"),
         "precision_mode": summary.get("precision_mode") or "fp32",
+        "descriptor_coverage": descriptor_coverage,
         "primitive_families": primitive_families,
     }
 
@@ -306,8 +327,8 @@ def write_report(run_dir: str | Path) -> Path:
             "",
             "## Primitive Bank Summary",
             "",
-            "| Family | Evaluations | Benchmark Wins | Won Benchmarks | Best Metric | Best Value | Representative Genome | Representative Architecture |",
-            "|---|---:|---:|---|---|---:|---|---|",
+            "| Family | Evaluations | Benchmark Wins | Descriptors | Scope | Won Benchmarks | Best Metric | Best Value | Representative Genome | Representative Architecture |",
+            "|---|---:|---:|---:|---|---|---|---:|---|---|",
         ])
         primitive_rows = primitive_bank.get("primitive_families") or []
         if primitive_rows:
@@ -316,10 +337,12 @@ def write_report(run_dir: str | Path) -> Path:
                 best_value = row.get("best_metric_value")
                 rendered_value = "---" if best_value is None else f"{float(best_value):.6f}"
                 lines.append(
-                    "| {family} | {evaluation_count} | {benchmark_wins} | {won} | {best_metric} | {best_value} | {genome} | {architecture} |".format(
+                    "| {family} | {evaluation_count} | {benchmark_wins} | {descriptors} | {scope} | {won} | {best_metric} | {best_value} | {genome} | {architecture} |".format(
                         family=_render_markdown_cell(row.get("family"), missing="unknown"),
                         evaluation_count=int(row.get("evaluation_count", 0)),
                         benchmark_wins=int(row.get("benchmark_wins", 0)),
+                        descriptors=int(row.get("descriptor_count", 0)),
+                        scope=_render_markdown_cell(row.get("transfer_scope")),
                         won=_render_markdown_cell(won),
                         best_metric=_render_markdown_cell(row.get("best_metric_name")),
                         best_value=rendered_value,
@@ -328,7 +351,50 @@ def write_report(run_dir: str | Path) -> Path:
                     )
                 )
         else:
-            lines.append("| none | 0 | 0 | — | — | --- | — | — |")
+            lines.append("| none | 0 | 0 | 0 | — | — | — | --- | — | — |")
+        descriptor_coverage = primitive_bank.get("descriptor_coverage") or summary.get("descriptor_coverage") or {}
+        lines.extend([
+            "",
+            "## Motif Descriptor Coverage",
+            "",
+            "| Metric | Value |",
+            "|---|---:|",
+            f"| Descriptor Cells | {int(descriptor_coverage.get('descriptor_cell_count', 0))} |",
+            f"| Successful Descriptor Cells | {int(descriptor_coverage.get('successful_descriptor_cell_count', 0))} |",
+            f"| Winning Descriptor Cells | {int(descriptor_coverage.get('winning_descriptor_cell_count', 0))} |",
+            f"| Descriptor Coverage Ratio | {float(descriptor_coverage.get('descriptor_coverage_ratio', 0.0)):.6f} |",
+            f"| Descriptor Entropy | {float(descriptor_coverage.get('descriptor_entropy', 0.0)):.6f} |",
+            "",
+            "### Top Descriptor Cells",
+            "",
+            "| Family | Groups | Evaluations | Wins | Descriptor | Representative Genome |",
+            "|---|---|---:|---:|---|---|",
+        ])
+        top_cells = descriptor_coverage.get("top_descriptor_cells") or []
+        if top_cells:
+            for row in top_cells[:8]:
+                groups = ", ".join(row.get("benchmark_groups") or []) or "—"
+                descriptor = row.get("descriptor") or {}
+                descriptor_label = ", ".join(
+                    [
+                        str(descriptor.get("depth_bucket", "unknown")),
+                        str(descriptor.get("width_bucket", "unknown")),
+                        str(descriptor.get("activation", "unknown")),
+                        str(descriptor.get("norm_type", "none")),
+                    ]
+                )
+                lines.append(
+                    "| {family} | {groups} | {evaluations} | {wins} | {descriptor} | {genome} |".format(
+                        family=_render_markdown_cell(row.get("family"), missing="unknown"),
+                        groups=_render_markdown_cell(groups),
+                        evaluations=int(row.get("evaluation_count", 0)),
+                        wins=int(row.get("win_count", 0)),
+                        descriptor=_render_markdown_cell(descriptor_label),
+                        genome=_render_markdown_cell(row.get("representative_genome_id")),
+                    )
+                )
+        else:
+            lines.append("| none | — | 0 | 0 | — | — |")
         lines.extend([
             "",
             "## Benchmark Leaders",

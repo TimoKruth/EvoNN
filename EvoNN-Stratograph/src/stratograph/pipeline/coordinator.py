@@ -556,11 +556,11 @@ def _benchmark_search_profile(
         }
     if task == "language_modeling":
         return {
-            "width_choices": (48, 64, 96, 128),
-            "width_floor": 32,
-            "depth_bonus": 0,
-            "cell_depth_bonus": 0,
-            "primitive_bias": "none",
+            "width_choices": (64, 96, 128, 160, 192),
+            "width_floor": 48,
+            "depth_bonus": 1,
+            "cell_depth_bonus": 1,
+            "primitive_bias": "language_modeling",
         }
     if is_image:
         return {
@@ -572,11 +572,11 @@ def _benchmark_search_profile(
         }
     if is_high_dimensional:
         return {
-            "width_choices": (32, 48, 64, 96, 128, 160),
-            "width_floor": 32,
+            "width_choices": (48, 64, 96, 128, 160, 192),
+            "width_floor": 48,
             "depth_bonus": 1,
-            "cell_depth_bonus": 0,
-            "primitive_bias": "none",
+            "cell_depth_bonus": 1,
+            "primitive_bias": "tabular",
         }
     return {
         "width_choices": (16, 24, 32, 48, 64, 96, 128),
@@ -817,6 +817,12 @@ def _offspring_mutation_modes(
             ("add_skip_edge", "rewire_macro"),
             ("specialize_cell", "clone_cell") if allow_clone_mutation else ("specialize_cell", "activation"),
         ),
+        "language_modeling": (
+            ("motif_rewrite", "activation"),
+            ("add_skip_edge", "rewire_macro"),
+            ("width", "specialize_cell"),
+            ("add_macro", "add_skip_edge"),
+        ),
     }
     if normalized_profile in profile_schedule:
         schedule = profile_schedule[normalized_profile]
@@ -838,7 +844,7 @@ def _parent_selection_strategy() -> str:
 
 
 def _mutation_pressure_strategy() -> str:
-    return "contrasting_elite_crossover_with_scheduled_reuse_motif_and_topology_mutation"
+    return "contrasting_elite_crossover_with_profile_scheduled_tabular_motif_pressure"
 
 
 def _hierarchy_selection_policy(architecture_mode: str) -> str:
@@ -852,7 +858,7 @@ def _hierarchy_selection_policy(architecture_mode: str) -> str:
 
 
 def _search_profile_policy() -> str:
-    return "task_dimension_aware_initial_hierarchy_profiles"
+    return "task_dimension_tabular_lm_aware_initial_hierarchy_profiles"
 
 
 def _benchmark_profile_key(
@@ -888,9 +894,23 @@ def _profile_survival_bonus(genome: HierarchicalGenome | None, profile_key: str)
     if profile_key == "regression":
         return min(0.04, genome.reuse_ratio * 0.018 + genome.macro_depth * 0.001 + _primitive_share(genome, {"linear", "norm", "residual"}) * 0.025)
     if profile_key == "tabular":
-        return min(0.04, genome.reuse_ratio * 0.02 + _primitive_share(genome, {"gate", "norm", "mix", "residual"}) * 0.02)
+        return min(
+            0.05,
+            genome.reuse_ratio * 0.018
+            + genome.average_cell_depth * 0.0015
+            + _primitive_share(genome, {"gate", "norm", "mix", "residual"}) * 0.026,
+        )
     if profile_key == "synthetic":
         return min(0.03, _primitive_share(genome, {"gate", "mix", "residual"}) * 0.025)
+    if profile_key == "language_modeling":
+        sequence_primitives = _primitive_share(genome, {"gate", "norm", "residual", "mix"})
+        return min(
+            0.045,
+            genome.macro_depth * 0.0015
+            + genome.average_cell_depth * 0.0015
+            + genome.reuse_ratio * 0.016
+            + sequence_primitives * 0.022,
+        )
     return 0.0
 
 

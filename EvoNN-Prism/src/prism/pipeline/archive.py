@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from dataclasses import replace
+from math import log1p
 
 
 @dataclass
@@ -16,6 +18,8 @@ class IndividualSummary:
     qualities: dict[str, float]  # benchmark_id -> quality
     parameter_count: int
     train_seconds: float
+    complexity_score: float = 0.0
+    score_qualities: dict[str, float] | None = None
 
     @property
     def aggregate_quality(self) -> float:
@@ -26,6 +30,13 @@ class IndividualSummary:
     @property
     def best_quality(self) -> float:
         return max(self.qualities.values(), default=float("-inf"))
+
+    @property
+    def search_quality(self) -> float:
+        qualities = self.score_qualities if self.score_qualities is not None else self.qualities
+        if not qualities:
+            return float("-inf")
+        return sum(qualities.values()) / len(qualities)
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +53,7 @@ def build_archives(
 
     Returns dict with keys: "elite", "pareto", "niche".
     """
-    scored = _scored(summaries)
+    scored = _normalized_for_search(_scored(summaries))
     return {
         "elite": build_elite_archive(scored, elite_per_benchmark),
         "pareto": build_pareto_archive(scored),
@@ -66,7 +77,7 @@ def build_elite_archive(
     for benchmark_id in grouped:
         grouped[benchmark_id] = sorted(
             grouped[benchmark_id],
-            key=lambda s: (s.qualities[benchmark_id], -s.parameter_count),
+            key=lambda s: (s.qualities[benchmark_id], s.search_quality, -s.parameter_count),
             reverse=True,
         )[:elite_per_benchmark]
 
@@ -76,10 +87,10 @@ def build_elite_archive(
 def build_pareto_archive(
     summaries: list[IndividualSummary],
 ) -> list[IndividualSummary]:
-    """Non-dominated front on (aggregate_quality, -parameter_count).
+    """Non-dominated front on quality, runtime, size, and complexity.
 
     An individual is dominated if another individual is at least as good on
-    both objectives and strictly better on at least one.
+    all objectives and strictly better on at least one.
     """
     summaries = _scored(_dedupe(summaries))
     front: list[IndividualSummary] = []
@@ -95,7 +106,7 @@ def build_pareto_archive(
         if not dominated:
             front.append(candidate)
 
-    front.sort(key=lambda s: s.aggregate_quality, reverse=True)
+    front.sort(key=lambda s: _archive_sort_key(s, summaries), reverse=True)
     return front
 
 
@@ -112,7 +123,7 @@ def build_niche_archive(
 
     for ind in summaries:
         current = archive.get(ind.family)
-        if current is None or ind.aggregate_quality > current.aggregate_quality:
+        if current is None or _archive_sort_key(ind, summaries) > _archive_sort_key(current, summaries):
             archive[ind.family] = ind
 
     return archive
@@ -127,7 +138,10 @@ def build_specialist_archive(
     for ind in summaries:
         for benchmark_id, quality in ind.qualities.items():
             current = archive[benchmark_id].get(ind.family)
-            if current is None or quality > current.qualities.get(benchmark_id, float("-inf")):
+            if current is None or (quality, ind.search_quality) > (
+                current.qualities.get(benchmark_id, float("-inf")),
+                current.search_quality,
+            ):
                 archive[benchmark_id][ind.family] = ind
     return {benchmark_id: dict(families) for benchmark_id, families in archive.items()}
 
@@ -170,12 +184,21 @@ def build_efficient_archive(
 
 
 def _dominates(left: IndividualSummary, right: IndividualSummary) -> bool:
-    """True if left dominates right on (aggregate_quality, -param_count)."""
-    l_vec = (left.aggregate_quality, -left.parameter_count)
-    r_vec = (right.aggregate_quality, -right.parameter_count)
+    """True if left dominates right on quality, runtime, size, and complexity."""
+    l_vec = _pareto_objectives(left)
+    r_vec = _pareto_objectives(right)
     return (
         all(lv >= rv for lv, rv in zip(l_vec, r_vec))
         and any(lv > rv for lv, rv in zip(l_vec, r_vec))
+    )
+
+
+def _pareto_objectives(summary: IndividualSummary) -> tuple[float, float, float, float]:
+    return (
+        summary.search_quality,
+        -log1p(max(0.0, summary.train_seconds)),
+        -log1p(max(1.0, float(summary.parameter_count))),
+        -max(0.0, float(summary.complexity_score)),
     )
 
 
@@ -184,7 +207,7 @@ def _dedupe(summaries: list[IndividualSummary]) -> list[IndividualSummary]:
     unique: dict[str, IndividualSummary] = {}
     for ind in summaries:
         current = unique.get(ind.genome_id)
-        if current is None or ind.aggregate_quality > current.aggregate_quality:
+        if current is None or ind.search_quality > current.search_quality:
             unique[ind.genome_id] = ind
     return list(unique.values())
 
@@ -200,9 +223,51 @@ def _efficiency_tradeoff_score(
 ) -> float:
     times = [ind.train_seconds for ind in population]
     params = [float(ind.parameter_count) for ind in population]
+    complexities = [float(ind.complexity_score) for ind in population]
     time_norm = _normalized_value(summary.train_seconds, times, invert=True)
     param_norm = _normalized_value(float(summary.parameter_count), params, invert=True)
-    return summary.aggregate_quality + (0.12 * time_norm) + (0.06 * param_norm)
+    complexity_norm = _normalized_value(float(summary.complexity_score), complexities, invert=True)
+    return summary.search_quality + (0.12 * time_norm) + (0.06 * param_norm) + (0.04 * complexity_norm)
+
+
+def _archive_sort_key(
+    summary: IndividualSummary,
+    population: list[IndividualSummary],
+) -> tuple[float, float, float, float, float]:
+    return (
+        summary.search_quality,
+        _efficiency_tradeoff_score(summary, population),
+        -summary.train_seconds,
+        -float(summary.parameter_count),
+        -float(summary.complexity_score),
+    )
+
+
+def _normalized_for_search(summaries: list[IndividualSummary]) -> list[IndividualSummary]:
+    by_benchmark: dict[str, list[float]] = defaultdict(list)
+    for summary in summaries:
+        for benchmark_id, quality in summary.qualities.items():
+            by_benchmark[benchmark_id].append(float(quality))
+
+    ranges = {
+        benchmark_id: (min(values), max(values))
+        for benchmark_id, values in by_benchmark.items()
+        if values
+    }
+    normalized: list[IndividualSummary] = []
+    for summary in summaries:
+        score_qualities = {}
+        for benchmark_id, quality in summary.qualities.items():
+            lo, hi = ranges[benchmark_id]
+            score_qualities[benchmark_id] = _quality_score(float(quality), lo, hi)
+        normalized.append(replace(summary, score_qualities=score_qualities))
+    return normalized
+
+
+def _quality_score(quality: float, lo: float, hi: float) -> float:
+    if 0.0 <= lo <= hi <= 1.0:
+        return quality
+    return 1.0 if hi <= lo + 1e-12 else (quality - lo) / (hi - lo)
 
 
 def _normalized_value(value: float, values: list[float], *, invert: bool) -> float:
@@ -249,5 +314,6 @@ def summaries_from_state_results(
             qualities=qualities,
             parameter_count=param_count,
             train_seconds=train_secs,
+            complexity_score=float(getattr(genome, "architecture_complexity", 0.0)),
         ))
     return summaries

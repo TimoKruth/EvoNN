@@ -64,6 +64,9 @@ class EvolutionConfig(BaseModel):
     novelty_parent_bias: float = 0.1
     family_offspring_floor: int = 1
     benchmark_specialist_offspring: int = 2
+    benchmark_specialist_repair_fraction: float = 0.5
+    benchmark_specialist_exploit_min_quality: float = 0.75
+    benchmark_specialist_exploit_saturation: float = 0.995
     family_prior_bias: float = 0.2
     undercovered_focus_top_k: int = 3
     efficiency_bias_start: float = 0.15
@@ -71,6 +74,7 @@ class EvolutionConfig(BaseModel):
     efficiency_warmup_generations: int = 2
     time_penalty_weight: float = 0.6
     param_penalty_weight: float = 0.4
+    complexity_penalty_weight: float = 0.2
 
 
 class BenchmarkPoolConfig(BaseModel):

@@ -462,10 +462,38 @@ def _resolve_model_output_dim(
 def benchmark_family_name(benchmark_spec: BenchmarkSpec) -> str:
     task = getattr(benchmark_spec, "task", "")
     source = getattr(benchmark_spec, "source", "")
+    dataset = str(getattr(benchmark_spec, "dataset", "") or "")
+    name = str(getattr(benchmark_spec, "name", "") or "")
     if task == "language_modeling":
         return "language_modeling"
     if source == "image":
         return "image"
+    if task == "regression" and dataset.startswith("make_friedman"):
+        return "synthetic-regression"
+    if task == "classification" and dataset in {"make_moons", "make_circles"}:
+        return "synthetic"
+    if (
+        task == "classification"
+        and source == "sklearn"
+        and dataset.startswith("load_")
+        and dataset != "load_digits"
+    ):
+        return "classic-tabular"
+    if task == "regression":
+        return "tabular-regression"
+    if name in {"moons", "circles"}:
+        return "synthetic"
+    if name.startswith("friedman"):
+        return "synthetic-regression"
+    if name in {
+        "iris",
+        "iris_classification",
+        "wine",
+        "wine_classification",
+        "breast_cancer",
+        "breast_cancer_classification",
+    }:
+        return "classic-tabular"
     return "tabular"
 
 

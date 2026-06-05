@@ -46,6 +46,36 @@ def test_elite_archive_sampling_prioritizes_benchmark_leader_then_diverse_family
     assert [row["genome_id"] for row in parents] == ["mlp-best", "sparse-best", "embed-best"]
 
 
+def test_elite_archive_rank_weights_preserve_selection_pressure() -> None:
+    records = [
+        {"genome_id": "best", "primitive_family": "mlp", "search_score": 0.95},
+        {"genome_id": "middle", "primitive_family": "conv2d", "search_score": 0.25},
+        {"genome_id": "weak", "primitive_family": "lite_conv2d", "search_score": 0.1},
+    ]
+
+    weights = EliteArchive._selection_weights(records)
+
+    assert weights[0] > weights[1] > weights[2]
+    assert weights[0] / weights[2] >= 5.0
+
+
+def test_elite_archive_can_reuse_best_parent_when_family_floor_is_disabled() -> None:
+    archive = EliteArchive(1.0)
+    archive.update({"genome_id": "mlp-best", "primitive_family": "mlp", "search_score": 0.95})
+    archive.update({"genome_id": "conv-weak", "primitive_family": "conv2d", "search_score": 0.25})
+    archive.update({"genome_id": "lite-weak", "primitive_family": "lite_conv2d", "search_score": 0.1})
+
+    parents = archive.sample_parent_records(
+        count=3,
+        total_budget=6,
+        rng=Random(1),
+        family_exploration_floor=0,
+        allow_duplicate_parent_sampling=True,
+    )
+
+    assert [row["genome_id"] for row in parents].count("mlp-best") >= 2
+
+
 def test_candidate_seed_carries_lineage_fields() -> None:
     seed = CandidateSeed(genome=_Genome("g1"), generation=2, parent_genome_id="parent", mutation_operator="width")
 

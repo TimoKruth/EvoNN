@@ -68,6 +68,28 @@ class ModelGenome(BaseModel, frozen=True):
         total += prev  # output layer (single output estimate)
         return total
 
+    @property
+    def architecture_complexity(self) -> float:
+        """Family-aware structural complexity estimate for search pressure."""
+        layers = max(1, len(self.hidden_layers))
+        width_mass = sum(self.hidden_layers) / 128.0 if self.hidden_layers else 0.0
+        complexity = layers + (0.35 * width_mass)
+        if self.residual:
+            complexity += 0.4
+        if self.norm_type != "none":
+            complexity += 0.25
+        if self.dropout > 0:
+            complexity += 0.1
+        if self.family in {"conv2d", "lite_conv2d", "conv1d", "lite_conv1d"}:
+            complexity += 0.35 * self.kernel_size
+        if self.family in {"attention", "sparse_attention", "embedding"}:
+            complexity += (self.embedding_dim / 128.0) + (0.2 * self.num_heads)
+        if self.family in {"sparse_mlp", "sparse_attention"}:
+            complexity += 0.5 * (1.0 - self.activation_sparsity)
+        if self.family == "moe_mlp":
+            complexity += 0.6 * max(1, self.num_experts) + 0.25 * max(1, self.moe_top_k)
+        return float(complexity)
+
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -211,7 +211,7 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
             "cache_trained_count": 18,
             "cache_reused_count": 6,
             "benchmark_slot_integrity": {"status": "complete"},
-            "topology_selection_policy": "fitness_plus_topology_diversity_elites",
+            "topology_selection_policy": "pareto_crowding_plus_topology_diversity_elites",
             "mutation_pressure_policy": "scheduled_topology_mutation_when_rates_do_not_fire",
         },
         latest_gen=2,
@@ -222,7 +222,7 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     assert cached_budget["actual_evaluations"] + cached_budget["cached_evaluations"] == 24
     assert cached_budget["partial_run"] is False
     assert cached_budget["benchmark_slot_integrity"] == {"status": "complete"}
-    assert cached_budget["topology_selection_policy"] == "fitness_plus_topology_diversity_elites"
+    assert cached_budget["topology_selection_policy"] == "pareto_crowding_plus_topology_diversity_elites"
     assert cached_budget["mutation_pressure_policy"] == "scheduled_topology_mutation_when_rates_do_not_fire"
 
     telemetry_none = sym._search_telemetry(RunConfig(training={"multi_fidelity": False}), {})
@@ -241,9 +241,9 @@ def test_export_helpers_cover_budget_search_artifacts_and_summary(tmp_path: Path
     assert telemetry["map_elites_fill_ratio"] == 0.5
     telemetry_policy = sym._search_telemetry(
         RunConfig(training={"multi_fidelity": False}),
-        {"topology_selection_policy": "fitness_plus_topology_diversity_elites"},
+        {"topology_selection_policy": "pareto_crowding_plus_topology_diversity_elites"},
     )
-    assert telemetry_policy["topology_selection_policy"] == "fitness_plus_topology_diversity_elites"
+    assert telemetry_policy["topology_selection_policy"] == "pareto_crowding_plus_topology_diversity_elites"
 
     rep = SimpleNamespace(
         enabled_layers=[],

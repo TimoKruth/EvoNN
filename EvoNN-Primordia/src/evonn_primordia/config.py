@@ -41,6 +41,7 @@ class SearchConfig(BaseModel):
     elite_fraction: float = 0.34
     mutation_rounds_per_parent: int = 1
     family_exploration_floor: int = 1
+    image_family_exploration_floor: int = 0
     novelty_weight: float = 0.05
     complexity_penalty_weight: float = 0.02
     max_candidates_per_benchmark: int | None = None
@@ -54,6 +55,8 @@ class SearchConfig(BaseModel):
     weak_parent_mutation_rounds: int = 1
     high_slot_epoch_cap: int = 2
     expensive_profile_epoch_cap: int = 1
+    regression_profile_epoch_floor: int = 4
+    regression_profile_epoch_cap: int = 6
 
 
 class EvolutionConfig(BaseModel):

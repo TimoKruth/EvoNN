@@ -485,6 +485,7 @@ def update_search_memory(
 ) -> None:
     """Fold latest genome outcomes back into operator and family priors."""
     adaptation_rate = config.training.operator_adaptation_rate
+    normalized_quality = _normalized_genome_quality_scores(state.results)
     bias = _efficiency_bias(
         state.generation,
         config.evolution.num_generations,
@@ -500,6 +501,7 @@ def update_search_memory(
             sum(result.quality for result in valid_results) / len(valid_results)
             if valid_results else float("-inf")
         )
+        avg_search_quality = normalized_quality.get(genome.genome_id, avg_quality)
         avg_time = (
             sum(result.train_seconds for result in valid_results) / len(valid_results)
             if valid_results else 0.0
@@ -509,12 +511,14 @@ def update_search_memory(
             if valid_results else float(genome.parameter_estimate)
         )
         efficiency_score = _efficiency_adjusted_value(
-            avg_quality,
+            avg_search_quality,
             avg_time,
             avg_params,
+            float(getattr(genome, "architecture_complexity", 0.0)),
             bias,
             config.evolution.time_penalty_weight,
             config.evolution.param_penalty_weight,
+            config.evolution.complexity_penalty_weight,
         )
 
         family_bucket = state.family_stats.setdefault(
@@ -530,7 +534,7 @@ def update_search_memory(
         )
         family_bucket["count"] += 1.0
         if valid_results:
-            family_bucket["quality_sum"] += float(avg_quality)
+            family_bucket["quality_sum"] += float(avg_search_quality)
             family_bucket["time_sum"] += float(avg_time)
             family_bucket["param_sum"] += float(avg_params)
             family_bucket["efficiency_sum"] += float(efficiency_score)
@@ -552,7 +556,7 @@ def update_search_memory(
         )
         operator_bucket["count"] += 1.0
         if valid_results:
-            operator_bucket["quality_sum"] += float(avg_quality) * adaptation_rate
+            operator_bucket["quality_sum"] += float(avg_search_quality) * adaptation_rate
             operator_bucket["time_sum"] += float(avg_time) * adaptation_rate
             operator_bucket["param_sum"] += float(avg_params) * adaptation_rate
             operator_bucket["efficiency_sum"] += float(efficiency_score) * adaptation_rate
@@ -581,6 +585,35 @@ def _benchmark_priority_scores(state: GenerationState, benchmark_specs: list) ->
         scores[benchmark_id] = (coverage_gap * 1.25) + (failure_rate * 1.5) + (spread_score * 0.75)
 
     return scores
+
+
+def _normalized_genome_quality_scores(results: dict[str, dict[str, EvaluationResult]]) -> dict[str, float]:
+    by_benchmark: dict[str, list[tuple[str, float]]] = {}
+    for genome_id, benchmark_results in results.items():
+        for benchmark_id, result in benchmark_results.items():
+            if result.failure_reason is None:
+                by_benchmark.setdefault(benchmark_id, []).append((genome_id, float(result.quality)))
+
+    per_genome: dict[str, list[float]] = {}
+    for values in by_benchmark.values():
+        qualities = [quality for _, quality in values]
+        lo = min(qualities)
+        hi = max(qualities)
+        for genome_id, quality in values:
+            score = _quality_score(quality, lo, hi)
+            per_genome.setdefault(genome_id, []).append(score)
+
+    return {
+        genome_id: sum(scores) / len(scores)
+        for genome_id, scores in per_genome.items()
+        if scores
+    }
+
+
+def _quality_score(quality: float, lo: float, hi: float) -> float:
+    if 0.0 <= lo <= hi <= 1.0:
+        return quality
+    return 1.0 if hi <= lo + 1e-12 else (quality - lo) / (hi - lo)
 
 
 def _benchmark_epoch_multiplier(
@@ -647,6 +680,7 @@ def _clamp_float(value: float, lower: float, upper: float) -> float:
 
 def _genome_profiles(state: GenerationState) -> dict[str, dict[str, float]]:
     profiles: dict[str, dict[str, float]] = {}
+    normalized_quality = _normalized_genome_quality_scores(state.results)
     for genome in state.population:
         valid = [
             result for result in state.results.get(genome.genome_id, {}).values()
@@ -654,15 +688,20 @@ def _genome_profiles(state: GenerationState) -> dict[str, dict[str, float]]:
         ]
         if valid:
             profiles[genome.genome_id] = {
-                "quality": sum(result.quality for result in valid) / len(valid),
+                "quality": normalized_quality.get(
+                    genome.genome_id,
+                    sum(result.quality for result in valid) / len(valid),
+                ),
                 "time": sum(result.train_seconds for result in valid) / len(valid),
                 "params": sum(result.parameter_count for result in valid) / len(valid),
+                "complexity": float(getattr(genome, "architecture_complexity", 0.0)),
             }
         else:
             profiles[genome.genome_id] = {
                 "quality": 0.0,
                 "time": 0.0,
                 "params": float(genome.parameter_estimate),
+                "complexity": float(getattr(genome, "architecture_complexity", 0.0)),
             }
     return profiles
 
@@ -686,24 +725,39 @@ def _genome_epoch_multiplier(
     )
     time_logs = [log1p(profile["time"]) for profile in profiles.values()]
     param_logs = [log1p(profile["params"]) for profile in profiles.values()]
+    complexity_values = [profile.get("complexity", 0.0) for profile in profiles.values()]
     score_values = []
     for profile in profiles.values():
         time_penalty = _normalized_range(log1p(profile["time"]), time_logs)
         param_penalty = _normalized_range(log1p(profile["params"]), param_logs)
-        total_weight = max(1e-9, evolution.time_penalty_weight + evolution.param_penalty_weight)
+        complexity_penalty = _normalized_range(profile.get("complexity", 0.0), complexity_values)
+        total_weight = max(
+            1e-9,
+            evolution.time_penalty_weight
+            + evolution.param_penalty_weight
+            + evolution.complexity_penalty_weight,
+        )
         efficiency_penalty = (
             (evolution.time_penalty_weight * time_penalty)
             + (evolution.param_penalty_weight * param_penalty)
+            + (evolution.complexity_penalty_weight * complexity_penalty)
         ) / total_weight
         score_values.append(profile["quality"] - (bias * efficiency_penalty))
 
     profile = profiles[genome.genome_id]
     time_penalty = _normalized_range(log1p(profile["time"]), time_logs)
     param_penalty = _normalized_range(log1p(profile["params"]), param_logs)
-    total_weight = max(1e-9, evolution.time_penalty_weight + evolution.param_penalty_weight)
+    complexity_penalty = _normalized_range(profile.get("complexity", 0.0), complexity_values)
+    total_weight = max(
+        1e-9,
+        evolution.time_penalty_weight
+        + evolution.param_penalty_weight
+        + evolution.complexity_penalty_weight,
+    )
     efficiency_penalty = (
         (evolution.time_penalty_weight * time_penalty)
         + (evolution.param_penalty_weight * param_penalty)
+        + (evolution.complexity_penalty_weight * complexity_penalty)
     ) / total_weight
     score = profile["quality"] - (bias * efficiency_penalty)
     normalized = _normalized_range(score, score_values)
@@ -714,14 +768,17 @@ def _efficiency_adjusted_value(
     quality: float,
     train_seconds: float,
     parameter_count: float,
+    complexity_score: float,
     bias: float,
     time_weight: float,
     param_weight: float,
+    complexity_weight: float,
 ) -> float:
-    total_weight = max(1e-9, time_weight + param_weight)
+    total_weight = max(1e-9, time_weight + param_weight + complexity_weight)
     penalty = (
         (time_weight * log1p(max(0.0, train_seconds)))
         + (param_weight * (log1p(max(1.0, parameter_count)) / 10.0))
+        + (complexity_weight * max(0.0, complexity_score))
     ) / total_weight
     return ((1.0 - bias) * quality) - (bias * penalty)
 

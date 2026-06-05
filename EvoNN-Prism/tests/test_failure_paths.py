@@ -623,6 +623,40 @@ def test_benchmark_specialist_targets_focus_on_weakest_benchmarks():
     assert targets == [{"benchmark_id": "hard", "genome_ids": [specialist.genome_id, strong.genome_id]}]
 
 
+def test_benchmark_specialist_targets_include_actionable_high_quality_benchmarks():
+    repair = _sample_genome("mlp")
+    exploiter = _sample_genome("sparse_mlp")
+    baseline = _sample_genome("attention")
+    state = SimpleNamespace(
+        archives={},
+        results={
+            repair.genome_id: {
+                "regression": EvaluationResult("mse", 3000.0, -3000.0, 10, 0.1),
+                "bank": EvaluationResult("accuracy", 0.91, 0.91, 10, 0.1),
+                "circles": EvaluationResult("accuracy", 1.0, 1.0, 10, 0.1),
+            },
+            exploiter.genome_id: {
+                "regression": EvaluationResult("mse", 2800.0, -2800.0, 10, 0.1),
+                "bank": EvaluationResult("accuracy", 0.94, 0.94, 10, 0.1),
+                "circles": EvaluationResult("accuracy", 1.0, 1.0, 10, 0.1),
+            },
+            baseline.genome_id: {
+                "regression": EvaluationResult("mse", 3200.0, -3200.0, 10, 0.1),
+                "bank": EvaluationResult("accuracy", 0.88, 0.88, 10, 0.1),
+                "circles": EvaluationResult("accuracy", 1.0, 1.0, 10, 0.1),
+            },
+        },
+    )
+
+    targets = reproduce_mod._benchmark_specialist_targets(state, 2)
+
+    assert targets[0]["benchmark_id"] == "regression"
+    assert targets[1] == {
+        "benchmark_id": "bank",
+        "genome_ids": [exploiter.genome_id, repair.genome_id],
+    }
+
+
 def test_apply_random_mutation_uses_family_specific_pool():
     class FakeRng:
         def choice(self, seq):
@@ -718,6 +752,99 @@ def test_build_efficient_archive_prefers_better_tradeoff():
 
     assert efficient["family"]["mlp"].genome_id == "fast"
     assert efficient["benchmark"]["moons"][0].genome_id == "fast"
+
+
+def test_pareto_archive_accounts_for_complexity():
+    summaries = [
+        archive_mod.IndividualSummary("simple", "mlp", 0, {"moons": 0.84}, 120, 0.2, 2.0),
+        archive_mod.IndividualSummary("bloated", "mlp", 0, {"moons": 0.84}, 4800, 3.0, 9.0),
+        archive_mod.IndividualSummary("strong", "attention", 0, {"moons": 0.87}, 5000, 3.2, 8.0),
+    ]
+
+    front = archive_mod.build_pareto_archive(summaries)
+
+    assert "bloated" not in {summary.genome_id for summary in front}
+    assert {summary.genome_id for summary in front} == {"simple", "strong"}
+
+
+def test_build_archives_normalizes_mixed_metric_scales():
+    classifier = archive_mod.IndividualSummary(
+        "classifier",
+        "mlp",
+        0,
+        {"classification": 0.95, "regression": -3000.0},
+        120,
+        0.2,
+        2.0,
+    )
+    regressor = archive_mod.IndividualSummary(
+        "regressor",
+        "mlp",
+        0,
+        {"classification": 0.70, "regression": -1000.0},
+        120,
+        0.2,
+        2.0,
+    )
+
+    archives = archive_mod.build_archives([classifier, regressor])
+
+    assert archives["elite"]["classification"][0].genome_id == "classifier"
+    assert archives["elite"]["regression"][0].genome_id == "regressor"
+    assert all(0.0 <= summary.search_quality <= 1.0 for summary in archives["pareto"])
+
+
+def test_reproduce_quality_map_normalizes_by_benchmark_scale():
+    winner = _sample_genome("mlp")
+    loser = _sample_genome("sparse_mlp")
+    state = SimpleNamespace(
+        generation=2,
+        population=[winner, loser],
+        results={
+            winner.genome_id: {
+                "classification": EvaluationResult("accuracy", 0.95, 0.95, 10, 0.1),
+                "regression": EvaluationResult("mse", 3000.0, -3000.0, 10, 0.1),
+            },
+            loser.genome_id: {
+                "classification": EvaluationResult("accuracy", 0.70, 0.70, 10, 0.1),
+                "regression": EvaluationResult("mse", 1000.0, -1000.0, 10, 0.1),
+            },
+        },
+    )
+    evolution = RunConfig.model_validate(
+        {
+            "evolution": {
+                "num_generations": 4,
+                "efficiency_warmup_generations": 0,
+                "efficiency_bias_start": 0.0,
+                "efficiency_bias_end": 0.0,
+            }
+        }
+    ).evolution
+
+    scores = reproduce_mod._quality_map_from_results(state, evolution)
+
+    raw_gap = (
+        sum(result.quality for result in state.results[loser.genome_id].values()) / 2
+        - sum(result.quality for result in state.results[winner.genome_id].values()) / 2
+    )
+    normalized_gap = scores[loser.genome_id] - scores[winner.genome_id]
+    assert 0.0 < normalized_gap < 1.0
+    assert normalized_gap < abs(raw_gap)
+
+
+def test_model_genome_complexity_tracks_family_structure():
+    simple = _sample_genome("mlp")
+    attention = ModelGenome(
+        family="attention",
+        hidden_layers=[128, 128, 128],
+        embedding_dim=256,
+        num_heads=8,
+        norm_type="layer",
+    )
+
+    assert attention.architecture_complexity > simple.architecture_complexity
+    assert simple.architecture_complexity > 0
 
 
 def test_operator_weights_for_parent_use_search_memory():

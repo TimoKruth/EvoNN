@@ -160,6 +160,53 @@ def compute_behavior(genome: Genome) -> np.ndarray:
     )
 
 
+def motif_tags(genome: Genome) -> list[str]:
+    """Return topology/operator/precision motif tags for atlas evidence."""
+    behavior = compute_behavior(genome)
+    tags: list[str] = []
+    if behavior[0] >= 4:
+        tags.append("deep")
+    if behavior[2] >= 2:
+        tags.append("skip_heavy")
+    if behavior[3] >= 1:
+        tags.append("bottlenecked")
+    if behavior[6] < 0.4:
+        tags.append("sparse_connectivity")
+
+    operators = {layer.operator.value for layer in genome.enabled_layers}
+    if {"attention_lite", "transformer_lite"} & operators:
+        tags.append("attention")
+    if "spatial" in operators:
+        tags.append("spatial")
+    if "residual" in operators:
+        tags.append("residual")
+    if "sparse_dense" in operators:
+        tags.append("sparse_operator")
+
+    weight_bits = [int(layer.weight_bits.value) for layer in genome.enabled_layers]
+    activation_bits = [int(layer.activation_bits.value) for layer in genome.enabled_layers]
+    if weight_bits and min(weight_bits) <= 4:
+        tags.append("compact_quantized_weights")
+    elif weight_bits and min(weight_bits) <= 8:
+        tags.append("quantized_weights")
+    if activation_bits and min(activation_bits) <= 8:
+        tags.append("quantized_activations")
+    if any(float(layer.sparsity) >= 0.15 for layer in genome.enabled_layers):
+        tags.append("sparse_weights")
+
+    widths = [int(layer.width) for layer in genome.enabled_layers]
+    if widths and max(widths) >= 160:
+        tags.append("wide_layers")
+    elif widths and max(widths) <= 64:
+        tags.append("compact_layers")
+
+    if len(genome.experts) > 0:
+        tags.append("expert_routed")
+    if not tags:
+        tags.append("dense_baseline")
+    return tags
+
+
 # ===========================================================================
 # Novelty archive
 # ===========================================================================

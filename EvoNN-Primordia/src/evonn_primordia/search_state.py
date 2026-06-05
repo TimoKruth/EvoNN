@@ -65,6 +65,7 @@ class EliteArchive:
         total_budget: int,
         rng: Random,
         family_exploration_floor: int,
+        allow_duplicate_parent_sampling: bool = False,
     ) -> list[dict[str, Any]]:
         elites = self.elites(total_budget)
         if not elites:
@@ -96,13 +97,17 @@ class EliteArchive:
 
         weighted_pool = sorted(elites, key=self._record_priority, reverse=True)
         while len(selected) < count:
-            candidates = [record for record in weighted_pool if str(record.get("genome_id") or "") not in selected_ids]
+            candidates = (
+                weighted_pool
+                if allow_duplicate_parent_sampling
+                else [record for record in weighted_pool if str(record.get("genome_id") or "") not in selected_ids]
+            )
             allow_duplicate = False
             if not candidates:
                 candidates = weighted_pool
                 allow_duplicate = True
             selected_record = self._weighted_choice(candidates, rng)
-            add(selected_record, allow_duplicate=allow_duplicate)
+            add(selected_record, allow_duplicate=allow_duplicate or allow_duplicate_parent_sampling)
         return selected[:count]
 
     @staticmethod
@@ -114,16 +119,24 @@ class EliteArchive:
         return (search_score, novelty, generation, complexity)
 
     @classmethod
-    def _selection_weight(cls, record: dict[str, Any]) -> float:
-        search_score, novelty, generation, complexity = cls._record_priority(record)
-        finite_score = search_score if search_score > float("-inf") else -1e6
-        return max(1e-6, finite_score + 1e6) + novelty + max(0, generation) + max(0.0, complexity)
+    def _selection_weights(cls, records: list[dict[str, Any]]) -> list[float]:
+        """Prefer stronger sorted elites without depending on raw metric scale."""
+
+        weights: list[float] = []
+        for rank, record in enumerate(records):
+            _, novelty, generation, complexity = cls._record_priority(record)
+            rank_weight = 1.0 / ((rank + 1) ** 1.5)
+            novelty_bonus = min(max(novelty, 0.0), 1.0) * 0.05
+            generation_bonus = min(max(generation, 0), 5) * 0.01
+            complexity_bonus = min(max(complexity, 0.0), 1.0) * 0.02
+            weights.append(max(1e-6, rank_weight + novelty_bonus + generation_bonus + complexity_bonus))
+        return weights
 
     @classmethod
     def _weighted_choice(cls, records: list[dict[str, Any]], rng: Random) -> dict[str, Any]:
         if len(records) == 1:
             return records[0]
-        weights = [cls._selection_weight(record) for record in records]
+        weights = cls._selection_weights(records)
         total = sum(weights)
         if total <= 0:
             return rng.choice(records)

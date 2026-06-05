@@ -8,7 +8,7 @@ from typing import Any
 
 from topograph.genome.codec import dict_to_genome
 from topograph.genome.genome import INPUT_INNOVATION, OUTPUT_INNOVATION, Genome
-from topograph.pipeline.archive import BenchmarkEliteArchive
+from topograph.pipeline.archive import BenchmarkEliteArchive, motif_tags
 from topograph.storage import RunStore, resolve_run_id as _storage_resolve_run_id
 
 
@@ -905,21 +905,4 @@ def _atlas_motif_clusters(
 
 
 def _motif_tags(genome: Genome) -> list[str]:
-    summary = dag_summary(genome)
-    tags: list[str] = []
-    if summary["depth"] >= 4:
-        tags.append("deep")
-    if summary["skip_connections"] >= 2:
-        tags.append("skip_heavy")
-    if summary["bottleneck_count"] >= 1:
-        tags.append("bottlenecked")
-    if summary["connectivity_ratio"] < 0.4:
-        tags.append("sparse_connectivity")
-    operators = {layer.operator.value for layer in genome.enabled_layers}
-    if {"attention_lite", "transformer_lite"} & operators:
-        tags.append("attention")
-    if len(genome.experts) > 0:
-        tags.append("expert_routed")
-    if not tags:
-        tags.append("dense_baseline")
-    return tags
+    return motif_tags(genome)

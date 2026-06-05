@@ -27,7 +27,7 @@ from topograph.operators.mutate import (
 from topograph.pipeline.evaluate import GenerationState
 from topograph.pipeline.archive import compute_behavior
 from topograph.pipeline.schedule import MutationScheduler
-from topograph.pipeline.select import non_dominated_sort, rank_based_select
+from topograph.pipeline.select import non_dominated_sort, rank_based_select, sort_front_by_crowding
 
 
 # Mutation dispatch table: operator name -> (function, needs_counter)
@@ -150,13 +150,19 @@ def _fitness_or_inf(genome: Genome) -> float:
 
 
 def _ranked_indices(state: GenerationState, config: RunConfig) -> list[int]:
-    if config.objectives and state.model_bytes and len(state.model_bytes) == len(state.population):
+    hardware_pressure = (
+        config.target_device is not None
+        and config.target_device.max_model_bytes is not None
+    )
+    if (
+        (config.objectives or hardware_pressure)
+        and state.model_bytes
+        and len(state.model_bytes) == len(state.population)
+    ):
         fronts = non_dominated_sort(state.fitnesses, state.model_bytes)
         ranked: list[int] = []
         for front in fronts:
-            ranked.extend(
-                sorted(front, key=lambda idx: (state.fitnesses[idx], state.model_bytes[idx], idx))
-            )
+            ranked.extend(sort_front_by_crowding(front, state.fitnesses, state.model_bytes))
         return ranked
     return sorted(range(len(state.fitnesses)), key=lambda idx: (state.fitnesses[idx], idx))
 

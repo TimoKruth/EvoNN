@@ -247,6 +247,15 @@ def export_symbiosis_contract(
     manifest_payload.setdefault("budget", {})["operator_adaptation_policy"] = run_summary.get(
         "operator_adaptation_policy"
     )
+    manifest_payload.setdefault("budget", {})["search_score_policy"] = run_summary.get(
+        "search_score_policy"
+    )
+    manifest_payload.setdefault("budget", {})["seed_allocation_policy"] = run_summary.get(
+        "seed_allocation_policy"
+    )
+    manifest_payload.setdefault("budget", {})["benchmark_specialist_policy"] = run_summary.get(
+        "benchmark_specialist_policy"
+    )
     result_payloads = [result.model_dump(mode="json") for result in results]
     manifest_path = output_dir / "manifest.json"
     results_path = output_dir / "results.json"
@@ -328,6 +337,7 @@ def _genome_summary(genome: ModelGenome) -> dict[str, Any]:
         "residual": genome.residual,
         "norm_type": genome.norm_type,
         "parameter_estimate": genome.parameter_estimate,
+        "architecture_complexity": genome.architecture_complexity,
         "num_experts": genome.num_experts,
     }
 
@@ -542,13 +552,18 @@ def _write_summary_json(
         "benchmark_slot_integrity": budget.get("benchmark_slot_integrity"),
         "candidate_selection_policy": budget.get("candidate_selection_policy"),
         "operator_adaptation_policy": budget.get("operator_adaptation_policy"),
+        "search_score_policy": budget.get("search_score_policy"),
+        "seed_allocation_policy": budget.get("seed_allocation_policy"),
+        "benchmark_specialist_policy": budget.get("benchmark_specialist_policy"),
         **core,
         "operator_mix": _operator_mix(lineage_records or []),
         "family_benchmark_wins": _family_benchmark_wins(best_per_benchmark or {}, genomes),
+        "complexity_summary": _complexity_summary(genomes),
         "failure_patterns": _failure_patterns(results),
         "engine_evidence": {
             "family_distribution": _family_distribution(genomes),
             "family_benchmark_wins": _family_benchmark_wins(best_per_benchmark or {}, genomes),
+            "complexity_summary": _complexity_summary(genomes),
             "operator_mix": _operator_mix(lineage_records or []),
             "default_engine_decision_notes": [
                 "prism export carries family-level winner and operator evidence for default-engine review"
@@ -576,6 +591,17 @@ def _operator_mix(lineage_records: list[dict[str, Any]]) -> dict[str, int]:
             continue
         counts[label] = counts.get(label, 0) + 1
     return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def _complexity_summary(genomes: list[ModelGenome]) -> dict[str, float]:
+    values = [float(genome.architecture_complexity) for genome in genomes]
+    if not values:
+        return {}
+    return {
+        "min": min(values),
+        "max": max(values),
+        "avg": sum(values) / len(values),
+    }
 
 
 def _family_benchmark_wins(
